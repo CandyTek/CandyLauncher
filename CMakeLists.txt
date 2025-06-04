@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.31)
+﻿cmake_minimum_required(VERSION 3.10)
 project(WindowsProject1)
 
 #set(CMAKE_CXX_STANDARD 20)
@@ -31,16 +31,19 @@ add_executable(WindowsProject1
 
 add_definitions(-DUNICODE -D_UNICODE)
 
-# 设置 GUI 子系统（只有当你定义了 WinMain 时才这样设置）
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode -mwindows")
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
-# 检查是否是 Visual Studio 2022
-if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio 17")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # 检查是否是 MinGW
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0)
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode -mwindows")
+# 仅在 Windows 平台上设置 GUI 子系统和相关链接选项
+if (WIN32)
+    # 设置 GUI 子系统（只有当你定义了 WinMain 时才这样设置）
+    #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode -mwindows")
+    #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
+    # 检查是否是 Visual Studio 2022
+    if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio 17")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
+    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # 检查是否是 MinGW
+        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0)
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode -mwindows")
+        endif()
     endif()
 endif()
 
@@ -69,4 +72,7 @@ target_link_libraries(WindowsProject1
 )
 
 #include_directories("E:/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/atlmfc/include")
+
+enable_testing()
+add_subdirectory(tests)
 
