@@ -6,12 +6,11 @@
 #include "framework.h"
 #include "WindowsProject1.h"
 #include "ListedRunnerPlugin.h"
-#include <commctrl.h>
 #include <vector>
 #include <string>
 #include <shlguid.h>
 #include <objbase.h>
-#include <commoncontrols.h>
+#include <commctrl.h>
 #include <shlobj.h>
 #include <sstream>
 #include "ListViewManager.h"
