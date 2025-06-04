@@ -1,0 +1,319 @@
+﻿//case WM_TIMER:
+//	if (wParam == 1001) {
+//		KillTimer(hWnd, 1001);
+//		ShowWindow(hWnd, SW_HIDE);
+//	}
+//	break;
+//case WM_APP + 1:
+//	ShowWindow(hWnd, SW_HIDE);
+//	break;
+
+	// 背景
+if (lpDrawItem->itemState & ODS_SELECTED) {
+	//FillRect(hdc, &rc, (HBRUSH)(COLOR_HIGHLIGHT + 1));
+	//SetTextColor(hdc, GetSysColor(COLOR_HIGHLIGHTTEXT));
+
+	COLORREF bgColor = RGB(30, 30, 60);
+	HBRUSH hBrush = CreateSolidBrush(bgColor);
+	FillRect(hdc, &rc, hBrush);
+	DeleteObject(hBrush);
+
+	SetTextColor(hdc, RGB(0, 0, 0));
+}
+else {
+	//FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
+	//SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
+
+	COLORREF bgColor = RGB(0, 0, 0);
+	HBRUSH hBrush = CreateSolidBrush(bgColor);
+	FillRect(hdc, &rc, hBrush);
+	DeleteObject(hBrush);
+
+	SetTextColor(hdc, RGB(0, 0, 0));
+}
+
+没有作用
+// 填充背景（用 GDI+，避免混合问题）
+//Color bgColor = (lpDrawItem->itemState & ODS_SELECTED) ? Color(255, 30, 30, 60) : Color(255, 0, 0, 0);
+//SolidBrush bgBrush(bgColor);
+//RectF bgRect((REAL)rc.left, (REAL)rc.top, (REAL)(rc.right - rc.left), (REAL)(rc.bottom - rc.top));
+//graphics.FillRectangle(&bgBrush, bgRect);
+
+
+
+
+	case WM_SIZE:
+	{
+		if (wParam == SIZE_MINIMIZED) {
+			if (wParam == SIZE_RESTORED) {
+				// 窗口从最小化恢复，但暂时不设置焦点
+				//wasMinimized = false;
+				SetFocus(hEdit);
+			}
+		}
+	}
+	break;
+	//case WM_ACTIVATE:
+	//{
+	//	if (LOWORD(wParam) != WA_INACTIVE) {
+	//		// 窗口变为活动状态，确保已经恢复后设置焦点
+	//		SetFocus(hEdit);
+	//	}
+	//}
+	break;
+
+
+
+	//void ListViewManager::DrawItem(LPDRAWITEMSTRUCT lpDrawItem) {
+//	int index = lpDrawItem->itemID;
+//	if (index < 0 || index >= (int)filteredActions.size())
+//		return;
+//
+//	std::shared_ptr<RunCommandAction> action = filteredActions[index];
+//	HDC hdc = lpDrawItem->hDC;
+//	RECT rc = lpDrawItem->rcItem;
+//
+//
+//	// 背景
+//	if (lpDrawItem->itemState & ODS_SELECTED) {
+//		COLORREF bgColor =  RGB(30, 30, 60) ;
+//		HBRUSH hBrush = CreateSolidBrush(bgColor);
+//		FillRect(hdc, &rc, hBrush);
+//		DeleteObject(hBrush);
+//		SetTextColor(hdc, RGB(0, 0, 0));
+//	}
+//	else {
+//		COLORREF bgColor =  RGB(0, 0, 0);
+//		HBRUSH hBrush = CreateSolidBrush(bgColor);
+//		FillRect(hdc, &rc, hBrush);
+//		DeleteObject(hBrush);
+//		SetTextColor(hdc, RGB(0, 0, 0));
+//	}
+//
+//	SetBkMode(hdc, TRANSPARENT);
+//	// 图标绘制（用系统图像列表）
+//	if (hImageList && action->iImageIndex >= 0)
+//		ImageList_Draw(hImageList, action->iImageIndex, hdc, rc.left + 4, rc.top + 4, ILD_TRANSPARENT);
+//
+//	RECT textRect = rc;
+//	// 主标题
+//	textRect.left += 60;
+//	DrawText(hdc, action->GetTitle().c_str(), -1, &textRect, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+//	// 副标题
+//	textRect.top += 16;
+//	DrawText(hdc, action->GetTargetPath().c_str(), -1, &textRect, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
+//}
+
+
+
+
+
+
+	void DrawItem2(LPDRAWITEMSTRUCT pDIS)
+	{
+		if (pDIS->itemID == -1)
+			return;
+
+		// 获取项文本
+		wchar_t buffer[256];
+		//ListView_GetItemText(hListView, pDIS->itemID, 0, buffer, 256);
+
+		HDC hdc = pDIS->hDC;
+		RECT rc = pDIS->rcItem;
+
+		// 背景填充（选中项用暗色）
+		COLORREF bgColor = (pDIS->itemState & ODS_SELECTED) ? RGB(30, 30, 60) : RGB(0, 0, 0);
+		HBRUSH hBrush = CreateSolidBrush(bgColor);
+		FillRect(hdc, &rc, hBrush);
+		DeleteObject(hBrush);
+
+		// 文本颜色
+		SetTextColor(hdc, RGB(255, 255, 255));
+		SetBkMode(hdc, TRANSPARENT);
+
+		DrawText(hdc, buffer, -1, &rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+	}
+
+
+//ListView_SetBkColor(listViewManager.hListView, CLR_NONE);
+//ListView_SetTextBkColor(listViewManager.hListView, CLR_NONE);
+
+//InvalidateRect;
+
+
+			// 返回空刷子以避免绘制默认白底
+//static HBRUSH hBrush = CreateSolidBrush(RGB(0, 0, 0)); // 深色背景
+
+
+测试显示json
+// 转为 std::wstring，用于 MessageBoxW 显示
+std::wstring wjson;
+try {
+	wjson = Utf8ToWString(utf8json);
+}
+catch (const std::exception& e) {
+	std::wcerr << L"UTF-8 解析失败：" << Utf8ToWString(e.what()) << std::endl;
+	return;
+}
+
+// ✅ 此时 wjson 是有效的 null-terminated std::wstring
+MessageBoxW(NULL, wjson.c_str(), L"JSON 内容", MB_OK | MB_ICONINFORMATION);
+
+
+
+	// 运行命令
+	void Invoke() override
+	{
+		if (IsUwpItem)
+		{
+			ShellExecuteW(nullptr, L"open", targetFilePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+		}
+		else
+		{
+			ShellExecuteW(nullptr, L"open", targetFilePath.c_str(), arguments.empty() ? nullptr : arguments.c_str(),
+						workingDirectory.c_str(), SW_SHOWNORMAL);
+		}
+	}
+
+	// 打开所在文件夹
+	void InvokeOpenFolder() const
+	{
+		const std::wstring folderPath = GetDirectory(targetFilePath);
+		if (!folderPath.empty())
+		{
+			const std::wstring param = L"/select, " + targetFilePath;
+			ShellExecuteW(nullptr, L"open", L"explorer.exe", param.c_str(), nullptr, SW_SHOWNORMAL);
+		}
+	}
+
+	// 打开目标（快捷方式）指向文件夹
+	void InvokeOpenGoalFolder() const
+	{
+		if (GetExtension(targetFilePath) == L".lnk")
+		{
+			const std::wstring resolvedPath = GetShortcutTarget(targetFilePath);
+			if (!resolvedPath.empty())
+			{
+				const std::wstring param = L"/select, " + resolvedPath;
+				ShellExecuteW(nullptr, L"open", L"explorer.exe", param.c_str(), nullptr, SW_SHOWNORMAL);
+				return;
+			}
+		}
+		InvokeOpenFolder();
+	}
+
+// 不好用，会残留一个 cmd进程
+		std::wstring cmdLine = L"cmd.exe /c \"" + targetFilePath + L"\" & exit";
+
+
+	void Invoke() override
+	{
+		// std::wstring cmdLine = L"explorer.exe \"" + targetFilePath + L"\"";
+		std::wstring cmdLine = L"cmd.exe /c \"" + targetFilePath + L"\" & exit";
+
+		STARTUPINFOW si = { sizeof(si) };
+		PROCESS_INFORMATION pi = {};
+		si.wShowWindow = SW_HIDE; // 隐藏控制台窗口
+
+		BOOL success = CreateProcessW(
+			nullptr,
+			&cmdLine[0],
+			nullptr,
+			nullptr,
+			FALSE,
+			0,
+			nullptr,
+			workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
+			&si,
+			&pi
+		);
+
+		if (success)
+		{
+			CloseHandle(pi.hProcess);
+			CloseHandle(pi.hThread);
+		}
+		else
+		{
+		std::wstring errorMessage = L"启动失败，请检查路径或权限。" + targetFilePath;
+			MainTools::ShowErrorMsgBox(errorMessage);
+		}
+	}
+
+	void InvokeOpenFolder() const
+	{
+		const std::wstring folderPath = GetDirectory(targetFilePath);
+		if (!folderPath.empty())
+		{
+			std::wstring param = L"/select,\"" + targetFilePath + L"\"";
+			std::wstring cmdLine = L"explorer.exe " + param;
+
+			STARTUPINFOW si = { sizeof(si) };
+			PROCESS_INFORMATION pi = {};
+
+			if (CreateProcessW(nullptr, &cmdLine[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
+			{
+				CloseHandle(pi.hProcess);
+				CloseHandle(pi.hThread);
+			}
+		}
+	}
+
+	void InvokeOpenGoalFolder() const
+	{
+		std::wstring resolvedPath = targetFilePath;
+
+		if (GetExtension(targetFilePath) == L".lnk")
+		{
+			resolvedPath = GetShortcutTarget(targetFilePath);
+			if (resolvedPath.empty())
+			{
+				InvokeOpenFolder(); // fallback
+				return;
+			}
+		}
+
+		std::wstring param = L"/select,\"" + resolvedPath + L"\"";
+		std::wstring cmdLine = L"explorer.exe " + param;
+
+		STARTUPINFOW si = { sizeof(si) };
+		PROCESS_INFORMATION pi = {};
+
+		if (CreateProcessW(nullptr, &cmdLine[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
+		{
+			CloseHandle(pi.hProcess);
+			CloseHandle(pi.hThread);
+		}
+	}
+
+
+		// wprintf(L"当前索引: %d\n"+justName,0);
+		// std::wcout  << justName << std::endl;
+
+		//std::wcout << RunCommand << std::endl;
+		//std::wcout << justName << std::endl;
+
+		//OutputDebugStringW(justName.c_str());
+		//OutputDebugStringW(RunCommand.c_str());
+		//wstring temp = justName + L"\n" + RunCommand;
+		//MessageBoxW(NULL, temp.c_str(), L"内容", MB_OK | MB_ICONERROR);
+
+
+
+
+	// 处理 Ctrl+Backspace
+	//static void HandleCtrlBackspace(HWND hwnd) {
+	//    DWORD start = 0, end = 0;
+	//    SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+	//    if (start > 0) {
+	//        wchar_t text[1024] = { 0 };
+	//        GetWindowText(hwnd, text, 1024);
+
+	//        int i = (int)start - 1;
+	//        while (i > 0 && text[i] == L' ') i--;       // 跳过空格
+	//        while (i > 0 && text[i - 1] != L' ') i--;    // 找到单词边界
+
+	//        SendMessage(hwnd, EM_SETSEL, i, start);
+	//        SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM)L"");
+	//    }
+	//}
