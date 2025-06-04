@@ -84,8 +84,8 @@ static void MyMoveWindow(HWND hWnd)
 
 	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - windowWidth) / 2;
 	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - windowHeight) / 2;
-	//SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-	//	 SWP_NOSIZE | SWP_SHOWWINDOW| SWP_NOSENDCHANGING | SWP_NOREDRAW | SWP_DEFERERASE);
+        // Move the window to the center and make it topmost.
+        // SWP_NOSIZE preserves the window size and SWP_SHOWWINDOW ensures it is visible.
 	SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
 				SWP_NOSIZE | SWP_SHOWWINDOW);
 }
