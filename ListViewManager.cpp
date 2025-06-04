@@ -3,7 +3,7 @@
 #include <shlguid.h>
 #include <sstream>
 #include <Shobjidl.h>    // For IImageList
-#include <commctrl.h>
+#include <commoncontrols.h>
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Comctl32.lib")
 #include <gdiplus.h>
