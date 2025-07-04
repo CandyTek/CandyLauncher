@@ -4,7 +4,11 @@
 #include "MainTools.hpp"
 #include <Shlwapi.h>
 
+#include "SettingWindow.hpp"
+
 TrayMenuManager::TrayMenuManager() = default;
+
+HINSTANCE hInstance2;
 
 void TrayMenuManager::Init(HWND parent, HINSTANCE hInstance)
 {
@@ -16,6 +20,7 @@ void TrayMenuManager::Init(HWND parent, HINSTANCE hInstance)
 	nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
 	nid.uCallbackMessage = WM_TRAYICON;
 	nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_WINDOWSPROJECT1));
+	hInstance2  = hInstance;
 	wcscpy_s(nid.szTip, L"My App");
 	Shell_NotifyIcon(NIM_ADD, &nid);
 
@@ -24,6 +29,7 @@ void TrayMenuManager::Init(HWND parent, HINSTANCE hInstance)
 	AppendMenu(hTrayMenu, MF_STRING, 10001, L"打开主窗口");
 	AppendMenu(hTrayMenu, MF_STRING, 10002, L"在资源管理器打开路径");
 	AppendMenu(hTrayMenu, MF_STRING, 10003, L"编辑配置文件（记事本）");
+	AppendMenu(hTrayMenu, MF_STRING, 10010, L"设置");
 	AppendMenu(hTrayMenu, MF_SEPARATOR, 0, nullptr); // 插入分隔线
 	AppendMenu(hTrayMenu, MF_STRING, 10004, L"打开 Github 主页");
 	AppendMenu(hTrayMenu, MF_SEPARATOR, 0, nullptr); // 插入分隔线
@@ -55,6 +61,11 @@ void TrayMenuManager::TrayMenuClick(const int position, HWND hWnd, HWND hEdit)
 			PathRemoveFileSpec(path);
 			wcscat_s(path, L"\\runner.json");
 			ShellExecute(nullptr, L"open", L"notepad.exe", path, nullptr, SW_SHOW);
+		}
+		break;
+	case 10010: // 前往设置
+		{
+			ShowSettingsWindow(hInstance2, nullptr);
 		}
 		break;
 	case 10004: // 打开 Github 页面

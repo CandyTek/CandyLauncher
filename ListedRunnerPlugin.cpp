@@ -1,6 +1,5 @@
 ﻿#include "ListedRunnerPlugin.h"
 #include "DataKeeper.hpp"
-#include "RefreshAction.cpp"
 
 
 #include <windows.h>
@@ -25,11 +24,15 @@ static bool FolderExists(const std::wstring& folderPath)
 	return std::filesystem::exists(folderPath) && std::filesystem::is_directory(folderPath);
 }
 
-CallbackFunction callbackFunction;
+static std::unordered_map<std::string, std::function<void()>> callbackFunctions;
 
-ListedRunnerPlugin::ListedRunnerPlugin(const CallbackFunction callbackFunction1)
+ListedRunnerPlugin::ListedRunnerPlugin()
 {
-	callbackFunction=callbackFunction1;
+}
+
+ListedRunnerPlugin::ListedRunnerPlugin(const std::unordered_map<std::string, std::function<void()>>& callbackFunction1)
+{
+	callbackFunctions=callbackFunction1;
 	configPath = EXE_FOLDER_PATH + L"\\runner.json";
 	LoadConfiguration();
 }
@@ -69,8 +72,12 @@ static std::string WStringToUtf8(const std::wstring& wstr)
 void ListedRunnerPlugin::LoadConfiguration()
 {
 	actions.clear();
-	std::shared_ptr<RefreshAction> refreshAction = std::make_shared<RefreshAction>(callbackFunction);
-	actions.push_back(refreshAction);
+	// std::shared_ptr<ActionNormal> refreshAction = ;
+	// actions.push_back(refreshAction);
+	actions.push_back(std::make_shared<ActionNormal>(L"刷新列表",L"刷新运行配置",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["refreshList"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"退出软件",L"退出软件",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["quit"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"重启软件",L"重启软件",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["restart"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"软件设置",L"打开本软件设置界面",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["settings"]));
 	std::ifstream in((configPath.data())); // 用 std::ifstream 而不是 std::wifstream
 	if (!in)
 	{

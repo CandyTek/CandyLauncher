@@ -9,6 +9,8 @@
 // 不能少
 #include <shellapi.h>
 
+#include "BaseTools.hpp"
+
 using namespace Microsoft::WRL;
 
 class RunCommandAction : public ActionBase

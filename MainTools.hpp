@@ -12,7 +12,12 @@
 #include <shobjidl.h>
 #include <shellapi.h>
 #include <comdef.h>
+#include <fstream>
+#include <iostream>
 #include <vector>
+#include <set>
+
+#include "Constants.hpp"
 
 // class MainTools
 // {
@@ -22,38 +27,22 @@
 // ~MainTools() = delete;
 
 class RunCommandAction;
-// 标准打印输出方法
-static void Println(const std::wstring& msg)
-{
-	std::wstringstream ss;
-	ss << L"" << msg << L"\n";
-	OutputDebugStringW(ss.str().c_str());
-}
 
-static void Print(const std::wstring& msg)
-{
-	std::wstringstream ss;
-	ss << L"" << msg;
-	OutputDebugStringW(ss.str().c_str());
-}
-
-static void ShowErrorMsgBox(std::wstring msg)
-{
-	const DWORD err = GetLastError();
-	wchar_t buf[256];
-	msg += L"，错误代码：%lu";
-	wsprintfW(buf, msg.data(), err);
-	MessageBoxW(nullptr, buf, L"错误", MB_OK | MB_ICONERROR);
-}
 
 static void HideWindow(HWND hWnd, HWND hEdit, HWND hListView)
 {
 	// 不需要设置什么线程延时去关闭什么的，归根结底是alt键触发了控件的一些东西，屏蔽就好
 	SetWindowText(hEdit, L"");
-	//ListView_DeleteAllItems(hListView);
-	//SendMessage(hEdit, EM_SETSEL, 0, -1); // Ctrl+A: 全选
-	//SetTimer(hWnd, 1001, 50, NULL);
+	// 强制更新 UI
+	UpdateWindow(hEdit);
+	UpdateWindow(hListView);
 	ShowWindow(hWnd, SW_HIDE);
+
+	//ListView_DeleteAllItems(hListView);
+	//UpdateWindow(hListView);
+	// SendMessage(hEdit, EM_SETSEL, 0, -1); // Ctrl+A: 全选
+	//SendMessage(hWnd, WM_WINDOWS_HIDE, 0, 0); // Ctrl+A: 全选
+	// SetTimer(hWnd, 1001, 50, NULL);
 }
 
 static void RestoreWindowIfMinimized(HWND hWnd)
@@ -63,6 +52,9 @@ static void RestoreWindowIfMinimized(HWND hWnd)
 		ShowWindow(hWnd, SW_RESTORE);
 	}
 }
+
+static int lastWindowCenterX = -1;
+static int lastWindowCenterY = -1;
 
 static void MyMoveWindow(HWND hWnd)
 {
@@ -84,10 +76,21 @@ static void MyMoveWindow(HWND hWnd)
 
 	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - windowWidth) / 2;
 	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - windowHeight) / 2;
-        // Move the window to the center and make it topmost.
-        // SWP_NOSIZE preserves the window size and SWP_SHOWWINDOW ensures it is visible.
-	SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-				SWP_NOSIZE | SWP_SHOWWINDOW);
+	// Move the window to the center and make it topmost.
+	// SWP_NOSIZE preserves the window size and SWP_SHOWWINDOW ensures it is visible.
+	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+		// ShowWindow(hWnd, SW_SHOW);
+	}
+	else
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+		lastWindowCenterX = centerX;
+		lastWindowCenterY = centerY;
+	}
 }
 
 static void ShowMainWindowSimple(HWND hWnd, HWND hEdit)
@@ -176,22 +179,6 @@ static std::wstring GetExecutableFolder()
 	return L"";
 }
 
-static std::wstring MyToLower(const std::wstring& str)
-{
-	std::wstring lower = str;
-	for (auto& ch : lower) ch = towlower(ch);
-	return lower;
-}
-
-static std::wstring MyTrim(const std::wstring& str)
-{
-	const size_t first = str.find_first_not_of(L" \t\n\r");
-	if (first == std::wstring::npos) return L"";
-	const size_t last = str.find_last_not_of(L" \t\n\r");
-	return str.substr(first, last - first + 1);
-}
-
-
 // static std::wstring MyToLower2(const std::wstring& input)
 // 	{
 // 		std::wstring output;
@@ -267,17 +254,20 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 	}
 
 	PCUITEMID_CHILD relpidl = ILFindLastID(pidl);
-	
+
 	IContextMenu* contextMenu = nullptr;
 	guard.hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void**)&contextMenu);
-	if (SUCCEEDED(guard.hr)) {
+	if (SUCCEEDED(guard.hr))
+	{
 		IContextMenu2* contextMenu2 = nullptr;
-		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu2, (void**)&contextMenu2))) {
+		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu2, (void**)&contextMenu2)))
+		{
 			contextMenu2->Release(); // 这步是必要的
 		}
 
 		IContextMenu3* contextMenu3 = nullptr;
-		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu3, (void**)&contextMenu3))) {
+		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu3, (void**)&contextMenu3)))
+		{
 			contextMenu3->Release(); // 这步是必要的
 		}
 	}
@@ -415,3 +405,32 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring& filePath, const
 	// 根据你程序结构决定是否CoUninitialize
 	// CoUninitialize();
 }
+
+
+static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth,HFONT hFontD)
+{
+	// 1. 创建 RECT 结构体，设置最大宽度，高度初始为0
+	HDC hdc = GetDC(hwnd);
+	RECT rc = {0, 0, maxWidth, 0};
+
+	// 2. 选择字体到 DC
+	HFONT hOldFont = (HFONT)SelectObject(hdc, hFontD);
+
+	// 3. 使用 DrawText 测量文本所需高度
+	DrawText(hdc, text.c_str(), -1, &rc, DT_CALCRECT | DT_WORDBREAK);
+
+	// 4. 恢复旧字体
+	SelectObject(hdc, hOldFont);
+	int height = rc.bottom - rc.top;
+	ReleaseDC(hwnd, hdc);
+
+	// 5. 返回计算后的高度
+	return height;
+}
+
+static void SetControlFont(HWND hCtrl, HFONT hFont)
+{
+	SendMessageW(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
+}
+
+

@@ -23,10 +23,19 @@ add_executable(WindowsProject1
         GlassHelper.hpp
         TrayMenuManager.h
         TrayMenuManager.cpp
-        RefreshAction.cpp
+        actions/ActionNormal.cpp
         DataKeeper.hpp
         EditHelper.hpp
-
+        SettingsHelper.hpp
+        SettingWindow.hpp
+        Constants.hpp
+        BaseTools.hpp
+        windowsproject1.rc
+        WindowsProject1.ico
+        small.ico
+        settings.json
+        ScrollViewHelper.hpp
+        ShortCutHelper.hpp
 )
 
 add_definitions(-DUNICODE -D_UNICODE)
@@ -40,6 +49,18 @@ if (WIN32)
     if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio 17")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # 编译资源文件（推荐使用外部命令或者手动添加）
+#        set(RESOURCE_FILE ${CMAKE_CURRENT_BINARY_DIR}/windowsproject1.res)
+#        add_custom_command(
+#                OUTPUT ${RESOURCE_FILE}
+#                COMMAND windres ${CMAKE_SOURCE_DIR}/windowsproject1.rc -O coff -o ${RESOURCE_FILE}
+#                DEPENDS ${CMAKE_SOURCE_DIR}/windowsproject1.rc
+#                COMMENT "Compiling resource file"
+#        )
+#        add_custom_target(resource_target ALL DEPENDS ${RESOURCE_FILE})
+#        add_dependencies(WindowsProject1 resource_target)
+#        target_sources(WindowsProject1 PRIVATE ${RESOURCE_FILE})
+
         # 检查是否是 MinGW
         if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0)
             set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode -mwindows")
@@ -75,4 +96,3 @@ target_link_libraries(WindowsProject1
 
 enable_testing()
 add_subdirectory(tests)
-

@@ -59,6 +59,8 @@ static void EnableBlur(HWND hWnd)
 
 		ACCENT_POLICY policy{};
 		policy.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND;
+		// policy.AccentState = ACCENT_ENABLE_BLURBEHIND;
+
 		// AccentFlags = 2 是经验值，避免窗口边缘的光晕异常。
 		policy.AccentFlags = 2;
 		policy.GradientColor = COLOR_UI_BG_GLASS; // 半透明黑色

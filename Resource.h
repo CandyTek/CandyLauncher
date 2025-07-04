@@ -1,6 +1,7 @@
 ﻿//{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ 生成的包含文件。
 // 使用者 WindowsProject1.rc
+#pragma once
 
 #define IDS_APP_TITLE			103
 
@@ -9,9 +10,10 @@
 #define IDD_ABOUTBOX			103
 #define IDM_ABOUT				104
 #define IDM_EXIT				105
-#define IDI_WINDOWSPROJECT1			107
+#define IDI_WINDOWSPROJECT1		107
 #define IDI_SMALL				108
-#define IDC_WINDOWSPROJECT1			109
+#define IDC_WINDOWSPROJECT1		109
+#define IDR_SETTINGS_JSON 131
 #define IDC_MYICON				2
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1
@@ -28,3 +30,4 @@
 #define _APS_NEXT_SYMED_VALUE		110
 #endif
 #endif
+

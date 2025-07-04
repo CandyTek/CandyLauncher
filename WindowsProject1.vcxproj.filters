@@ -48,6 +48,9 @@
     <ClInclude Include="DataKeeper.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="SettingWindow.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="WindowsProject1.cpp">

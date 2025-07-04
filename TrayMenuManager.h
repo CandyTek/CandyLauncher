@@ -7,6 +7,8 @@
 #include <shellapi.h>
 
 #define WM_TRAYICON (WM_USER + 1)
+#define TRAY_MENU_ID_BASE 10000
+#define TRAY_MENU_ID_BASE_END 10011
 
 class TrayMenuManager
 {

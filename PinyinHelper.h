@@ -8,6 +8,7 @@
 #include <codecvt>
 #include <locale>
 
+#include "BaseTools.hpp"
 #include "MainTools.hpp"
 
 

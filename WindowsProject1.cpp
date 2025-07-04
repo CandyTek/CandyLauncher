@@ -20,21 +20,26 @@
 #include <gdiplus.h>
 
 #include "EditHelper.hpp"
+#include "SettingWindow.hpp"
 #include "TrayMenuManager.h"
 
 // 全局变量:
 HWND hEdit;
+// 当前主窗口
+HWND hWnd;
 // 当前实例
 HINSTANCE hInst;
 ListViewManager listViewManager;
 TrayMenuManager trayMenuManager;
-ListedRunnerPlugin plugin = nullptr;
+ListedRunnerPlugin plugin ;
 // 此代码模块中包含的函数的前向声明:
 ATOM MyRegisterClass(HINSTANCE hInstance);
-BOOL InitInstance(HINSTANCE, int);
+ATOM MyRegisterClass2(HINSTANCE hInstance);
+void InitInstance(HINSTANCE, int);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 Gdiplus::GdiplusStartupInput gdiplusStartupInput;
 static ULONG_PTR gdiplusToken;
+
 
 // 主进程函数
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -43,16 +48,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 					_In_ int nCmdShow)
 {
 	Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
 	MyRegisterClass(hInstance);
+	MyRegisterClass2(hInstance);
 
-	if (!InitInstance(hInstance, nCmdShow))
-	{
-		ShowErrorMsgBox(L"窗口创建失败");
-		return FALSE;
-	}
+	InitInstance(hInstance, nCmdShow);
 
 	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
 
@@ -72,11 +75,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 }
 
 // 重新加载快捷方式列表
-int refreshList(const int num)
+void refreshList()
 {
 	plugin.LoadConfiguration();
 	listViewManager.LoadActions(plugin.GetActions());
-	return 0;
 }
 
 // 注册窗口类。
@@ -85,58 +87,93 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	WNDCLASSEXW wcex{};
 
 	wcex.cbSize = sizeof(WNDCLASSEX);
-
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	// 确保窗口大小发生变化时，整个客户区都会被重绘
+	// wcex.style = CS_HREDRAW | CS_VREDRAW;
 	wcex.lpfnWndProc = WndProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
 	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_WINDOWSPROJECT1));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	//wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	wcex.hbrBackground = nullptr;
-
 	wcex.lpszMenuName = nullptr;
 	wcex.lpszClassName = L"MyWindowClass";
+	wcex.hbrBackground = nullptr;
 
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
 	return RegisterClassExW(&wcex);
 }
 
-// 创建主窗口，初始化
-BOOL InitInstance(HINSTANCE hInstance, const int nCmdShow)
+// 注册窗口类。
+ATOM MyRegisterClass2(HINSTANCE hInstance)
 {
-	HWND hWnd = CreateWindowW(
+	WNDCLASSEXW wc{};
+
+	wc.cbSize = sizeof(WNDCLASSEX);
+	//wc.style = CS_HREDRAW | CS_VREDRAW;
+	wc.lpfnWndProc = SettingsWndProc;
+	wc.hInstance = hInstance;
+	//wc.cbClsExtra = 0;
+	//wc.cbWndExtra = 0;
+	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+
+	wc.lpszClassName = L"SettingsWndClass";
+	return RegisterClassExW(&wc);
+}
+
+void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
+{
+	hWnd = CreateWindowExW(
+		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_TRANSPARENT | WS_EX_LAYERED, // 扩展样式
+		WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, // 扩展样式
 		L"MyWindowClass",
-		L"My App Title",
-		//WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_EX_CONTROLPARENT,
-		// 去除窗口边框
+		L"CandyLauncher",
+		// WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		WS_POPUP | WS_VISIBLE,
-		CW_USEDEFAULT, CW_USEDEFAULT,
+		// WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_BORDER,
+		// WS_POPUPWINDOW | WS_VISIBLE | WS_CAPTION | WS_BORDER,
+		CW_USEDEFAULT, CW_USEDEFAULT, // 初始位置
 		620, 480,
-		nullptr,
-		nullptr,
-		hInstance,
-		nullptr
+		nullptr, // 父窗口
+		nullptr, // 菜单
+		hInstance, // 实例句柄
+		nullptr // 附加参数
 	);
 
 	if (!hWnd)
-		return FALSE;
+	{
+		ShowErrorMsgBox(L"创建窗口失败，hWnd为空");
+		ExitProcess(1);
+	}
 
 	CustomRegisterHotKey(hWnd);
 
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);
 	MyMoveWindow(hWnd);
+	EnableBlur(hWnd);
+}
 
+void InitControls(HINSTANCE hInstance, HWND hWnd)
+{
 	// 编辑框（搜索框）
 	hEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
 						10, 10, 580, 35, hWnd, reinterpret_cast<HMENU>(1), hInstance, nullptr);
 
 
 	listViewManager.Initialize(hWnd, hInstance, 10, 45, 580, 380);
-	plugin = ListedRunnerPlugin(refreshList);
+	std::unordered_map<std::string, std::function<void()>> callbacks;
+	callbacks["refreshList"] = refreshList;
+	callbacks["quit"] = [hWnd]() {
+		DestroyWindow(hWnd);
+	};
+	callbacks["restart"] = [hWnd]() {
+		TrayMenuManager::TrayMenuClick(10005, hWnd, nullptr);
+	};
+	callbacks["settings"] = [hWnd]() {
+		TrayMenuManager::TrayMenuClick(10010, hWnd, nullptr);
+	};
+	plugin = ListedRunnerPlugin(callbacks);
 
 	listViewManager.LoadActions(plugin.GetActions());
 	EditHelper::Attach(hEdit, reinterpret_cast<DWORD_PTR>(listViewManager.hListView));
@@ -146,18 +183,23 @@ BOOL InitInstance(HINSTANCE hInstance, const int nCmdShow)
 				GetWindowLong(hEdit, GWL_EXSTYLE) | WS_EX_TRANSPARENT);
 	ListView_SetBkColor(listViewManager.hListView, COLOR_UI_BG);
 	ListView_SetTextBkColor(listViewManager.hListView, COLOR_UI_BG);
-
 	SetFocus(hEdit);
-	EnableBlur(hWnd);
-	trayMenuManager.Init(hWnd, hInstance);
-
-	Println(L"Windows inited.");
-	Println(L"Windows inited.");
-	Println(L"Windows inited.");
-	Println(L"Windows inited.");
-
-	return TRUE;
 }
+
+
+// 创建主窗口，初始化
+void InitInstance(HINSTANCE hInstance, const int nCmdShow)
+{
+	LoadSettingList();
+	ShowSettingsWindow(hInstance, nullptr);
+	// return;
+	CreateMainWindow(hInstance, nCmdShow);
+	InitControls(hInstance, hWnd);
+	trayMenuManager.Init(hWnd, hInstance);
+	Println(L"Windows inited.");
+}
+
+static std::wstring buffer;
 
 // 处理主窗口的消息。
 LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam)
@@ -172,13 +214,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			// 处理编辑框输入改变
 			if (wmId == 1 && wmEvent == EN_CHANGE)
 			{
-				wchar_t buffer[256];
-				GetWindowText(hEdit, buffer, 256);
+				buffer.resize(256, L'\0');
+				buffer.resize(GetWindowTextW(hEdit, &buffer[0], 256));
 				SendMessage(listViewManager.hListView, WM_SETREDRAW, FALSE, 0);
 				listViewManager.Filter(buffer);
 				SendMessage(listViewManager.hListView, WM_SETREDRAW, TRUE, 0);
 			}
-			else if (wmId > 10000 && wmId < 10010)
+			else if (wmId > TRAY_MENU_ID_BASE && wmId < TRAY_MENU_ID_BASE_END)
 			{
 				TrayMenuManager::TrayMenuClick(wmId, hWnd, hEdit);
 			}
@@ -197,6 +239,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			EndPaint(hWnd, &ps);
 		}
 		break;
+
 	case WM_DRAWITEM:
 		{
 			const tagDRAWITEMSTRUCT* lpDrawItem = reinterpret_cast<LPDRAWITEMSTRUCT>(lParam);
@@ -292,6 +335,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			static HBRUSH hBrush = CreateSolidBrush(COLOR_UI_BG); // 深色背景
 			return reinterpret_cast<INT_PTR>(hBrush);
 		}
+	case WM_ERASEBKGND:
+		return 1; // 告诉系统“我已经处理了背景”
+
+	// 常用区域分割线
 	case WM_EDIT_DONE:
 		{
 			const auto it = GetListViewSelectedAction(listViewManager.hListView, listViewManager.filteredActions);
@@ -332,7 +379,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 						// ExecuteAction(filteredActions[index]);
 					}
 					return TRUE;
-				}     else   if (pnmh->code == NM_RCLICK) // 右键点击
+				}
+				else if (pnmh->code == NM_RCLICK) // 右键点击
 				{
 					POINT pt;
 					// 获取鼠标坐标（相对 ListView 客户区）
@@ -348,21 +396,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 					{
 						// 选中当前项（可选）
 						// ListView_SetItemState(listViewManager.hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-					std::shared_ptr<RunCommandAction> it = listViewManager.filteredActions[index];
-					auto temp=it->GetTargetPath();
+						std::shared_ptr<RunCommandAction> it = listViewManager.filteredActions[index];
+						auto temp = it->GetTargetPath();
 						POINT pt;
 						GetCursorPos(&pt);
 
-						ShowShellContextMenu(hWnd,temp,pt);
+						ShowShellContextMenu(hWnd, temp, pt);
 					}
 					return TRUE;
 				}
-
-				// 右键事件同上...
 			}
 			break;
 		}
 
+	case WM_WINDOWS_HIDE:
+		{
+			//HideWindow(hWnd, hEdit, listViewManager.hListView);
+			ShowWindow(hWnd, SW_HIDE);
+			return 0;
+		}
 	case WM_CLOSE:
 		{
 			HideWindow(hWnd, hEdit, listViewManager.hListView);

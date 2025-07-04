@@ -317,3 +317,266 @@ MessageBoxW(NULL, wjson.c_str(), L"JSON 内容", MB_OK | MB_ICONINFORMATION);
 	//        SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM)L"");
 	//    }
 	//}
+
+
+// 主进程函数
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+					_In_opt_ HINSTANCE hPrevInstance,
+					_In_ LPWSTR lpCmdLine,
+					_In_ int nCmdShow)
+{
+	// 初始化 Windows 通用控件库中指定的控件类型
+	// INITCOMMONCONTROLSEX icex;
+	// icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+	// icex.dwICC = ICC_WIN95_CLASSES | ICC_STANDARD_CLASSES | ICC_BAR_CLASSES;  // 可根据需要添加更多
+	// InitCommonControlsEx(&icex);
+
+
+	//wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	// wcex.hbrBackground = nullptr;
+
+
+
+	// case WM_PAINT:
+	// {
+	// 	PAINTSTRUCT ps;
+	// 	HDC hdc = BeginPaint(hWnd, &ps);
+	//
+	// 	HDC hdcMem = CreateCompatibleDC(hdc);
+	// 	HBITMAP hbmMem = CreateCompatibleBitmap(hdc, ps.rcPaint.right - ps.rcPaint.left, ps.rcPaint.bottom - ps.rcPaint.top);
+	// 	HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
+	//
+	// 	// 先在内存 DC 中绘制
+	// 	HBRUSH hBrush = CreateSolidBrush(COLOR_UI_BG);
+	// 	FillRect(hdcMem, &ps.rcPaint, hBrush);
+	// 	DeleteObject(hBrush);
+	//
+	// 	// 在内存 DC 上绘制其他内容...
+	//
+	// 	// 再一次性拷贝到屏幕
+	// 	BitBlt(hdc, ps.rcPaint.left, ps.rcPaint.top,
+	// 		ps.rcPaint.right - ps.rcPaint.left,
+	// 		ps.rcPaint.bottom - ps.rcPaint.top,
+	// 		hdcMem, 0, 0, SRCCOPY);
+	//
+	// 	// 清理资源
+	// 	SelectObject(hdcMem, hbmOld);
+	// 	DeleteObject(hbmMem);
+	// 	DeleteDC(hdcMem);
+	//
+	// 	EndPaint(hWnd, &ps);
+	// }
+	// return 0;
+
+
+
+				// wchar_t buffer[256];
+				// GetWindowText(hEdit, buffer, 256);
+				// int len = GetWindowTextLengthW(hEdit);
+				// std::wstring buffer(len, L'\0');
+				// if (buffer.capacity() < 100)
+				// 	buffer.reserve(100); // 只扩容一次，避免多次 resize 时内存重新分配
+				// GetWindowTextW(hEdit, &buffer[0], 100);
+				// buffer.resize(wcsnlen(buffer.c_str(), 100)); // 去除尾部空字符
+
+				// buffer.reserve(100);             // 确保容量
+				// buffer.resize(100);              // size=100，但不保证内容——我们马上就要覆盖
+				if (buffer.size() < 100)
+
+				// buffer.resize(wcsnlen(buffer.c_str(), 100));
+
+
+	// HRSRC hRes = FindResource(hModule, MAKEINTRESOURCEW(IDR_SETTINGS_JSON), RT_RCDATA);
+	//HRSRC hRes = FindResourceW(hModule, MAKEINTRESOURCEW(IDR_SETTINGS_JSON), L"RCDATA");
+	//HRSRC hRes = FindResource(hModule, MAKEINTRESOURCE(IDR_SETTINGS_JSON), RT_RCDATA);
+	//HRSRC hRes = FindResourceW(hModule, MAKEINTRESOURCEW(IDR_SETTINGS_JSON), L"RCDATA");
+
+
+
+
+
+//static void ShowErrorMsgBox(const std::string& msg)
+//{
+//	const DWORD err = GetLastError();
+//	char buf[256];
+//
+//	std::snprintf(buf, sizeof(buf), "%s，错误代码：%lu", msg.c_str(), err);
+//	MessageBoxA(nullptr, buf, "错误", MB_OK | MB_ICONERROR);
+//}
+
+
+
+# -------------------- 修正部分开始 --------------------
+
+# 1. 定义生成的资源文件的路径
+set(RESOURCE_FILE ${CMAKE_CURRENT_BINARY_DIR}/windowsproject1.res)
+
+# 2. 添加自定义命令来编译资源
+#    这个命令会在 .rc 或 .json 文件变更时执行
+add_custom_command(
+        OUTPUT ${RESOURCE_FILE}
+        COMMAND windres -i ${CMAKE_SOURCE_DIR}/windowsproject1.rc -o ${RESOURCE_FILE} -O coff
+        # 明确指出此命令依赖于 .rc 文件和 .json 文件
+        DEPENDS
+        ${CMAKE_SOURCE_DIR}/windowsproject1.rc
+        ${CMAKE_SOURCE_DIR}/settings.json
+        COMMENT "Compiling resources with updated settings.json"
+)
+
+# 3. 将生成的 .res 文件作为目标的一个源文件
+#    这是最关键的一步，它将自定义命令与你的可执行文件目标直接关联起来。
+#    当 RESOURCE_FILE 过期时，CMake会先运行上面的自定义命令，然后再链接 WindowsProject1。
+target_sources(WindowsProject1 PRIVATE ${RESOURCE_FILE})
+
+# 移除下面的 add_custom_target 和 add_dependencies，它们是多余的。
+# add_custom_target(resource_target ALL DEPENDS ${RESOURCE_FILE})
+# add_dependencies(WindowsProject1 resource_target)
+
+# -------------------- 修正部分结束 --------------------
+
+
+#set(RESOURCE_FILE ${CMAKE_CURRENT_BINARY_DIR}/windowsproject1.res)
+#
+#add_custom_command(
+#        OUTPUT ${RESOURCE_FILE}
+#        COMMAND windres -i ${CMAKE_SOURCE_DIR}/windowsproject1.rc -o ${RESOURCE_FILE} -O coff
+#        DEPENDS ${CMAKE_SOURCE_DIR}/windowsproject1.rc ${CMAKE_SOURCE_DIR}/settings.json
+#        COMMENT "Recompiling resources including settings.json"
+#)
+#
+#add_custom_target(resource_target ALL DEPENDS ${RESOURCE_FILE})
+#add_dependencies(WindowsProject1 resource_target)
+#target_sources(WindowsProject1 PRIVATE ${RESOURCE_FILE})
+
+
+			// for (const auto& sub : settings2)
+			// 	tabSet.insert(utf8_to_wide(sub.subPage));
+			
+			
+			
+			// subPages.assign(tabSet.begin(), tabSet.end());
+
+
+static int GetLabelHeight2(HWND hwnd, std::wstring text, int labelWidth)
+{
+	RECT rc = {0, 0, labelWidth, 0}; // labelWidth 是你预设的宽度，例如 180 或 300
+	// HFONT hFont = (HFONT)GetStockObject(hFontDefault);
+
+	HDC hdc = GetDC(hwnd);
+	SelectObject(hdc, hFontDefault);
+
+	DrawTextW(hdc, text.c_str(), -1, &rc, DT_WORDBREAK | DT_CALCRECT);
+	int labelHeight = rc.bottom - rc.top;
+	ReleaseDC(hwnd, hdc);
+	return labelHeight;
+}
+
+
+static int GetLabelHeight3(HWND hwnd, std::wstring text, int labelWidth)
+{
+	RECT rc = {0, 0, labelWidth, 0};
+
+	HDC hdc = GetDC(hwnd);
+	HFONT hOldFont = (HFONT)SelectObject(hdc, hFontDefault);
+
+	// 计算文本绘制所需区域
+	DrawTextW(hdc, text.c_str(), -1, &rc, DT_WORDBREAK | DT_CALCRECT);
+
+	int labelHeight = rc.bottom - rc.top;
+
+	// 可选：使用 TextMetrics 校验
+	TEXTMETRIC tm;
+	GetTextMetrics(hdc, &tm);
+	int lineHeight = tm.tmHeight + tm.tmExternalLeading;
+
+	SelectObject(hdc, hOldFont);
+	ReleaseDC(hwnd, hdc);
+	return labelHeight;
+}
+
+static int GetLabelHeight4(HWND hWnd, std::wstring text, int labelWidth)
+{
+	// PAINTSTRUCT ps;
+	// HDC hdc = BeginPaint(hWnd, &ps);
+	HDC hdc = GetDC(hWnd);
+
+	// 获取客户区大小
+	RECT clientRect;
+	GetClientRect(hWnd, &clientRect);
+
+	// 设置一个最大宽度为200的矩形
+	RECT drawRect = {0, 0, labelWidth, clientRect.bottom};
+
+	// 文本内容
+	// LPCWSTR text = L"我是来自非洲的姑娘。心中向往神秘的东方,背起行囊寻找梦想,那是龙的故乡这里的人纯朴善良,淡淡微笑挂脸庞";
+
+	// 复制 drawRect 以便计算文本高度
+	RECT calcRect = drawRect;
+
+	// 计算文本所需高度
+	DrawTextW(hdc, text.c_str(), -1, &calcRect, DT_CENTER | DT_WORDBREAK | DT_CALCRECT | DT_EDITCONTROL);
+	int textHeight = calcRect.bottom - calcRect.top;
+
+	// 垂直居中：重新设置 drawRect 的 top 和 bottom
+	int verticalOffset = (clientRect.bottom - textHeight) / 2;
+	drawRect.top = verticalOffset;
+	drawRect.bottom = verticalOffset + textHeight;
+
+	// 设置背景透明（可选）
+	SetBkMode(hdc, TRANSPARENT);
+
+	// 实际绘制文本
+	DrawTextW(hdc, text.c_str(), -1, &drawRect, DT_CENTER | DT_WORDBREAK | DT_EDITCONTROL);
+
+	// EndPaint(hWnd, &ps);
+
+	return drawRect.bottom - drawRect.top + 10;
+}
+
+
+				// HWND hContainer = CreateWindowExW(0, L"STATIC", nullptr,
+				// 								WS_CHILD | WS_VISIBLE,
+				// 								100, 0, 600, 380, hwnd, nullptr, nullptr, nullptr);
+
+
+
+// 设置滚动范围xxuxu
+static void UpdateScrollRange2(HWND hwnd, int contentHeight)
+{
+	const int viewHeight = 380; // 容器高度
+	int maxScroll = MyMax(0, contentHeight - viewHeight);
+	SetScrollRange(hwnd, SB_VERT, 0, maxScroll, TRUE);
+	SetScrollPos(hwnd, SB_VERT, 0, TRUE);
+}
+
+
+
+		// SetBkMode(hdcStatic, OPAQUE);
+		// SetBkColor(hdcStatic, COLOR_UI_BG);
+
+
+
+
+// CLEARTYPE_QUALITY, VARIABLE_PITCH, L"微软雅黑");
+
+
+
+
+	// HWND hWnd = CreateWindowW(L"SettingsWndClass", L"设置",
+	// 	WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+	// 	CW_USEDEFAULT, CW_USEDEFAULT, 480, 350,
+	// 	hParent, nullptr, hInstance, nullptr);
+
+	//HWND hWnd = CreateWindowW(L"SettingsWndClass", L"设置",
+	//	WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_EX_ACCEPTFILES,
+	//	 //WS_POPUP | WS_VISIBLE,
+	//	CW_USEDEFAULT, CW_USEDEFAULT, 480, 350,
+	//	hParent, nullptr, hInstance, nullptr);
+
+
+	case WM_CLOSE:
+		DestroyWindow(hwnd);
+		break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;

@@ -8,12 +8,16 @@
 #include <memory>
 
 #include "DataKeeper.hpp"
+#include "actions/ActionNormal.cpp"
 
 
 class ListedRunnerPlugin {
 
 public:
-    ListedRunnerPlugin(CallbackFunction callbackFunction1);
+    // ListedRunnerPlugin(CallbackFunction callbackFunction1);
+    ListedRunnerPlugin();
+    // ListedRunnerPlugin(const std::unordered_map<std::string, CallbackFunction>& callbackFunction1);
+    ListedRunnerPlugin(const std::unordered_map<std::string, std::function<void()>>& callbackFunction1);
     [[nodiscard]] const std::vector<std::shared_ptr<RunCommandAction>>& GetActions() const;
 
     void LoadConfiguration();

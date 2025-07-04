@@ -1,18 +1,20 @@
 ﻿#pragma once
-#include "ActionBase.cpp"
-#include "PinyinHelper.h"
-#include "RunCommandAction.cpp"
-#include "DataKeeper.hpp"
+#include "../ActionBase.cpp"
+#include "../PinyinHelper.h"
+#include "../RunCommandAction.cpp"
+#include "../DataKeeper.hpp"
 #include <wrl/client.h>
+
+#include "../BaseTools.hpp"
 // 不能少
 // #include <shellapi.h>
 
-class RefreshAction final : public RunCommandAction
+class ActionRefresh final : public RunCommandAction
 {
 public:
 	CallbackFunction callback1;
 
-	explicit RefreshAction(
+	explicit ActionRefresh(
 		const CallbackFunction callback
 	):callback1(callback)
 	{

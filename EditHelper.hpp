@@ -3,13 +3,12 @@
 #include <commctrl.h>
 #include <string>
 #include <Shlwapi.h>
+
+#include "Constants.hpp"
 #include "MainTools.hpp"
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "Shlwapi.lib")
-#define WM_EDIT_DONE (WM_USER + 100)
-#define WM_EDIT_OPEN_PATH (WM_USER + 101)
-#define WM_EDIT_OPEN_TARGET_PATH (WM_USER + 102)
 
 class EditHelper
 {

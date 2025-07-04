@@ -17,7 +17,7 @@ const int COLOR_UI_BG_GLASS = (0xCC << 24) | (0x00 << 16) | (0x00 << 8) | 0x00;
 const std::wstring EXE_FOLDER_PATH=GetExecutableFolder();
 
 // 定义回调函数类型，它接受一个整数参数，返回一个整数
-typedef int (*CallbackFunction)(int); 
+// typedef int (*CallbackFunction)(int); 
 
 // std::wstring EXE_FOLDER_PATH ={};
 // const std::wstring EXE_FOLDER_PATH =MainTools::GetExecutableFolder();
