@@ -6,13 +6,13 @@ set(CMAKE_CXX_STANDARD 17)  # 或者选择其他 C++ 标准，如 14、20
 include_directories(.)
 
 add_executable(WindowsProject1
-        ActionBase.cpp
+        ActionBase.hpp
         framework.h
         json.hpp
         ListedRunnerPlugin.cpp
         ListedRunnerPlugin.h
         Resource.h
-        RunCommandAction.cpp
+        RunCommandAction.hpp
         targetver.h
         WindowsProject1.cpp
         WindowsProject1.h
@@ -23,7 +23,7 @@ add_executable(WindowsProject1
         GlassHelper.hpp
         TrayMenuManager.h
         TrayMenuManager.cpp
-        actions/ActionNormal.cpp
+        actions/ActionNormal.hpp
         DataKeeper.hpp
         EditHelper.hpp
         SettingsHelper.hpp
@@ -36,6 +36,10 @@ add_executable(WindowsProject1
         settings.json
         ScrollViewHelper.hpp
         ShortCutHelper.hpp
+        AppTools.hpp
+        DataKeeper.cpp
+        PinyinHelper.cpp
+        
 )
 
 add_definitions(-DUNICODE -D_UNICODE)
@@ -90,9 +94,13 @@ target_link_libraries(WindowsProject1
         comdlg32
         advapi32
         shlwapi
+        dwmapi
+        rapidfuzz::rapidfuzz
 )
 
 #include_directories("E:/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/atlmfc/include")
 
 enable_testing()
 add_subdirectory(tests)
+add_subdirectory(3rdparty/RapidFuzz)
+

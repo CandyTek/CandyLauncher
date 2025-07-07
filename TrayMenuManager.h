@@ -21,5 +21,7 @@ public:
 	static void TrayMenuClick(int position, HWND hWnd,HWND hEdit);
 	void TrayMenuShow(HWND hWnd) const;
 	void TrayMenuDestroy();
+	void ShowTrayIcon();
+	void HideTrayIcon();
 };
 

@@ -1,4 +1,19 @@
-﻿//case WM_TIMER:
+﻿todo:
+
+pref_indexed_uwp_apps_enable
+pref_hotkey_toggle_main_panel
+pref_indexed_apps_show_sendto_shortcut
+
+allow_drag_file
+完整匹配
+pref_indexed_folders
+pref_check_version_update
+
+skin
+pref_night_mode
+
+
+//case WM_TIMER:
 //	if (wParam == 1001) {
 //		KillTimer(hWnd, 1001);
 //		ShowWindow(hWnd, SW_HIDE);
@@ -580,3 +595,144 @@ static void UpdateScrollRange2(HWND hwnd, int contentHeight)
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		break;
+
+
+
+// Subclass procedure to handle hotkey input on an EDIT control
+static LRESULT CALLBACK HotkeySubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
+											DWORD_PTR dwRefData)
+{
+	switch (uMsg)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+		{
+			std::wstring hotkeyString;
+			// 1. Check for modifier keys
+			if (GetKeyState(VK_CONTROL) & 0x8000) hotkeyString += L"Ctrl + ";
+			if (GetKeyState(VK_SHIFT) & 0x8000) hotkeyString += L"Shift + ";
+			if (GetKeyState(VK_MENU) & 0x8000) hotkeyString += L"Alt + ";
+
+			UINT vkCode = static_cast<UINT>(wParam);
+			std::wstring keyStr;
+
+			// 2. Ignore presses of modifier keys by themselves
+			if (vkCode == VK_CONTROL || vkCode == VK_SHIFT || vkCode == VK_MENU || vkCode == VK_LWIN || vkCode == VK_RWIN)
+			{
+				SetWindowTextW(hWnd, hotkeyString.c_str()); // Show only modifiers so far
+			}
+			else
+			{
+				// std::wstring keyName = VKCodeToString(vkCode);
+				// std::wstring keyName ;
+				// if (!keyName.empty()) {
+				//     hotkeyString += keyName;
+				// }
+
+				wchar_t keyName[64] = {};
+				UINT scanCode = MapVirtualKey(vkCode, MAPVK_VK_TO_VSC) << 16;
+				GetKeyNameTextW(scanCode, keyName, 64);
+				hotkeyString += keyName;
+
+				SetWindowTextW(hWnd, hotkeyString.c_str());
+			}
+			// 3. We handled this message; prevent default processing
+			return 0;
+		}
+
+	// Clear the box on Backspace or Delete for user convenience
+	case WM_KEYUP:
+		{
+			if (wParam == VK_BACK || wParam == VK_DELETE)
+			{
+				SetWindowTextW(hWnd, L"");
+			}
+			break;
+		}
+
+	case WM_KILLFOCUS:
+		{
+			// 如果用户仅按下修饰符单击，请清除框。
+			wchar_t buffer[128];
+			GetWindowTextW(hWnd, buffer, 128);
+			std::wstring currentText = buffer;
+			if (currentText == L"Ctrl + " || currentText == L"Shift + " || currentText == L"Alt + " ||
+				currentText == L"Ctrl + Shift + " || currentText == L"Ctrl + Alt + " || currentText == L"Shift + Alt + "
+				||
+				currentText == L"Ctrl + Shift + Alt + ")
+			{
+				SetWindowTextW(hWnd, L"");
+			}
+			break;
+		}
+	}
+	// For all other messages, use the default procedure
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+
+	if (!RegisterHotKey(s_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL, MOD_ALT, 0x4B))
+	{
+		const DWORD error = GetLastError();
+		if (error == ERROR_HOTKEY_ALREADY_REGISTERED)
+		{
+			MessageBox(nullptr, L"热键 Alt+K 已被占用", L"错误", MB_OK | MB_ICONERROR);
+		}
+		else
+		{
+			std::wstringstream ss;
+			ss << L"热键注册失败，错误代码：" << error;
+			MessageBox(nullptr, ss.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
+		}
+	}
+
+				// if (GetKeyState(VK_MENU) < 0) currentModifiers |= MOD_ALT_KEY;
+				// if (GetKeyState(VK_CONTROL) < 0) currentModifiers |= MOD_CTRL_KEY;
+				// if (GetKeyState(VK_SHIFT) < 0) currentModifiers |= MOD_SHIFT_KEY;
+				// if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) currentModifiers |= MOD_WIN_KEY;
+
+
+
+
+
+	// 假设 words 是用户输入的一个字符串，而不是分割后的单词列表
+	// const int score_threshold = 75; // 相似度阈值 (0-100)
+	const int score_threshold = 40; // 相似度阈值 (0-100)
+
+	for (const auto& action : allActions)
+	{
+		const std::wstring& runCommand = action->RunCommand;
+
+		// 使用 token_sort_ratio 可以忽略单词顺序，更灵活
+		// 如果你还想匹配部分内容，可以用 partial_ratio
+		double score = rapidfuzz::fuzz::token_sort_ratio(runCommand, keyword);
+
+		if (score >= score_threshold)
+		{
+			const std::wstring& title = action->GetTitle();
+			const std::wstring& subtitle = action->GetSubtitle();
+
+					LVITEM item = {};
+					item.mask = LVIF_TEXT | LVIF_IMAGE;
+					item.iItem = ListView_GetItemCount(hListView);
+					item.pszText = const_cast<LPWSTR>(title.c_str());
+					item.iImage = (action->iImageIndex == -1) ? 0 : action->iImageIndex;
+			
+					ListView_InsertItem(hListView, &item);
+					ListView_SetItemText(hListView, item.iItem, 1, const_cast<LPWSTR>(subtitle.c_str()));
+
+			filteredActions.push_back(action);
+			matchedCount++;
+			if (matchedCount >= 7)
+				break;
+		}
+	}
+
+
+		{
+			"key":"pref_exact_match",
+			"title":"完整匹配",
+			"type":"bool",
+			"subPage":"feature",
+			"defValue":false
+		},

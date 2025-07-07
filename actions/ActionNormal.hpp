@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include "../PinyinHelper.h"
-#include "../RunCommandAction.cpp"
+#include "../RunCommandAction.hpp"
 using CallbackFunction = std::function<void()>;
 
 class ActionNormal final : public RunCommandAction

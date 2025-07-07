@@ -8,34 +8,55 @@
 #include <commctrl.h>
 #include <vector>
 #include <memory>
-#include <shlobj.h>
 #include <shobjidl.h>
 #include <shellapi.h>
 #include <comdef.h>
 #include <fstream>
 #include <iostream>
-#include <vector>
 #include <set>
 
 #include "Constants.hpp"
-
-// class MainTools
-// {
-// public:
-// 全局或静态变量
-// MainTools()= delete;
-// ~MainTools() = delete;
+#include "SettingsHelper.hpp"
 
 class RunCommandAction;
 
+struct MonitorData
+{
+	HMONITOR hMonitor;
+	MONITORINFOEX mi;
+	bool isPrimary;
+};
+
+static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
+{
+	std::vector<MonitorData>* monitors = reinterpret_cast<std::vector<MonitorData>*>(dwData);
+
+	MONITORINFOEX mi;
+	mi.cbSize = sizeof(mi);
+
+	if (GetMonitorInfo(hMonitor, &mi))
+	{
+		bool isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY);
+		monitors->push_back({hMonitor, mi, isPrimary});
+	}
+
+	return TRUE;
+}
 
 static void HideWindow(HWND hWnd, HWND hEdit, HWND hListView)
 {
 	// 不需要设置什么线程延时去关闭什么的，归根结底是alt键触发了控件的一些东西，屏蔽就好
-	SetWindowText(hEdit, L"");
-	// 强制更新 UI
-	UpdateWindow(hEdit);
-	UpdateWindow(hListView);
+	if (!pref_preserve_last_search_term)
+	{
+		SetWindowText(hEdit, L"");
+		// 强制更新 UI
+		UpdateWindow(hEdit);
+		UpdateWindow(hListView);
+	}
+	else if (pref_last_search_term_selected)
+	{
+		PostMessageW(hEdit, EM_SETSEL, 0, -1);
+	}
 	ShowWindow(hWnd, SW_HIDE);
 
 	//ListView_DeleteAllItems(hListView);
@@ -56,9 +77,8 @@ static void RestoreWindowIfMinimized(HWND hWnd)
 static int lastWindowCenterX = -1;
 static int lastWindowCenterY = -1;
 
-static void MyMoveWindow(HWND hWnd)
+static void showMainWindowInCursorScreen(HWND hWnd)
 {
-	// 获取鼠标位置
 	POINT pt;
 	GetCursorPos(&pt);
 
@@ -70,19 +90,15 @@ static void MyMoveWindow(HWND hWnd)
 	mi.cbSize = sizeof(mi);
 	GetMonitorInfo(hMonitor, &mi);
 
-	// 计算中心位置
-	const int windowWidth = 620;
-	const int windowHeight = 480;
-
-	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - windowWidth) / 2;
-	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - windowHeight) / 2;
-	// Move the window to the center and make it topmost.
-	// SWP_NOSIZE preserves the window size and SWP_SHOWWINDOW ensures it is visible.
+	// 计算位置
+	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x;
+	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y;
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
 	{
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
 					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
-		// ShowWindow(hWnd, SW_SHOW);
 	}
 	else
 	{
@@ -93,12 +109,268 @@ static void MyMoveWindow(HWND hWnd)
 	}
 }
 
+static void showMainWindowInIndexScreen(HWND hWnd, int index)
+{
+	// 枚举所有显示器
+	std::vector<MonitorData> monitors;
+	EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitors));
+
+	MONITORINFOEX mi;
+	if (monitors.size() == 0)
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+	}
+
+	if (monitors.size() > index)
+	{
+		mi = monitors[index].mi;
+	}
+	else
+	{
+		mi = monitors[0].mi;
+	}
+	// 计算位置
+	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x;
+	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y;
+	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+	}
+	else
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+		lastWindowCenterX = centerX;
+		lastWindowCenterY = centerY;
+	}
+}
+
+static void showMainWindowInForegroundRect(HWND hWnd)
+{
+	// todo: 对常见的系统ui class进行判断，排除
+	HWND foregroundWindow = GetForegroundWindow();
+	if (foregroundWindow == nullptr)
+	{
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+	// 获取窗口的矩形（包括标题栏和边框）
+	RECT rect;
+	if (GetWindowRect(foregroundWindow, &rect))
+	{
+		int x = rect.left;
+		int y = rect.top;
+		int width = rect.right - rect.left;
+		int height = rect.bottom - rect.top;
+
+		std::cout << "前台窗口位置: (" << x << ", " << y << ")" << std::endl;
+		std::cout << "前台窗口大小: " << width << " x " << height << std::endl;
+
+		const int centerX = x + (width - MAIN_WINDOW_WIDTH) * window_position_offset_x;
+		const int centerY = y + (height - MAIN_WINDOW_HEIGHT) * window_position_offset_y;
+		if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
+		{
+			SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+						SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+		}
+		else
+		{
+			SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
+						SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+			lastWindowCenterX = centerX;
+			lastWindowCenterY = centerY;
+		}
+	}
+	else
+	{
+		std::cout << "获取窗口矩形失败。" << std::endl;
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+}
+
+static void showMainWindowInForegroundAppScreen2(HWND hWnd)
+{
+	// 获取前台窗口
+	HWND hForeground = GetForegroundWindow();
+	if (!hForeground || hForeground == hWnd)
+	{
+		// 如果没有前台窗口，或就是当前窗口，降级为鼠标所在屏幕
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+
+	// 获取前台窗口矩形
+	RECT fgRect;
+	if (!GetWindowRect(hForeground, &fgRect))
+	{
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+
+	// 枚举所有显示器并找出覆盖面积最大的
+	struct MonitorData
+	{
+		HMONITOR bestMonitor = nullptr;
+		int maxArea = 0;
+		RECT fgRect;
+	} data = {nullptr, 0, fgRect};
+
+	auto MonitorEnumProc = [](HMONITOR hMonitor, HDC, LPRECT, LPARAM lParam) -> BOOL
+	{
+		MonitorData* pData = reinterpret_cast<MonitorData*>(lParam);
+
+		MONITORINFO mi = {};
+		mi.cbSize = sizeof(mi);
+		if (!GetMonitorInfo(hMonitor, &mi)) return TRUE;
+
+		// 计算前台窗口与此显示器工作区的交集
+		RECT intersection;
+		if (IntersectRect(&intersection, &mi.rcWork, &pData->fgRect))
+		{
+			int area = (intersection.right - intersection.left) * (intersection.bottom - intersection.top);
+			if (area > pData->maxArea)
+			{
+				pData->maxArea = area;
+				pData->bestMonitor = hMonitor;
+			}
+		}
+
+		return TRUE; // 继续枚举
+	};
+
+	EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&data));
+
+	HMONITOR targetMonitor = data.bestMonitor;
+	if (!targetMonitor)
+	{
+		// fallback
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+
+	// 获取目标显示器信息
+	MONITORINFO mi = {};
+	mi.cbSize = sizeof(mi);
+	if (!GetMonitorInfo(targetMonitor, &mi))
+	{
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+
+	// 计算位置
+	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x;
+	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y;
+
+	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+	}
+	else
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+		lastWindowCenterX = centerX;
+		lastWindowCenterY = centerY;
+	}
+}
+
+static void showMainWindowInForegroundAppScreen(HWND hWnd)
+{
+	// 获取前台窗口
+	HWND hForeground = GetForegroundWindow();
+	if (!hForeground || hForeground == hWnd)
+	{
+		// 如果没有前台窗口，或就是当前窗口，降级为鼠标所在屏幕
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+	char className[256];
+	GetClassNameA(hForeground, className, sizeof(className));
+	if (std::string(className) == "Progman")
+	{
+		showMainWindowInCursorScreen(hWnd);
+		return;
+	}
+
+
+	// 获取窗口所在的显示器
+	HMONITOR hMonitor = MonitorFromWindow(hForeground, MONITOR_DEFAULTTONEAREST);
+
+	// 获取该显示器的信息
+	MONITORINFO mi = {};
+	mi.cbSize = sizeof(mi);
+	GetMonitorInfo(hMonitor, &mi);
+
+	// 计算位置
+	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x;
+	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y;
+	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+	}
+	else
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+		lastWindowCenterX = centerX;
+		lastWindowCenterY = centerY;
+	}
+}
+
+static void MyMoveWindow(HWND hWnd)
+{
+	std::string pref_window_popup_position = settingsMap["pref_window_popup_position"].defValue.get<std::string>();
+
+	if (pref_window_popup_position == "currect_cursor_on_screen")
+	{
+		showMainWindowInCursorScreen(hWnd);
+	}
+	else if (pref_window_popup_position == "last_time_opened_pos")
+	{
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+	}
+	else if (pref_window_popup_position == "currect_window_on_screen")
+	{
+		showMainWindowInForegroundAppScreen(hWnd);
+	}
+	else if (pref_window_popup_position == "within_focus_window")
+	{
+		showMainWindowInForegroundRect(hWnd);
+	}
+	else if (pref_window_popup_position == "screen_first")
+	{
+		showMainWindowInIndexScreen(hWnd, 0);
+	}
+	else if (pref_window_popup_position == "screen_second")
+	{
+		showMainWindowInIndexScreen(hWnd, 1);
+	}
+	else if (pref_window_popup_position == "screen_third")
+	{
+		showMainWindowInIndexScreen(hWnd, 2);
+	}
+}
+
 static void ShowMainWindowSimple(HWND hWnd, HWND hEdit)
 {
-	SetFocus(hEdit);
 	RestoreWindowIfMinimized(hWnd);
-	SetForegroundWindow(hWnd);
+	SetFocus(hEdit);
 	MyMoveWindow(hWnd);
+	SetForegroundWindow(hWnd);
+	if (g_hklIme != NULL)
+		PostMessageW(hEdit, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM)g_hklIme);
 }
 
 // static const std::shared_ptr<RunCommandAction>& GetListViewSelectedAction(HWND hListView,std::vector<std::shared_ptr<RunCommandAction>>& filteredActions)
@@ -121,34 +393,25 @@ static const std::shared_ptr<RunCommandAction>& GetListViewSelectedAction(
 	return filteredActions[selected];
 }
 
-
-static void CustomRegisterHotKey(HWND hWnd)
-{
-	if (!RegisterHotKey(hWnd, 1, MOD_ALT, 0x4B))
-	{
-		const DWORD error = GetLastError();
-		if (error == ERROR_HOTKEY_ALREADY_REGISTERED)
-		{
-			MessageBox(nullptr, L"热键 Alt+K 已被占用", L"错误", MB_OK | MB_ICONERROR);
-		}
-		else
-		{
-			std::wstringstream ss;
-			ss << L"热键注册失败，错误代码：" << error;
-			MessageBox(nullptr, ss.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
-		}
-	}
-}
-
 // 使listview监听esc键
 static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam,
 											UINT_PTR, const DWORD_PTR dwRefData)
 {
-	if (message == WM_KEYDOWN && wParam == VK_ESCAPE)
+	switch (message)
 	{
-		HWND hEdit = reinterpret_cast<HWND>(dwRefData);
-		HideWindow(GetParent(hWnd), hEdit, hWnd);
-		return 0;
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE)
+		{
+			HWND hEdit = reinterpret_cast<HWND>(dwRefData);
+			HideWindow(GetParent(hWnd), hEdit, hWnd);
+			return 0;
+		}
+		break;
+	case WM_MBUTTONUP:
+		TimerIDSetFocusEdit =SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr);  // 10 毫秒延迟
+		break;
+
+	default: break;
 	}
 	return DefSubclassProc(hWnd, message, wParam, lParam);
 }
@@ -156,27 +419,9 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 static void ReleaseAltKey()
 {
 	keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
-}
-
-static std::wstring GetExecutableFolder()
-{
-	wchar_t path[MAX_PATH];
-	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
-	if (length == 0 || length == MAX_PATH)
-	{
-		// 错误处理（可选）
-		return L"";
-	}
-
-	// 找到最后一个反斜杠（目录分隔符）
-	const std::wstring fullPath(path);
-	const size_t pos = fullPath.find_last_of(L"\\/");
-	if (pos != std::wstring::npos)
-	{
-		return fullPath.substr(0, pos);
-	}
-
-	return L"";
+	keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+	keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
+	keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
 }
 
 // static std::wstring MyToLower2(const std::wstring& input)
@@ -407,7 +652,7 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring& filePath, const
 }
 
 
-static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth,HFONT hFontD)
+static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth, HFONT hFontD)
 {
 	// 1. 创建 RECT 结构体，设置最大宽度，高度初始为0
 	HDC hdc = GetDC(hwnd);
@@ -432,5 +677,3 @@ static void SetControlFont(HWND hCtrl, HFONT hFont)
 {
 	SendMessageW(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
 }
-
-

@@ -7,10 +7,13 @@
 #include "json.hpp"
 #include <set>
 #include <iostream>
+
 #include "BaseTools.hpp"
 #include "MainTools.hpp"
 #include "ScrollViewHelper.hpp"
 #include "SettingsHelper.hpp"
+#include "DataKeeper.hpp"
+#include "PinyinHelper.h"
 
 // static std::vector<std::vector<HWND>> hCtrlsByTab; // tab下所有控件句柄
 // static std::vector<HWND> tabContainers;
@@ -18,13 +21,40 @@
 static std::vector<std::wstring> subPages; // 所有tab
 static std::vector<HWND> hTabButtons; // tab按钮句柄
 static int currentSubPageIndex = 0;
-static HWND hSettingWnd = nullptr;
 
 static HFONT hFontDefault = CreateFontW(
 	20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 	DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
 	CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
 
+
+static void initGlobalVariable()
+{
+	pref_show_window_and_release_modifier_key = (settingsMap["pref_show_window_and_release_modifier_key"].defValue.get<
+		int>() == 1);
+	pref_run_item_as_admin = (settingsMap["pref_run_item_as_admin"].defValue.get<int>() == 1);
+	pref_hide_in_fullscreen = (settingsMap["pref_hide_in_fullscreen"].defValue.get<int>() == 1);
+	pref_hide_in_topmost_fullscreen = (settingsMap["pref_hide_in_topmost_fullscreen"].defValue.get<int>() == 1);
+	pref_lock_window_popup_position = (settingsMap["pref_lock_window_popup_position"].defValue.get<int>() == 1);
+	pref_preserve_last_search_term = (settingsMap["pref_preserve_last_search_term"].defValue.get<int>() == 1);
+	pref_single_click_to_open = (settingsMap["pref_single_click_to_open"].defValue.get<int>() == 1);
+	pref_fuzzy_match = (settingsMap["pref_fuzzy_match"].defValue.get<int>() == 1);
+	pref_last_search_term_selected = (settingsMap["pref_last_search_term_selected"].defValue.get<int>() == 1);
+	pref_close_after_open_item = (settingsMap["pref_close_after_open_item"].defValue.get<int>() == 1);
+	pref_force_ime_mode = settingsMap["pref_force_ime_mode"].defValue.get<std::string>();
+	pref_max_search_results = settingsMap["pref_max_search_results"].defValue.get<int>();
+	
+	int tempX = settingsMap["pref_window_popup_position_offset_x"].defValue.get<int>();
+	int tempY = settingsMap["pref_window_popup_position_offset_y"].defValue.get<int>();
+	if (tempX >= 0 && tempX <= 100)
+	{
+		window_position_offset_x = tempX / 100.0;
+	}
+	if (tempY >= 0 && tempY <= 100)
+	{
+		window_position_offset_y = tempY / 100.0;
+	}
+}
 
 static void LoadSettingList()
 {
@@ -45,14 +75,18 @@ static void LoadSettingList()
 		}
 	}
 	LoadSettingsMap();
+	initGlobalVariable();
+	const std::string pref_pinyin_mode = settingsMap["pref_pinyin_mode"].defValue.get<std::string>();
+	PinyinHelper::changePinyinType(pref_pinyin_mode);
+
 }
 
 
 static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent)
 {
-	if (hSettingWnd != nullptr)
+	if (g_settingsHwnd != nullptr)
 	{
-		ShowWindow(hSettingWnd, SW_SHOW);
+		ShowWindow(g_settingsHwnd, SW_SHOW);
 		return;
 	}
 	// 获取屏幕宽度和高度
@@ -63,7 +97,7 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent)
 	int x = (screenWidth - SETTINGS_WINDOW_WIDTH) / 2;
 	int y = (screenHeight - SETTINGS_WINDOW_HEIGHT) / 2;
 
-	hSettingWnd = CreateWindowExW(
+	g_settingsHwnd = CreateWindowExW(
 		WS_EX_ACCEPTFILES, // 扩展样式
 		L"SettingsWndClass", // 窗口类名
 		L"设置", // 窗口标题
@@ -76,9 +110,91 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent)
 		nullptr // 附加参数
 	);
 
+	ShowWindow(g_settingsHwnd, SW_SHOW);
+	UpdateWindow(g_settingsHwnd);
+}
 
-	ShowWindow(hSettingWnd, SW_SHOW);
-	UpdateWindow(hSettingWnd);
+static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+												UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	static std::wstring currentHotkey;
+	// auto* pItem = reinterpret_cast<nlohmann::json*>(dwRefData);
+	auto* pItemValue = reinterpret_cast<nlohmann::json*>(dwRefData);
+
+
+	switch (uMsg)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+		{
+			// 检测按键和组合键
+			UINT modifiers = 0;
+			if (GetAsyncKeyState(VK_CONTROL) & 0x8000) modifiers |= MOD_CONTROL;
+			if (GetAsyncKeyState(VK_MENU) & 0x8000) modifiers |= MOD_ALT;
+			if (GetAsyncKeyState(VK_SHIFT) & 0x8000) modifiers |= MOD_SHIFT;
+			if (GetAsyncKeyState(VK_LWIN) & 0x8000 || GetAsyncKeyState(VK_RWIN) & 0x8000) modifiers |= MOD_WIN;
+
+			UINT key = (UINT)wParam;
+
+			if (key == VK_CONTROL || key == VK_SHIFT || key == VK_MENU || key == VK_LWIN || key == VK_RWIN)
+				return 0; // 忽略单独的修饰键
+
+			std::wstring keyStr;
+
+			if (modifiers & MOD_CONTROL) keyStr += L"Ctrl+";
+			if (modifiers & MOD_ALT) keyStr += L"Alt+";
+			if (modifiers & MOD_SHIFT) keyStr += L"Shift+";
+			if (modifiers & MOD_WIN) keyStr += L"Win+";
+
+			// 获取键名
+			wchar_t keyName[64] = {0};
+			UINT scanCode = MapVirtualKey(key, MAPVK_VK_TO_VSC) << 16;
+			GetKeyNameTextW(scanCode, keyName, 64);
+			keyStr += keyName;
+			keyStr += L"(";
+			keyStr += std::to_wstring(modifiers);
+			keyStr += L")";
+			keyStr += L"(";
+			keyStr += std::to_wstring(key);
+			keyStr += L")";
+
+			SetWindowTextW(hWnd, keyStr.c_str());
+			currentHotkey = keyStr;
+
+			return 0;
+		}
+	case WM_KILLFOCUS:
+		{
+			std::string hotkeyUtf8 = wide_to_utf8(currentHotkey);
+			if (pItemValue)
+				*pItemValue = nlohmann::json(hotkeyUtf8); // Sicher
+			break;
+		}
+	case WM_ERASEBKGND:
+		// 可以让系统处理或自己填充背景
+		return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+
+	case WM_PAINT:
+		// 不做特殊处理时，调用默认处理
+		break;
+	// +++ 新增部分：处理窗口销毁 +++
+	case WM_NCDESTROY:
+		{
+			// 1. 释放之前用 new 分配的内存
+			if (pItemValue)
+			{
+				delete pItemValue;
+			}
+			// 2. 移除窗口子类，这非常重要！
+			RemoveWindowSubclass(hWnd, HotkeyEditSubclassProc, uIdSubclass);
+
+			// 在这里必须调用 DefSubclassProc
+			return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+		}
+	}
+
+
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
 static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -241,6 +357,19 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 					}
 					else if (item.type == "text")
 					{
+					}
+					else if (item.type == "hotkeystring")
+					{
+						// 在堆上创建副本
+						auto* pItemData = new nlohmann::json(item.defValue);
+
+						hCtrl = CreateWindowW(L"EDIT",
+											utf8_to_wide(item.defValue.get<std::string>()).c_str(),
+											WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
+											contorlX, y, 200, 25, hParent, (HMENU)(3000 + i),
+											nullptr, nullptr);
+
+						SetWindowSubclass(hCtrl, HotkeyEditSubclassProc, 3, (DWORD_PTR)&pItemData); // 注册子类以处理按键
 					}
 
 					ctrls.push_back(hCtrl);

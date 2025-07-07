@@ -42,7 +42,7 @@
 		{
 			"key":"pref_hotkey_toggle_main_panel",
 			"title":"主面板显示、隐藏",
-			"type":"string",
+			"type":"hotkeystring",
 			"subPage":"hotkey",
 			"defValue":""
 		},
@@ -56,28 +56,28 @@
 		{
 			"key":"pref_hotkey_open_file_location",
 			"title":"打开项目文件所在位置",
-			"type":"string",
+			"type":"hotkeystring",
 			"subPage":"hotkey",
 			"defValue":""
 		},
 		{
 			"key":"pref_hotkey_open_target_location",
 			"title":"打开项目目标所在位置",
-			"type":"string",
+			"type":"hotkeystring",
 			"subPage":"hotkey",
 			"defValue":""
 		},
 		{
 			"key":"pref_hotkey_open_with_clipboard_params",
 			"title":"打开附带剪贴板参数",
-			"type":"string",
+			"type":"hotkeystring",
 			"subPage":"hotkey",
 			"defValue":""
 		},
 		{
 			"key":"pref_hotkey_run_item_as_admin",
 			"title":"以管理员身份运行项目",
-			"type":"string",
+			"type":"hotkeystring",
 			"subPage":"hotkey",
 			"defValue":""
 		},
@@ -96,8 +96,8 @@
 			"defValue":false
 		},
 		{
-			"key":"pref_hide_in_dx_fullscreen",
-			"title":"DX全屏应用不弹出窗口",
+			"key":"pref_hide_in_topmost_fullscreen",
+			"title":"置顶全屏应用不弹出窗口",
 			"type":"bool",
 			"subPage":"feature",
 			"defValue":true
@@ -127,7 +127,7 @@
 			"key":"pref_close_on_dismiss_focus",
 			"title":"失去焦点时关闭窗口",
 			"type":"list",
-			"entries":["允许拖放文件","立即关闭窗口","无"],
+			"entries":["允许拖放文件(未完善)","立即关闭窗口","无"],
 			"entryValues":["allow_drag_file","close_immediate","null"],
 			"subPage":"feature",
 			"defValue":"allow_drag_file"
@@ -169,7 +169,7 @@
 			"subPage":"feature",
 			"entries":["全拼","小鹤双拼"],
 			"entryValues":["normal","xiaohe"],
-			"defValue":"xiaohe"
+			"defValue":"normal"
 		},
 		{
 			"key":"pref_force_ime_mode",
@@ -203,6 +203,13 @@
 			"defValue":false
 		},
 		{
+			"key":"pref_last_search_term_selected",
+			"title":"选中上次搜索词",
+			"type":"bool",
+			"subPage":"feature",
+			"defValue":true
+		},
+		{
 			"key":"pref_single_click_to_open",
 			"title":"单击直接打开",
 			"type":"bool",
@@ -217,13 +224,6 @@
 			"defValue":false
 		},
 		{
-			"key":"pref_exact_match",
-			"title":"完整匹配",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
-		},
-		{
 			"key":"pref_max_search_results",
 			"title":"列表结果数量",
 			"type":"long",
@@ -231,7 +231,7 @@
 			"defValue":0
 		},
 		{
-			"key":"pref_indexed_uwp_apps_sendto",
+			"key":"pref_indexed_apps_show_sendto_shortcut",
 			"title":"在右键 \"发送到\" 菜单中显示 \"CandyLauncher 快捷方式用户目录\"",
 			"type":"bool",
 			"subPage":"index",
@@ -246,7 +246,7 @@
 		},
 		{
 			"key":"pref_indexed_folders",
-			"title":"索引文件夹列表",
+			"title":"索引文件夹列表(未完善)",
 			"type":"stringArr",
 			"subPage":"index",
 			"defValue":[
@@ -277,7 +277,7 @@
 		},
 		{
 			"key":"pref_acknowledgements",
-			"title":"致谢: \nHakeQuick (https://github.com/lzl1918/HakeQuick)",
+			"title":"致谢: \nCLion(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick (https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp(https://github.com/rapidfuzz/rapidfuzz-cpp)\n",
 			"type":"text",
 			"subPage":"about",
 			"defValue":""

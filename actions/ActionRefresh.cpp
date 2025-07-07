@@ -1,10 +1,11 @@
 ﻿#pragma once
-#include "../ActionBase.cpp"
+#include "../ActionBase.hpp"
 #include "../PinyinHelper.h"
-#include "../RunCommandAction.cpp"
+#include "../RunCommandAction.hpp"
 #include "../DataKeeper.hpp"
 #include <wrl/client.h>
 
+#include "ActionNormal.hpp"
 #include "../BaseTools.hpp"
 // 不能少
 // #include <shellapi.h>

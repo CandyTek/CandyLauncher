@@ -23,7 +23,8 @@ static std::vector<std::vector<HWND>> hCtrlsByTab; // tab下所有控件句柄
 static std::vector<HWND> tabContainers;
 
 // 這是專門為 ComboBox 的下拉列表視窗設計的子類化回呼函式
-static LRESULT CALLBACK ComboBoxListSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+static LRESULT CALLBACK ComboBoxListSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+												UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
 	// 我們只關心滑鼠滾輪事件
 	if (uMsg == WM_MOUSEWHEEL)
@@ -37,7 +38,7 @@ static LRESULT CALLBACK ComboBoxListSubclassProc(HWND hwnd, UINT uMsg, WPARAM wP
 		// ShowErrorMsgBox(L"自己处理");
 		// 返回 0，表示我們已經處理了此消息，
 		// 從而阻止 ComboBox 的列表框滾動其自身內容。
-		return 0; 
+		return 0;
 	}
 
 	// 對於所有其他消息，調用默認的子類化處理程序
@@ -180,6 +181,17 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			}
 
 			return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+	case WM_CTLCOLOREDIT:
+		{
+			// 尝试解决 readyonly的edit 黑背景问题，没用
+			HDC hdcChild = (HDC)wParam;
+			HWND hwndChild = (HWND)lParam;
+			SetTextColor(hdcChild, RGB(0, 0, 0));
+			// 设置背景颜色为透明，这样父窗口的背景就能透过来
+			SetBkMode(hdcChild, TRANSPARENT);
+			return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+			// return (LRESULT)GetStockObject(WHITE_BRUSH);
 		}
 
 	default:

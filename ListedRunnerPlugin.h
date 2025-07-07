@@ -1,14 +1,15 @@
 ﻿#pragma once
 
-#include "RunCommandAction.cpp"
+#include "RunCommandAction.hpp"
 #include <string>
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
 #include <memory>
+#include <functional>
 
 #include "DataKeeper.hpp"
-#include "actions/ActionNormal.cpp"
+#include "actions/ActionNormal.hpp"
 
 
 class ListedRunnerPlugin {

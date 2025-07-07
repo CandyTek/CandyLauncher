@@ -11,6 +11,8 @@ public:
     ListViewManager();
     void Initialize(HWND parent, HINSTANCE hInstance, int x, int y, int width, int height);
     void LoadActions(const std::vector<std::shared_ptr<RunCommandAction>>& actions);
+    void Exactmatch(const std::wstring& keyword);
+    void Fuzzymatch(const std::wstring& keyword);
     void Filter(const std::wstring& keyword);
     [[nodiscard]] HWND GetHandle() const { return hListView; }
     [[nodiscard]] HIMAGELIST GetImageList() const { return hImageList; }

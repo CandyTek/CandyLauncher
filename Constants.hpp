@@ -1,13 +1,52 @@
 ﻿#pragma once
 #include <Shobjidl.h>
 #include <string>
-#include "MainTools.hpp"
 
-#define WM_EDIT_DONE (WM_USER + 100)
+#define WM_EDIT_CONTROL_HOTKEY (WM_USER + 100)
 #define WM_EDIT_OPEN_PATH (WM_USER + 101)
 #define WM_EDIT_OPEN_TARGET_PATH (WM_USER + 102)
 #define WM_WINDOWS_HIDE (WM_USER + 103)
+#define WM_CONFIG_SAVED (WM_USER + 104)
+#define WM_FOCUS_EDIT (WM_USER + 105)
+
+#define TIMER_SETFOCUS_EDIT  109
+
+
+#define HOTKEY_ID_TOGGLE_MAIN_PANEL (100)
+
+#define HOTKEY_ID_RUN_ITEM (110)
+#define HOTKEY_ID_RUN_ITEM_AS_ADMIN (111)
+
+#define HOTKEY_ID_OPEN_FILE_LOCATION (101)
+#define HOTKEY_ID_OPEN_TARGET_LOCATION (102)
+#define HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS (103)
+
+// 下面的键位没有用
+constexpr UINT MOD_CTRL_KEY = 0x02;
+constexpr UINT MOD_SHIFT_KEY = 0x04;
+constexpr UINT MOD_ALT_KEY = 0x01;
+constexpr UINT MOD_WIN_KEY = 0x08;
+
+constexpr UINT MOD_CTRL_SHIFT_KEY = 0x06;
+constexpr UINT MOD_CTRL_ALT_KEY = 0x03;
+constexpr UINT MOD_CTRL_SHIFT_ALT_KEY = 0x07;
+constexpr UINT MOD_SHIFT_ALT_KEY = 0x05;
+
+constexpr UINT MOD_CTRL_WIN_KEY = 10;
+constexpr UINT MOD_SHIFT_WIN_KEY = 12;
+constexpr UINT MOD_ALT_WIN_KEY = 9;
+
+constexpr UINT MOD_CTRL_SHIFT_WIN_KEY = 14;
+constexpr UINT MOD_CTRL_ALT_WIN_KEY = 11;
+constexpr UINT MOD_SHIFT_ALT_WIN_KEY = 13;
+
+constexpr UINT MOD_CTRL_SHIFT_ALT_WIN_KEY = 15;
+
+
 
 constexpr int SETTINGS_WINDOW_WIDTH = 705;
 constexpr int SETTINGS_WINDOW_HEIGHT = 460;
+
+constexpr int MAIN_WINDOW_WIDTH = 620;
+constexpr int MAIN_WINDOW_HEIGHT = 480;
 

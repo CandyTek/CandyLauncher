@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "ActionBase.cpp"
+#include "ActionBase.hpp"
 #include "MainTools.hpp"
 #include "PinyinHelper.h"
 #include <ShlObj.h>
@@ -10,8 +10,35 @@
 #include <shellapi.h>
 
 #include "BaseTools.hpp"
+#include "DataKeeper.hpp"
 
 using namespace Microsoft::WRL;
+
+// 启动的错误处理
+static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring& path) {
+	std::wstringstream ss;
+	ss << L"Failed to execute: " << path << L"\n";
+
+	switch (code)
+	{
+	case 0:  ss << L"The operating system is out of memory or resources."; break;
+	case ERROR_FILE_NOT_FOUND: ss << L"The specified file was not found."; break;
+	case ERROR_PATH_NOT_FOUND: ss << L"The specified path was not found."; break;
+	case ERROR_BAD_FORMAT:     ss << L"The .exe file is invalid (non-Win32 .exe or error in image file)."; break;
+	case SE_ERR_ACCESSDENIED:  ss << L"Access denied. The user may have refused the elevation."; break;
+	case SE_ERR_ASSOCINCOMPLETE:
+	case SE_ERR_DDEBUSY:
+	case SE_ERR_NOASSOC:
+		ss << L"File association error or DDE error."; break;
+	default:
+		ss << L"Unknown error. Code: " << code;
+		break;
+	}
+
+	ss << L"\nLastError: " << GetLastError();
+	ShowErrorMsgBox(ss.str());
+};
+
 
 class RunCommandAction : public ActionBase
 {
@@ -43,30 +70,45 @@ public:
 	}
 
 	// 运行命令
-	void Invoke() override
+	void InvokeWithTarget(const wchar_t* target) 
 	{
 		if (IsUwpItem)
 		{
-			HINSTANCE hInst = ShellExecuteW(nullptr, L"open", targetFilePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-			if (reinterpret_cast<INT_PTR>(hInst) <= 32) {
+			HINSTANCE hInst = ShellExecuteW(nullptr, pref_run_item_as_admin ? L"runas" : L"open",
+											targetFilePath.c_str(), target, nullptr, SW_SHOWNORMAL);
+			if (reinterpret_cast<INT_PTR>(hInst) <= 32)
+			{
 				// 错误，可能权限不够、路径不存在等
-				// 可加日志或报错处理
+				ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst), targetFilePath);
 			}
 		}
 		else
 		{
-			HINSTANCE hInst = ShellExecuteW(nullptr, L"open", targetFilePath.c_str(), arguments.empty() ? nullptr : arguments.c_str(),
-						workingDirectory.c_str(), SW_SHOWNORMAL);
-			 //char const* temp=WStringToConstChar(targetFilePath);
-				//	 system(temp);
-	if (reinterpret_cast<INT_PTR>(hInst) <= 32) {
+			HINSTANCE hInst = ShellExecuteW(nullptr, pref_run_item_as_admin ? L"runas" : L"open",
+											targetFilePath.c_str(), target,
+											workingDirectory.c_str(), SW_SHOWNORMAL);
+			//char const* temp=WStringToConstChar(targetFilePath);
+			//	 system(temp);
+			if (reinterpret_cast<INT_PTR>(hInst) <= 32)
+			{
 				// 错误，可能权限不够、路径不存在等
-				// 可加日志或报错处理
+				ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst), targetFilePath);
 			}
-
 		}
 	}
 
+	// 运行命令
+	void Invoke() override
+	{
+		InvokeWithTarget(nullptr); 
+	}
+
+	// 运行附带剪贴板参数
+	void InvokeWithTargetClipBoard()
+	{
+		InvokeWithTarget(GetClipboardText().c_str());
+	}
+	
 	// 打开所在文件夹
 	void InvokeOpenFolder() const
 	{

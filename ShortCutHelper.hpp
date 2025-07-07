@@ -5,6 +5,7 @@
 
 #ifndef SHORTCUTHELPER_H
 #define SHORTCUTHELPER_H
+#include <shlwapi.h>
 
 #endif //SHORTCUTHELPER_H
 

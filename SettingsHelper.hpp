@@ -4,17 +4,20 @@
 
 #include "BaseTools.hpp"
 #include "json.hpp"
+#include "Resource.h"
+#include "Constants.hpp"
 #include "ShortCutHelper.hpp"
-
+#include "DataKeeper.hpp"
 
 static std::map<std::wstring, std::wstring> tabNameMap = {
-	{L"normal",  L"常规"},
+	{L"normal", L"常规"},
 	{L"feature", L"功能"},
-	{L"other",   L"其他"},
-	{L"hotkey",  L"快捷键"},
-	{L"index",   L"索引"},
-	{L"about",   L"关于"}
+	{L"other", L"其他"},
+	{L"hotkey", L"快捷键"},
+	{L"index", L"索引"},
+	{L"about", L"关于"}
 };
+
 // 配置项结构
 struct SettingItem
 {
@@ -26,9 +29,9 @@ struct SettingItem
 	std::vector<std::string> entryValues;
 	nlohmann::json defValue;
 };
+
 static std::vector<SettingItem> settings2;
 static std::unordered_map<std::string, SettingItem> settingsMap;
-
 
 
 //inline std::vector<SettingItem> ParseConfig(const std::string& configStr) {
@@ -44,6 +47,7 @@ static std::unordered_map<std::string, SettingItem> settingsMap;
 //    }
 //    return settings;
 //}
+
 
 inline std::vector<SettingItem> ParseConfig(const std::string& configStr)
 {
@@ -146,20 +150,23 @@ static std::string GetSettingsJsonText()
 static nlohmann::json loadUserConfig(const std::string& filename = "user_settings.json")
 {
 	std::ifstream f(filename);
-	if (!f.is_open()) {
+	if (!f.is_open())
+	{
 		// File doesn't exist, probably the first run. Return empty.
-		return {}; 
+		return {};
 	}
 
 	nlohmann::json userConfig;
-	try {
+	try
+	{
 		// Parse the file content into the JSON object.
 		userConfig = nlohmann::json::parse(f);
 	}
-	catch (const nlohmann::json::parse_error& e) {
+	catch (const nlohmann::json::parse_error& e)
+	{
 		// The file is corrupted or not valid JSON.
-		std::string error_msg = "Config file load error in '" + filename + 
-								"'. Using default settings.\n\nError: " + e.what();
+		std::string error_msg = "Config file load error in '" + filename +
+			"'. Using default settings.\n\nError: " + e.what();
 		MessageBoxA(nullptr, error_msg.c_str(), "Config Load Error", MB_OK | MB_ICONWARNING);
 		return {}; // Return empty to fall back to defaults.
 	}
@@ -233,6 +240,13 @@ static void saveConfig2(const std::vector<std::wstring>& subPages, const std::ve
 				GetWindowTextW(hCtrl, buf, 32);
 				obj["defValue"] = _wtol(buf); // 宽字符转 long
 			}
+			else if (item.type == "hotkeystring")
+			{
+				wchar_t buf[256];
+				GetWindowTextW(hCtrl, buf, 256);
+				std::string hotkeyStr = wide_to_utf8(std::wstring(buf));
+				obj["defValue"] = _wtol(buf); // 宽字符转 long
+			}
 
 			newConfig["prefList"].push_back(obj);
 			ctrlIdx += 2; // hLabel, hCtrl
@@ -244,45 +258,19 @@ static void saveConfig2(const std::vector<std::wstring>& subPages, const std::ve
 	// MessageBoxW(hwnd, L"保存成功（实际存储代码请补全）", L"提示", MB_OK);
 }
 
-/**
- * 当用户配置更改时，执行一些功能变更操作
- */
-static void doPrefChanged()
-{
-	bool pref_auto_start = (settingsMap["pref_auto_start"].defValue.get<int>()==1);
-	// 应用程序路径
-	wchar_t exePath[MAX_PATH];
-	GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-	const std::wstring shortcutName = L"CandyLauncherBest";
-	
-	bool startupShortcutExists=IsStartupShortcutExists(shortcutName);
-	if (pref_auto_start)
-	{
-		if (!startupShortcutExists) {
-			// 创建快捷方式
-			CreateStartupShortcut(exePath, shortcutName);
-		}
-	}else
-	{
-		if (startupShortcutExists) {
-			bool result=DeleteStartupShortcut(shortcutName);
-			ShowErrorMsgBox(L"删除快捷方式"+result);
-		}
-	}
-
-
-}
 static void LoadSettingsMap()
 {
 	settingsMap.clear();
-	for (const auto& item : settings2) {
+	for (const auto& item : settings2)
+	{
 		settingsMap[item.key] = item;
 	}
 }
 
 
 static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std::vector<SettingItem>& settings2,
-						const std::vector<std::vector<HWND>>& hCtrlsByTab, const std::string& filename = "user_settings.json")
+						const std::vector<std::vector<HWND>>& hCtrlsByTab,
+						const std::string& filename = "user_settings.json")
 {
 	// The final JSON object will be a simple key-value map.
 	nlohmann::json newConfig;
@@ -297,7 +285,6 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 		// Iterate through all setting definitions to find those for the current tab
 		for (auto& item : settings2)
 		{
-
 			// Skip if the setting does not belong to the current tab
 			if (utf8_to_wide(item.subPage) != subPages[tabIdx])
 				continue;
@@ -317,8 +304,8 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 			if (item.type == "bool")
 			{
 				BOOL value = (SendMessage(hCtrl, BM_GETCHECK, 0, 0) == BST_CHECKED);
-				newConfig[key] = value ;
-				item.defValue = nlohmann::json(value ); // ADDED: Update the setting's default value
+				newConfig[key] = value;
+				item.defValue = nlohmann::json(value); // ADDED: Update the setting's default value
 			}
 			else if (item.type == "string")
 			{
@@ -336,20 +323,20 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 					std::vector<wchar_t> buf(textLen + 1);
 					GetWindowTextW(hCtrl, &buf[0], textLen + 1);
 					std::wstring ws(&buf[0]);
-					
+
 					std::vector<std::string> arr;
 					size_t start = 0;
 					while (start < ws.size())
 					{
 						size_t end = ws.find_first_of(L"\r\n", start);
 						if (end == std::wstring::npos) end = ws.size();
-						
+
 						std::wstring line = ws.substr(start, end - start);
 						if (!line.empty())
 						{
 							arr.push_back(wide_to_utf8(line));
 						}
-						
+
 						start = ws.find_first_not_of(L"\r\n", end);
 						if (start == std::wstring::npos) break;
 					}
@@ -361,8 +348,7 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 					// If the text box is empty, save an empty array
 					nlohmann::json empty_array = nlohmann::json::array();
 					newConfig[key] = empty_array;
-					item.defValue = empty_array; 
-
+					item.defValue = empty_array;
 				}
 			}
 			else if (item.type == "list")
@@ -384,12 +370,21 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 				newConfig[key] = value;
 				item.defValue = nlohmann::json(value);
 			}
+			else if (item.type == "hotkeystring")
+			{
+				wchar_t buf[256];
+				GetWindowTextW(hCtrl, buf, 256);
+				std::string value = wide_to_utf8(std::wstring(buf));
+				newConfig[key] = value;
+				item.defValue = nlohmann::json(value);
+			}
+
 
 			// Move to the next pair of controls for the next setting item
 			ctrlIdx += 2;
 		}
 	}
-	
+
 	// Convert the JSON object to a formatted string
 	std::string newSettingsText = newConfig.dump(4);
 
@@ -404,9 +399,8 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 	o.close();
 
 	// Notify the user.
-	MessageBoxW(hwnd, L"Settings saved successfully!", L"Success", MB_OK);
+	// MessageBoxW(hwnd, L"Settings saved successfully!", L"Success", MB_OK);
 	LoadSettingsMap();
-	std::thread(doPrefChanged).detach();
-
+	ShowWindow(g_settingsHwnd,SW_MINIMIZE);
+	PostMessage(s_mainHwnd, WM_CONFIG_SAVED, 1, 0);
 }
-

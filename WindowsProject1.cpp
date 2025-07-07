@@ -19,6 +19,8 @@
 #include "DataKeeper.hpp"
 #include <gdiplus.h>
 
+#include "AppTools.hpp"
+#include "DxgiUtils.h"
 #include "EditHelper.hpp"
 #include "SettingWindow.hpp"
 #include "TrayMenuManager.h"
@@ -31,7 +33,7 @@ HWND hWnd;
 HINSTANCE hInst;
 ListViewManager listViewManager;
 TrayMenuManager trayMenuManager;
-ListedRunnerPlugin plugin ;
+ListedRunnerPlugin plugin;
 // 此代码模块中包含的函数的前向声明:
 ATOM MyRegisterClass(HINSTANCE hInstance);
 ATOM MyRegisterClass2(HINSTANCE hInstance);
@@ -104,7 +106,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	return RegisterClassExW(&wcex);
 }
 
-// 注册窗口类。
+// 注册设置窗口类。
 ATOM MyRegisterClass2(HINSTANCE hInstance)
 {
 	WNDCLASSEXW wc{};
@@ -123,35 +125,62 @@ ATOM MyRegisterClass2(HINSTANCE hInstance)
 
 void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 {
+	unsigned long dw_style;
+	bool pref_hide_window_after_run = settingsMap["pref_hide_window_after_run"].defValue.get<int>() == 1;
+	if (pref_hide_window_after_run)
+	{
+		// dw_style = WS_POPUP|WS_OVERLAPPEDWINDOW;
+		dw_style = WS_POPUP;
+	}
+	else
+	{
+		dw_style = WS_POPUP | WS_VISIBLE;
+	}
+	long dw_ex_style = WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+	if (settingsMap["pref_window_always_on_top"].defValue.get<int>() == 1)
+	{
+		dw_ex_style |= WS_EX_TOPMOST;
+	}
+	if (settingsMap["pref_window_mouse_penetration"].defValue.get<int>() == 1)
+	{
+		dw_ex_style |= WS_EX_TRANSPARENT;
+	}
+	// 从注册表读取上次窗口关闭的位置
+	RECT lastWindowPosition=LoadWindowRectFromRegistry();
+	last_open_window_position_x =lastWindowPosition.left;
+	last_open_window_position_y =lastWindowPosition.top;
+	
 	hWnd = CreateWindowExW(
 		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_TRANSPARENT | WS_EX_LAYERED, // 扩展样式
-		WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, // 扩展样式
+		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, // 扩展样式
+		dw_ex_style,
 		L"MyWindowClass",
 		L"CandyLauncher",
 		// WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-		WS_POPUP | WS_VISIBLE,
+		dw_style,
 		// WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_BORDER,
 		// WS_POPUPWINDOW | WS_VISIBLE | WS_CAPTION | WS_BORDER,
-		CW_USEDEFAULT, CW_USEDEFAULT, // 初始位置
-		620, 480,
+		last_open_window_position_x, last_open_window_position_y, // 初始位置
+		MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT,
 		nullptr, // 父窗口
 		nullptr, // 菜单
 		hInstance, // 实例句柄
 		nullptr // 附加参数
 	);
-
 	if (!hWnd)
 	{
 		ShowErrorMsgBox(L"创建窗口失败，hWnd为空");
 		ExitProcess(1);
 	}
+	s_mainHwnd = hWnd;
 
-	CustomRegisterHotKey(hWnd);
-
-	ShowWindow(hWnd, nCmdShow);
-	UpdateWindow(hWnd);
-	MyMoveWindow(hWnd);
 	EnableBlur(hWnd);
+	if (!pref_hide_window_after_run)
+	{
+		ShowWindow(hWnd, nCmdShow);
+		UpdateWindow(hWnd);
+		MyMoveWindow(hWnd);
+	}
 }
 
 void InitControls(HINSTANCE hInstance, HWND hWnd)
@@ -160,17 +189,23 @@ void InitControls(HINSTANCE hInstance, HWND hWnd)
 	hEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
 						10, 10, 580, 35, hWnd, reinterpret_cast<HMENU>(1), hInstance, nullptr);
 
+	SendMessageW(hEdit, EM_SETCUEBANNER, TRUE,
+				reinterpret_cast<LPARAM>(utf8_to_wide(
+					settingsMap["pref_search_box_placeholder"].defValue.get<std::string>()).c_str()));
 
 	listViewManager.Initialize(hWnd, hInstance, 10, 45, 580, 380);
 	std::unordered_map<std::string, std::function<void()>> callbacks;
 	callbacks["refreshList"] = refreshList;
-	callbacks["quit"] = [hWnd]() {
+	callbacks["quit"] = [hWnd]()
+	{
 		DestroyWindow(hWnd);
 	};
-	callbacks["restart"] = [hWnd]() {
+	callbacks["restart"] = [hWnd]()
+	{
 		TrayMenuManager::TrayMenuClick(10005, hWnd, nullptr);
 	};
-	callbacks["settings"] = [hWnd]() {
+	callbacks["settings"] = [hWnd]()
+	{
 		TrayMenuManager::TrayMenuClick(10010, hWnd, nullptr);
 	};
 	plugin = ListedRunnerPlugin(callbacks);
@@ -196,6 +231,8 @@ void InitInstance(HINSTANCE hInstance, const int nCmdShow)
 	CreateMainWindow(hInstance, nCmdShow);
 	InitControls(hInstance, hWnd);
 	trayMenuManager.Init(hWnd, hInstance);
+	userSettingsAfterTheAppStart(trayMenuManager);
+	ShowWindow(g_settingsHwnd, SW_MINIMIZE);
 	Println(L"Windows inited.");
 }
 
@@ -264,62 +301,78 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 
 	case WM_HOTKEY:
 		{
-			if (wParam == 1)
+			switch (wParam)
 			{
-				Println(L"Hotkey Alt + K");
-				if (IsWindowVisible(hWnd))
+			case HOTKEY_ID_TOGGLE_MAIN_PANEL:
 				{
-					HideWindow(hWnd, hEdit, listViewManager.hListView);
-					return 0;
+					Println(L"Hotkey Alt + K");
+					if (IsWindowVisible(hWnd))
+					{
+						HideWindow(hWnd, hEdit, listViewManager.hListView);
+					}
+					else
+					{
+						// 判断全屏应用模式
+						bool shouldShow = true;
+						if (pref_hide_in_fullscreen)
+							shouldShow = shouldShowInCurrentWindowMode(GetForegroundWindow());
+						else if (pref_hide_in_topmost_fullscreen)
+							shouldShow = shouldShowInCurrentWindowTopmostMode(GetForegroundWindow());
+
+						if (shouldShow)
+						{
+							if (pref_show_window_and_release_modifier_key)
+								ReleaseAltKey();
+							ShowMainWindowSimple(hWnd, hEdit);
+						}
+					}
 				}
-				else
-				{
-					ReleaseAltKey();
-					ShowMainWindowSimple(hWnd, hEdit);
-					return 0;
-				}
+				return 0;
 			}
 		}
 		break;
 	case WM_KEYDOWN:
 		{
-			// 判断 Ctrl 是否按下
-			const bool ctrlPressed = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-			if (ctrlPressed)
-			{
-				switch (wParam)
-				{
-				case 'O':
-					{
-						const auto selected1 = GetListViewSelectedAction(
-							listViewManager.hListView, listViewManager.filteredActions);
-						if (selected1)
-						{
-							HideWindow(hWnd, hEdit, listViewManager.hListView);
-							selected1->InvokeOpenFolder();
-						}
-					}
-					return 0;
-				case 'I':
-					{
-						const auto selected1 = GetListViewSelectedAction(
-							listViewManager.hListView, listViewManager.filteredActions);
-						if (selected1)
-						{
-							HideWindow(hWnd, hEdit, listViewManager.hListView);
-							selected1->InvokeOpenGoalFolder();
-						}
-					}
+			// 1. 获取当前按下的虚拟键码
+			UINT vk = wParam;
+			// 2. 获取当前的修饰符状态
+			UINT currentModifiers = 0;
 
+			if (GetKeyState(VK_MENU) < 0) currentModifiers |= MOD_ALT_KEY;
+			if (GetKeyState(VK_CONTROL) < 0) currentModifiers |= MOD_CTRL_KEY;
+			if (GetKeyState(VK_SHIFT) < 0) currentModifiers |= MOD_SHIFT_KEY;
+			if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) currentModifiers |= MOD_WIN_KEY;
+
+			// 未组合修饰键
+			if (currentModifiers == 0)
+			{
+				if (vk == VK_ESCAPE)
+				{
+					Println(L"Key Esc");
+					HideWindow(hWnd, hEdit, listViewManager.hListView);
 					return 0;
 				}
 			}
 
-			if (wParam == VK_ESCAPE)
+			// 3. 生成要查找的键
+			UINT64 key = MAKE_HOTKEY_KEY(currentModifiers, vk);
+
+			// 4. 在哈希表中查找 (高性能!)
+			auto it = g_hotkeyMap.find(key);
+			if (it != g_hotkeyMap.end())
 			{
-				Println(L"Key Esc");
-				HideWindow(hWnd, hEdit, listViewManager.hListView);
-				return 0;
+				// 找到了！执行对应的动作
+				ShowErrorMsgBox("打开文件位置");
+				switch (it->second)
+				{
+				case HOTKEY_ID_OPEN_FILE_LOCATION:
+					{
+					}
+					break;
+				}
+				// it->second();
+
+				return 0; // 消息已处理，不再传递
 			}
 		}
 		break;
@@ -337,27 +390,64 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 		}
 	case WM_ERASEBKGND:
 		return 1; // 告诉系统“我已经处理了背景”
-
+	case WM_NCHITTEST:
+		{
+			if (!pref_lock_window_popup_position)
+			{
+				LRESULT hit = DefWindowProc(hWnd, WM_NCHITTEST, wParam, lParam);
+				if (hit == HTCLIENT)
+				{
+					return HTCAPTION;
+				}
+				return hit;
+			}
+		}
+		break;
 	// 常用区域分割线
-	case WM_EDIT_DONE:
+	case WM_ACTIVATE:
+		{
+			// 如果是 WA_INACTIVE，说明窗口从激活变为非激活状态（失去焦点）
+			if (LOWORD(wParam) == WA_INACTIVE)
+			{
+				if (settingsMap["pref_close_on_dismiss_focus"].defValue.get<std::string>() == "close_immediate")
+					HideWindow(hWnd, hEdit, listViewManager.hListView);
+			}
+		}
+		break;
+	case WM_EDIT_CONTROL_HOTKEY:
 		{
 			const auto it = GetListViewSelectedAction(listViewManager.hListView, listViewManager.filteredActions);
 			if (!it) return 0;
-			HideWindow(hWnd, hEdit, listViewManager.hListView);
+			if (pref_close_after_open_item)
+				HideWindow(hWnd, hEdit, listViewManager.hListView);
 
 			switch (wParam)
 			{
-			case 0:
+			case HOTKEY_ID_RUN_ITEM:
 				it->Invoke();
 				break;
-			case 1:
+			case HOTKEY_ID_OPEN_FILE_LOCATION:
 				it->InvokeOpenFolder();
 				break;
-			case 2:
+			case HOTKEY_ID_OPEN_TARGET_LOCATION:
 				it->InvokeOpenGoalFolder();
+				break;
+			case HOTKEY_ID_RUN_ITEM_AS_ADMIN:
+				break;
+			case HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS:
+				it->InvokeWithTargetClipBoard();
 				break;
 			default: ;
 			}
+			return 0;
+		}
+	case WM_CONFIG_SAVED:
+		{
+			std::thread t([]()
+			{
+				doPrefChanged(trayMenuManager);
+			});
+			t.detach();
 			return 0;
 		}
 	case WM_NOTIFY:
@@ -365,18 +455,36 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			LPNMHDR pnmh = (LPNMHDR)lParam;
 			if (pnmh->hwndFrom == listViewManager.hListView)
 			{
-				if (pnmh->code == NM_DBLCLK) // 双击
+				if (pnmh->code == NM_CLICK)
+				{
+					PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
+				}
+				if (!pref_single_click_to_open && pnmh->code == NM_DBLCLK) // 双击
 				{
 					LPNMITEMACTIVATE pia = (LPNMITEMACTIVATE)lParam;
 					int index = pia->iItem;
 					if (index != -1 && listViewManager.filteredActions.size() > index)
 					{
 						const auto it = listViewManager.filteredActions[index];
+			if (pref_close_after_open_item)
 						HideWindow(hWnd, hEdit, listViewManager.hListView);
 						it->Invoke();
 						// 你可以通过 index 找到 filteredActions[index]
 						// 比如执行该 action
 						// ExecuteAction(filteredActions[index]);
+					}
+					return TRUE;
+				}
+				else if (pref_single_click_to_open && pnmh->code == NM_CLICK)
+				{
+					LPNMITEMACTIVATE pia = (LPNMITEMACTIVATE)lParam;
+					int index = pia->iItem;
+					if (index != -1 && listViewManager.filteredActions.size() > index)
+					{
+						const auto it = listViewManager.filteredActions[index];
+			if (pref_close_after_open_item)
+						HideWindow(hWnd, hEdit, listViewManager.hListView);
+						it->Invoke();
 					}
 					return TRUE;
 				}
@@ -403,18 +511,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 
 						ShowShellContextMenu(hWnd, temp, pt);
 					}
+					PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
 					return TRUE;
 				}
 			}
 			break;
 		}
-
-	case WM_WINDOWS_HIDE:
+	case WM_TIMER:
+		if (wParam == TIMER_SETFOCUS_EDIT)
 		{
-			//HideWindow(hWnd, hEdit, listViewManager.hListView);
-			ShowWindow(hWnd, SW_HIDE);
-			return 0;
+			if (TimerIDSetFocusEdit != 0)
+			{
+				KillTimer(hWnd, TimerIDSetFocusEdit);
+			}
+			SetFocus(hEdit);
 		}
+		break;
+	case WM_FOCUS_EDIT:
+		SetFocus(hEdit);
+		break;
 	case WM_CLOSE:
 		{
 			HideWindow(hWnd, hEdit, listViewManager.hListView);
@@ -424,8 +539,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 		{
 			if ((wParam & 0xFFF0) == SC_MINIMIZE)
 			{
-				HideWindow(hWnd, hEdit, listViewManager.hListView);
 				// 阻止默认最小化行为
+				HideWindow(hWnd, hEdit, listViewManager.hListView);
+				return 0;
+			}
+		}
+		break;
+	case WM_SIZE:
+		{
+			if (wParam == SIZE_MINIMIZED)
+			{
+				// 阻止默认最小化行为
+				HideWindow(hWnd, hEdit, listViewManager.hListView);
 				return 0;
 			}
 		}
@@ -436,17 +561,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 		{
 			// 阻止 ALT 等系统键造成的副作用
 			return 0;
-		}
+		}	
 	case WM_GETDLGCODE:
 		return DLGC_WANTALLKEYS;
 	case WM_DESTROY:
 		{
+			SaveWindowRectToRegistry(hWnd);
 			ListView_DeleteAllItems(listViewManager.hListView);
 			listViewManager.Cleanup();
 			//Gdiplus::GdiplusShutdown(gdiplusToken);
 
 			trayMenuManager.TrayMenuDestroy();
-			UnregisterHotKey(nullptr, 1);
+			UnregisterHotKey(nullptr, HOTKEY_ID_TOGGLE_MAIN_PANEL);
 			PostQuitMessage(0);
 		}
 		break;
@@ -462,5 +588,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
-	return 0;
+	// return 0;
+	return DefWindowProc(hWnd, message, wParam, lParam);
 }

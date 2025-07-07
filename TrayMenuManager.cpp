@@ -76,7 +76,8 @@ void TrayMenuManager::TrayMenuClick(const int position, HWND hWnd, HWND hEdit)
 			wchar_t path[MAX_PATH];
 			GetModuleFileName(nullptr, path, MAX_PATH);
 			ShellExecute(nullptr, L"open", path, nullptr, nullptr, SW_SHOWNORMAL);
-			PostQuitMessage(0); // 或 ExitProcess(0);
+			// 显式销毁窗口 → 会自动触发 WM_DESTROY，里面会退出程序
+			DestroyWindow(hWnd);
 		}
 		break;
 	case 10006: // 退出
@@ -102,4 +103,19 @@ void TrayMenuManager::TrayMenuDestroy()
 	{
 		DestroyMenu(hTrayMenu);
 	}
+}
+
+void TrayMenuManager::ShowTrayIcon()
+{
+	// 尝试修改现有图标
+	if (!Shell_NotifyIcon(NIM_MODIFY, &nid))
+	{
+		// 修改失败，说明图标不存在，执行添加
+		Shell_NotifyIcon(NIM_ADD, &nid);
+	}
+}
+
+void TrayMenuManager::HideTrayIcon()
+{
+	Shell_NotifyIcon(NIM_DELETE, &nid);
 }

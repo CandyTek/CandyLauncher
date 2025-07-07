@@ -7,6 +7,12 @@
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Comctl32.lib")
 #include <gdiplus.h>
+// TODO: 模糊算法库 rapidfuzz 在 vs2022里很难加载，在clion可以
+#ifdef _MSC_VER
+#else
+#include <rapidfuzz/fuzz.hpp>
+#endif
+
 #include "DataKeeper.hpp"
 
 ListViewManager::ListViewManager() = default;
@@ -126,21 +132,14 @@ void ListViewManager::LoadActions(const std::vector<std::shared_ptr<RunCommandAc
 	filteredActions = actions;
 }
 
-// 编辑框筛选列表内容
-void ListViewManager::Filter(const std::wstring& keyword)
+void ListViewManager::Exactmatch(const std::wstring& keyword)
 {
-	ListView_DeleteAllItems(hListView);
-	filteredActions.clear();
-
-	if (keyword.empty())
-		return;
+	int matchedCount = 0;
 
 	std::wstringstream ss(MyToLower(keyword));
 	std::wstring word;
 	std::vector<std::wstring> words;
 	while (ss >> word) words.push_back(word);
-
-	int matchedCount = 0;
 
 	for (const auto& action : allActions)
 	{
@@ -172,9 +171,120 @@ void ListViewManager::Filter(const std::wstring& keyword)
 
 			filteredActions.push_back(action); // <-- 保存筛选后的 action 顺序
 			matchedCount++;
-			if (matchedCount >= 7)
+			if (!pref_max_search_results <= 0 && matchedCount >= pref_max_search_results)
 				break;
 		}
+	}
+}
+
+// --- 修改后的模糊匹配函数 ---
+// 定义一个结构体来存储 action 及其匹配分数
+struct ScoredAction
+{
+	// const RunCommandAction* action;
+	std::shared_ptr<RunCommandAction> action;
+	double score;
+
+	// 用于排序的比较运算符
+	bool operator>(const ScoredAction& other) const
+	{
+		return score > other.score;
+	}
+};
+
+void ListViewManager::Fuzzymatch(const std::wstring& keyword)
+{
+	// 如果关键字为空，则不显示任何内容或显示默认列表（根据你的需求）
+	if (keyword.empty())
+	{
+		ListView_DeleteAllItems(hListView);
+		filteredActions.clear();
+		return;
+	}
+
+	// 1. 准备数据：将关键字转为小写
+	const std::wstring lowerKeyword = MyToLower(keyword);
+
+
+	std::vector<ScoredAction> scoredActions;
+	const double SCORE_THRESHOLD = 70.0; // 匹配分数阈值，低于此分数的项将被忽略
+
+	// 2. 计算分数：为所有 action 计算匹配度分数
+	for (const std::shared_ptr<RunCommandAction>& action : allActions)
+	{
+		// 关键改动：我们将标题和副标题拼接起来作为搜索目标，这通常比 runCommand 更符合用户预期
+		// const std::wstring searchableText = MyToLower(action->GetTitle() + L" " + action->GetSubtitle());
+		const std::wstring searchableText = action->RunCommand;
+
+		// 使用 rapidfuzz::fuzz::WRatio 计算加权比率分数。
+		// WRatio 对于不同长度的字符串和乱序的单词有很好的效果，是通用的优选。
+#ifdef _MSC_VER
+		double score = 0;
+#else
+		double score = rapidfuzz::fuzz::WRatio(lowerKeyword, searchableText);
+#endif
+
+		if (score >= SCORE_THRESHOLD)
+		{
+			scoredActions.push_back({action, score});
+		}
+	}
+
+	// 3. 排序：按分数从高到低排序
+	std::sort(scoredActions.begin(), scoredActions.end(), std::greater<ScoredAction>());
+	// std::sort(scoredActions.begin(), scoredActions.end(),
+	// 		  [](const ScoredAction& a, const ScoredAction& b) {
+	// 			  return a > b;  // 按照分数从大到小排序
+	// 		  });
+
+	// 4. 显示结果：清空并填充 ListView
+	ListView_DeleteAllItems(hListView);
+	filteredActions.clear();
+
+	int matchedCount = 0;
+	for (const auto& scored : scoredActions)
+	{
+		const std::shared_ptr<RunCommandAction> action = scored.action;
+		const std::wstring& title = action->GetTitle();
+		const std::wstring& subtitle = action->GetSubtitle();
+
+		LVITEMW item = {}; // 使用 LVITEMW 明确表示宽字符
+		item.mask = LVIF_TEXT | LVIF_IMAGE;
+		item.iItem = ListView_GetItemCount(hListView); // 总是插入到末尾
+		item.pszText = const_cast<LPWSTR>(title.c_str());
+		item.iImage = (action->iImageIndex == -1) ? 0 : action->iImageIndex;
+
+		int newItemIndex = ListView_InsertItem(hListView, &item);
+		if (newItemIndex != -1)
+		{
+			ListView_SetItemText(hListView, newItemIndex, 1, const_cast<LPWSTR>(subtitle.c_str()));
+
+			// 保存筛选和排序后的 action 顺序
+			filteredActions.push_back(action);
+
+			matchedCount++;
+			if (!pref_max_search_results <= 0 && matchedCount >= pref_max_search_results)
+				break;
+		}
+	}
+}
+
+// 编辑框筛选列表内容
+void ListViewManager::Filter(const std::wstring& keyword)
+{
+	ListView_DeleteAllItems(hListView);
+	filteredActions.clear();
+
+	if (keyword.empty())
+		return;
+
+	if (pref_fuzzy_match)
+	{
+		Fuzzymatch(keyword);
+	}
+	else
+	{
+		Exactmatch(keyword);
 	}
 
 	if (!filteredActions.empty())

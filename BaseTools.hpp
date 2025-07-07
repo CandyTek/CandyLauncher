@@ -97,3 +97,57 @@ template<typename T>
 T MyMin(const T& a, const T& b) {
 	return (a < b) ? a : b;
 }
+
+static std::wstring GetExecutableFolder()
+{
+	wchar_t path[MAX_PATH];
+	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+	if (length == 0 || length == MAX_PATH)
+	{
+		// 错误处理（可选）
+		return L"";
+	}
+
+	// 找到最后一个反斜杠（目录分隔符）
+	const std::wstring fullPath(path);
+	const size_t pos = fullPath.find_last_of(L"\\/");
+	if (pos != std::wstring::npos)
+	{
+		return fullPath.substr(0, pos);
+	}
+
+	return L"";
+}
+
+static std::wstring GetClipboardText()
+{
+	// 尝试打开剪贴板
+	if (!OpenClipboard(nullptr)) {
+		return nullptr;
+	}
+
+	// 获取 Unicode 文本格式的剪贴板数据
+	HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+	if (hData == nullptr) {
+		CloseClipboard();
+		return nullptr;
+	}
+
+	// 锁定内存句柄以获取实际数据指针
+	LPCWSTR pszText = static_cast<LPCWSTR>(GlobalLock(hData));
+	if (pszText == nullptr) {
+		CloseClipboard();
+		return nullptr;
+	}
+
+	// 复制数据到 std::wstring
+	std::wstring text(pszText);
+
+	// 解锁全局内存
+	GlobalUnlock(hData);
+
+	// 关闭剪贴板
+	CloseClipboard();
+
+	return text;
+}
