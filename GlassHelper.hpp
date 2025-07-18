@@ -41,7 +41,7 @@ struct WINDOWCOMPOSITIONATTRIBDATA
 typedef BOOL (WINAPI*pSetWindowCompositionAttribute)(HWND, WINDOWCOMPOSITIONATTRIBDATA*);
 
 // ACCENT_ENABLE_ACRYLICBLURBEHIND 需要 Windows 10 Build 1803（April 2018 Update）及以上。
-static void EnableBlur(HWND hWnd)
+static void EnableTestBlur(HWND hWnd)
 {
 	// 加载 user32.dll 中的 SetWindowCompositionAttribute
 	const HMODULE hUser = LoadLibrary(TEXT("user32.dll"));
@@ -58,14 +58,47 @@ static void EnableBlur(HWND hWnd)
 
 
 		ACCENT_POLICY policy{};
-		policy.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND;
+		policy.AccentState = ACCENT_ENABLE_TRANSPARENTGRADIENT;
+		// policy.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND;
 		// policy.AccentState = ACCENT_ENABLE_BLURBEHIND;
 
 		// AccentFlags = 2 是经验值，避免窗口边缘的光晕异常。
 		policy.AccentFlags = 2;
-		policy.GradientColor = COLOR_UI_BG_GLASS; // 半透明黑色
+		// policy.GradientColor = COLOR_UI_BG_GLASS; // 半透明黑色
+		policy.GradientColor = (0x88 << 24) | (0x00 << 16) | (0x00 << 8) | 0x00; // 半透明黑色
 		policy.AnimationId = 0;
 
+		WINDOWCOMPOSITIONATTRIBDATA data{};
+		data.Attrib = WCA_ACCENT_POLICY;
+		data.pvData = &policy;
+		data.cbData = sizeof(policy);
+
+		SetWindowCompositionAttribute(hWnd, &data);
+	}
+
+	FreeLibrary(hUser);
+}
+
+static void EnableBlur2(HWND hWnd)
+{
+	// 加载 user32.dll 中的 SetWindowCompositionAttribute
+	const HMODULE hUser = LoadLibrary(TEXT("user32.dll"));
+	if (!hUser) return;
+
+	pSetWindowCompositionAttribute SetWindowCompositionAttribute =
+		reinterpret_cast<pSetWindowCompositionAttribute>(GetProcAddress(hUser, "SetWindowCompositionAttribute"));
+
+	if (SetWindowCompositionAttribute)
+	{
+		ACCENT_POLICY policy{};
+		policy.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND;
+		// policy.AccentState = ACCENT_ENABLE_BLURBEHIND;
+
+		// 2 是经验值，避免窗口边缘的光晕异常。
+		policy.AccentFlags = 2;
+		// policy.GradientColor = COLOR_UI_BG_GLASS; // 半透明黑色
+		policy.GradientColor = COLOR_UI_BG_GLASS; // 半透明黑色
+		policy.AnimationId = 0;
 
 		WINDOWCOMPOSITIONATTRIBDATA data{};
 		data.Attrib = WCA_ACCENT_POLICY;

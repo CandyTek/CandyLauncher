@@ -15,21 +15,28 @@
 using namespace Microsoft::WRL;
 
 // 启动的错误处理
-static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring& path) {
+static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring& path)
+{
 	std::wstringstream ss;
 	ss << L"Failed to execute: " << path << L"\n";
 
 	switch (code)
 	{
-	case 0:  ss << L"The operating system is out of memory or resources."; break;
-	case ERROR_FILE_NOT_FOUND: ss << L"The specified file was not found."; break;
-	case ERROR_PATH_NOT_FOUND: ss << L"The specified path was not found."; break;
-	case ERROR_BAD_FORMAT:     ss << L"The .exe file is invalid (non-Win32 .exe or error in image file)."; break;
-	case SE_ERR_ACCESSDENIED:  ss << L"Access denied. The user may have refused the elevation."; break;
+	case 0: ss << L"The operating system is out of memory or resources.";
+		break;
+	case ERROR_FILE_NOT_FOUND: ss << L"The specified file was not found.";
+		break;
+	case ERROR_PATH_NOT_FOUND: ss << L"The specified path was not found.";
+		break;
+	case ERROR_BAD_FORMAT: ss << L"The .exe file is invalid (non-Win32 .exe or error in image file).";
+		break;
+	case SE_ERR_ACCESSDENIED: ss << L"Access denied. The user may have refused the elevation.";
+		break;
 	case SE_ERR_ASSOCINCOMPLETE:
 	case SE_ERR_DDEBUSY:
 	case SE_ERR_NOASSOC:
-		ss << L"File association error or DDE error."; break;
+		ss << L"File association error or DDE error.";
+		break;
 	default:
 		ss << L"Unknown error. Code: " << code;
 		break;
@@ -65,12 +72,29 @@ public:
 			SetSubtitle(justName + L" " + arguments);
 	}
 
-	RunCommandAction(): IsUwpItem(false), defaultAsAdmin(false)
+	RunCommandAction(
+		const std::wstring& justName,
+		const std::wstring& uwpCommand,
+		const std::wstring& _uwpCommandSouce,
+		HBITMAP _hIcon)
+		: RunCommandAction(justName, uwpCommand, true) // 委托构造
 	{
+		hIcon = _hIcon;
+		uwpCommandSouce = _uwpCommandSouce;
 	}
 
+	RunCommandAction(
+		const std::wstring& justName,
+		const std::wstring& uwpCommand,
+		int _imageIndex)
+		: RunCommandAction(justName, uwpCommand, true) // 委托构造
+	{
+		iImageIndex = _imageIndex;
+	}
+
+
 	// 运行命令
-	void InvokeWithTarget(const wchar_t* target) 
+	void InvokeWithTarget(const wchar_t* target)
 	{
 		if (IsUwpItem)
 		{
@@ -100,7 +124,7 @@ public:
 	// 运行命令
 	void Invoke() override
 	{
-		InvokeWithTarget(nullptr); 
+		InvokeWithTarget(nullptr);
 	}
 
 	// 运行附带剪贴板参数
@@ -108,7 +132,7 @@ public:
 	{
 		InvokeWithTarget(GetClipboardText().c_str());
 	}
-	
+
 	// 打开所在文件夹
 	void InvokeOpenFolder() const
 	{
@@ -146,6 +170,8 @@ public:
 
 	bool IsUwpItem;
 	std::wstring RunCommand;
+	std::wstring uwpCommandSouce;
+	HBITMAP hIcon = nullptr;
 
 protected:
 	std::wstring targetFilePath;
@@ -189,7 +215,7 @@ private:
 		}
 
 		wchar_t targetPath[MAX_PATH];
-		WIN32_FIND_DATAW data;
+		WIN32_FIND_DATAW data = { 0 };
 		if (SUCCEEDED(shellLink->GetPath(targetPath, MAX_PATH, &data, SLGP_UNCPRIORITY)))
 		{
 			CoUninitialize();

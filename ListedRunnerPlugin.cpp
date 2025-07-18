@@ -1,7 +1,12 @@
-﻿#include "ListedRunnerPlugin.h"
+﻿#pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "shell32.lib") // Link against the shell library
+#pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "Uuid.lib")
+
+#include "ListedRunnerPlugin.h"
 #include "DataKeeper.hpp"
 
-
+#include <shobjidl.h>
 #include <windows.h>
 #include <fstream>
 #include <iostream>
@@ -12,11 +17,21 @@
 #include <codecvt>
 #include <objidl.h>
 #include <gdiplus.h>
-#pragma comment(lib, "gdiplus.lib")
+
 #include <filesystem>
-#include "json.hpp"
+#include <propkey.h>  // For property keys (optional but good practice)
+#include <shlwapi.h>       // For Path* functions (optional)
+#include <propvarutil.h>   // Optional for PROPVARIANT helpers
+#include <VersionHelpers.h>  // 添加这个头文件
+
 // 不能少
 #include <shellapi.h>
+
+#ifndef ESI_ALLITEMS
+#define ESI_ALLITEMS 0x00000040
+#endif
+
+
 namespace fs = std::filesystem;
 
 static bool FolderExists(const std::wstring& folderPath)
@@ -32,7 +47,7 @@ ListedRunnerPlugin::ListedRunnerPlugin()
 
 ListedRunnerPlugin::ListedRunnerPlugin(const std::unordered_map<std::string, std::function<void()>>& callbackFunction1)
 {
-	callbackFunctions=callbackFunction1;
+	callbackFunctions = callbackFunction1;
 	configPath = EXE_FOLDER_PATH + L"\\runner.json";
 	LoadConfiguration();
 }
@@ -69,15 +84,143 @@ static std::string WStringToUtf8(const std::wstring& wstr)
 }
 
 
+/// <summary>
+/// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
+/// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
+/// </summary>
+/// <param name="actions">The list of actions to add UWP apps to.</param>
+static void LoadUwpApps(std::vector<std::shared_ptr<RunCommandAction>>& actions)
+{
+	if (FAILED(CoInitialize(NULL)))
+	{
+		return;
+	}
+
+	IKnownFolderManager* pKnownFolderManager = nullptr;
+	if (FAILED(
+		CoCreateInstance(CLSID_KnownFolderManager, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pKnownFolderManager))))
+	{
+		CoUninitialize();
+		return;
+	}
+
+	IShellItem* pAppsFolderItem = nullptr;
+	if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_AppsFolder, KF_FLAG_DEFAULT, NULL, IID_PPV_ARGS(&pAppsFolderItem))))
+	{
+		IShellFolder* pDesktopFolder = nullptr;
+		if (SUCCEEDED(SHGetDesktopFolder(&pDesktopFolder)))
+		{
+			LPITEMIDLIST pidl = nullptr;
+			if (SUCCEEDED(SHGetIDListFromObject(pAppsFolderItem, &pidl)))
+			{
+				IShellFolder* pAppsFolderShellFolder = nullptr;
+				if (SUCCEEDED(pDesktopFolder->BindToObject(pidl, NULL, IID_PPV_ARGS(&pAppsFolderShellFolder))))
+				{
+					IEnumIDList* pEnumIDList = nullptr;
+					if (SUCCEEDED(
+						pAppsFolderShellFolder->EnumObjects(NULL, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS, &pEnumIDList)))
+					{
+						LPITEMIDLIST pidlItem = nullptr;
+						ULONG fetched = 0;
+						while (pEnumIDList->Next(1, &pidlItem, &fetched) == S_OK)
+						{
+							IShellItem* pShellItem = nullptr;
+							if (SUCCEEDED(
+								SHCreateItemWithParent(pidl, pAppsFolderShellFolder, pidlItem, IID_PPV_ARGS(&pShellItem)
+								)))
+							{
+								// 处理每个 ShellItem
+								LPWSTR pwszParsingName = nullptr;
+								if (FAILED(pShellItem->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &pwszParsingName)))
+								{
+									pShellItem->Release();
+									continue;
+								}
+
+								// UWP应用程序通常具有“！”以他们的解析名称。
+								if (wcschr(pwszParsingName, L'!') == nullptr)
+								{
+									CoTaskMemFree(pwszParsingName);
+									pShellItem->Release();
+									continue;
+								}
+
+								LPWSTR pwszDisplayName = nullptr;
+								if (FAILED(pShellItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pwszDisplayName)))
+								{
+									CoTaskMemFree(pwszParsingName);
+									pShellItem->Release();
+									continue;
+								}
+
+								HBITMAP hBitmap = nullptr;
+								IShellItemImageFactory* pImageFactory = nullptr;
+								// 大小可以调整。 256x256是一个很好的高质量尺寸。
+								SIZE size = {LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE};
+								if (SUCCEEDED(pShellItem->QueryInterface(IID_PPV_ARGS(&pImageFactory))))
+								{
+									// SIIGBF_RESIZETOFIT 即使没有确切的尺寸，也可以确保我们获得图像。
+									// SIIGBF_ICONONLY 防止获得文档的缩略图预览。
+									pImageFactory->GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_ICONONLY, &hBitmap);
+									pImageFactory->Release();
+								}
+
+								// 构造命令字符串以启动UWP应用程序
+								std::wstring uwpCommand = L"shell:AppsFolder\\";
+								uwpCommand += pwszParsingName;
+
+								std::wstring uwpCommandS = L"";
+								uwpCommandS += pwszParsingName;
+
+								// 为UWP应用程序创建一个新的RunCommandaction。
+								if (hBitmap != nullptr)
+								{
+									// TODO: 使用HBITMAP并管理其生命周期
+									actions.push_back(
+										std::make_shared<RunCommandAction>(
+											pwszDisplayName, uwpCommand, uwpCommandS, hBitmap));
+								}
+								else
+								{
+									// 无法加载图标的后备
+									actions.push_back(
+										std::make_shared<RunCommandAction>(
+											pwszDisplayName, uwpCommand, uwpCommandS, nullptr));
+								}
+
+								CoTaskMemFree(pwszDisplayName);
+								CoTaskMemFree(pwszParsingName);
+								pShellItem->Release();
+							}
+							CoTaskMemFree(pidlItem);
+						}
+						pEnumIDList->Release();
+					}
+					pAppsFolderShellFolder->Release();
+				}
+				CoTaskMemFree(pidl);
+			}
+			pDesktopFolder->Release();
+		}
+		pAppsFolderItem->Release();
+	}
+	CoUninitialize();
+}
+
+
 void ListedRunnerPlugin::LoadConfiguration()
 {
 	actions.clear();
 	// std::shared_ptr<ActionNormal> refreshAction = ;
 	// actions.push_back(refreshAction);
-	actions.push_back(std::make_shared<ActionNormal>(L"刷新列表",L"刷新运行配置",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["refreshList"]));
-	actions.push_back(std::make_shared<ActionNormal>(L"退出软件",L"退出软件",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["quit"]));
-	actions.push_back(std::make_shared<ActionNormal>(L"重启软件",L"重启软件",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["restart"]));
-	actions.push_back(std::make_shared<ActionNormal>(L"软件设置",L"打开本软件设置界面",EXE_FOLDER_PATH + L"\\refresh.ico",callbackFunctions["settings"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"刷新列表", L"刷新运行配置", EXE_FOLDER_PATH + L"\\refresh.ico",
+													callbackFunctions["refreshList"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"退出软件", L"退出软件", EXE_FOLDER_PATH + L"\\refresh.ico",
+													callbackFunctions["quit"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"重启软件", L"重启软件", EXE_FOLDER_PATH + L"\\refresh.ico",
+													callbackFunctions["restart"]));
+	actions.push_back(std::make_shared<ActionNormal>(L"软件设置", L"打开本软件设置界面", EXE_FOLDER_PATH + L"\\refresh.ico",
+													callbackFunctions["settings"]));
 	std::ifstream in((configPath.data())); // 用 std::ifstream 而不是 std::wifstream
 	if (!in)
 	{
@@ -204,6 +347,20 @@ void ListedRunnerPlugin::LoadConfiguration()
 			continue;
 		}
 	}
+
+	// *** UWP应用程序加载逻辑 ***
+	if (settingsMap["pref_indexed_uwp_apps_enable"].defValue.get<int>() == 1)
+	{
+		if (IsWindows8OrGreater())
+			try
+			{
+				LoadUwpApps(actions);
+			}
+			catch (const std::exception& e)
+			{
+				std::wcerr << L"Failed to load UWP apps: " << Utf8ToWString(e.what()) << std::endl;
+			}
+	}
 }
 
 
@@ -265,7 +422,7 @@ std::wstring ListedRunnerPlugin::GetShortcutTarget(const std::wstring& lnkPath)
 			if (SUCCEEDED(ppf->Load(lnkPath.c_str(), STGM_READ)))
 			{
 				WCHAR szPath[MAX_PATH];
-				WIN32_FIND_DATA wfd;
+				WIN32_FIND_DATA wfd = {0};
 				if (SUCCEEDED(psl->GetPath(szPath, MAX_PATH, &wfd, SLGP_UNCPRIORITY)))
 				{
 					target = szPath;
@@ -282,7 +439,7 @@ std::wstring ListedRunnerPlugin::GetShortcutTarget(const std::wstring& lnkPath)
 
 HICON ListedRunnerPlugin::GetFileIcon(const std::wstring& filePath, const bool largeIcon)
 {
-	SHFILEINFOW sfi;
+	SHFILEINFOW sfi = { 0 };;
 	UINT flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
 	flags |= largeIcon ? SHGFI_LARGEICON : SHGFI_SMALLICON;
 
@@ -432,7 +589,7 @@ void ListedRunnerPlugin::TraverseFiles(
 		}
 
 		const auto action = std::make_shared<RunCommandAction>(
-			filename, path.wstring(), false,  true, path.parent_path().wstring()
+			filename, path.wstring(), false, true, path.parent_path().wstring()
 		);
 
 		outActions.push_back(action);

@@ -20,7 +20,7 @@ void TrayMenuManager::Init(HWND parent, HINSTANCE hInstance)
 	nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
 	nid.uCallbackMessage = WM_TRAYICON;
 	nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_WINDOWSPROJECT1));
-	hInstance2  = hInstance;
+	hInstance2 = hInstance;
 	wcscpy_s(nid.szTip, L"My App");
 	Shell_NotifyIcon(NIM_ADD, &nid);
 

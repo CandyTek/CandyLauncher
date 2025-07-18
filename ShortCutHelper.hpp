@@ -31,7 +31,7 @@ static bool CreateStartupShortcut(const std::wstring& exePath, const std::wstrin
     std::wstring shortcutPath = std::wstring(startupPath) + L"\\" + shortcutName + L".lnk";
 
     // 初始化 COM
-    CoInitialize(nullptr);
+    HRESULT _ignore = CoInitialize(nullptr);
     IShellLinkW* pShellLink = nullptr;
     IPersistFile* pPersistFile = nullptr;
 

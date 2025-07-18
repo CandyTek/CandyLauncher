@@ -54,15 +54,12 @@
     <ClInclude Include="SettingsHelper.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="AppTools.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="WindowsProject1.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="ActionBase.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="RunCommandAction.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="ListedRunnerPlugin.cpp">

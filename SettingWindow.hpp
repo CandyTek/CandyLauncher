@@ -4,7 +4,6 @@
 #include <vector>
 #include <string>
 #include "resource.h"
-#include "json.hpp"
 #include <set>
 #include <iostream>
 
@@ -43,16 +42,17 @@ static void initGlobalVariable()
 	pref_close_after_open_item = (settingsMap["pref_close_after_open_item"].defValue.get<int>() == 1);
 	pref_force_ime_mode = settingsMap["pref_force_ime_mode"].defValue.get<std::string>();
 	pref_max_search_results = settingsMap["pref_max_search_results"].defValue.get<int>();
-	
+	pref_hotkey_toggle_main_panel = settingsMap["pref_hotkey_toggle_main_panel"].defValue.get<std::string>();
+
 	int tempX = settingsMap["pref_window_popup_position_offset_x"].defValue.get<int>();
 	int tempY = settingsMap["pref_window_popup_position_offset_y"].defValue.get<int>();
 	if (tempX >= 0 && tempX <= 100)
 	{
-		window_position_offset_x = tempX / 100.0;
+		window_position_offset_x = static_cast<int>(tempX / 100.0);
 	}
 	if (tempY >= 0 && tempY <= 100)
 	{
-		window_position_offset_y = tempY / 100.0;
+		window_position_offset_y = static_cast<int>(tempY / 100.0);
 	}
 }
 
@@ -78,7 +78,6 @@ static void LoadSettingList()
 	initGlobalVariable();
 	const std::string pref_pinyin_mode = settingsMap["pref_pinyin_mode"].defValue.get<std::string>();
 	PinyinHelper::changePinyinType(pref_pinyin_mode);
-
 }
 
 
@@ -163,8 +162,15 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 
 			return 0;
 		}
+	case WM_SETFOCUS:
+		// 编辑开始，取消全局快捷键注册
+		UnregisterHotKey(s_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+		break;
 	case WM_KILLFOCUS:
 		{
+			// 编辑结束，重新注册全局快捷键，这里不能直接去访问settingmap列表的该key，不然会引起报错
+			RegisterHotkeyFromString(s_mainHwnd, pref_hotkey_toggle_main_panel,HOTKEY_ID_TOGGLE_MAIN_PANEL);
+
 			std::string hotkeyUtf8 = wide_to_utf8(currentHotkey);
 			if (pItemValue)
 				*pItemValue = nlohmann::json(hotkeyUtf8); // Sicher
@@ -321,7 +327,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 					else if (item.type == "list")
 					{
 						hCtrl = CreateWindowW(L"COMBOBOX", L"",
-											WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST| WS_VSCROLL,
+											WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST| WS_VSCROLL | CBS_NOINTEGRALHEIGHT,
 											contorlX, y, 200, 300, hParent, (HMENU)(3000 + i),
 											nullptr, nullptr);
 						// 1. 獲取 ComboBox 的詳細資訊，主要是為了得到下拉列表的句柄 (hwndList)
@@ -426,6 +432,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			break;
 		}
 	case WM_DESTROY:
+		[[fallthrough]];
 	case WM_CLOSE:
 		{
 			ShowWindow(hwnd, SW_HIDE);

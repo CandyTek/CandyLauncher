@@ -31,7 +31,7 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT l
 {
 	std::vector<MonitorData>* monitors = reinterpret_cast<std::vector<MonitorData>*>(dwData);
 
-	MONITORINFOEX mi;
+	MONITORINFOEX mi{};
 	mi.cbSize = sizeof(mi);
 
 	if (GetMonitorInfo(hMonitor, &mi))
@@ -408,7 +408,7 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 		}
 		break;
 	case WM_MBUTTONUP:
-		TimerIDSetFocusEdit =SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr);  // 10 毫秒延迟
+		TimerIDSetFocusEdit = SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
 		break;
 
 	default: break;

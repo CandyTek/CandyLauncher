@@ -1,0 +1,67 @@
+{
+	"version":1,
+	"window_width":500,
+	"window_height":500,
+	"window_bg_picture":"E:\\Github\\airplay\\iot-channel-app\\app\\channel-tv\\src\\main\\res\\drawable-hdpi\\plugin_bindcode_background.png",
+	"window_bg_color":"#888888",
+
+	"editbox_width":437,
+	"editbox_height":50,
+	"editbox_x":30,
+	"editbox_y":30,
+	"editbox_font_size":25.0,
+	"editbox_font_family":"微软雅黑",
+	"editbox_font_color":"#008800",
+	"editbox_bg_color":"#e9e9ff",
+	"editbox_bg_picture":"",
+	
+	"listview_width":437,
+	"listview_height":370,
+	"listview_x":30,
+	"listview_y":95,
+	"listview_bg_color":"#B9B9FD",
+	"listview_bg_picture":"",
+	
+	"listview_padding_left":20,
+	"listview_padding_right":20,
+	"listview_padding_top":11,
+	"listview_padding_bottom":-1,
+
+	"item_width":437,
+	"item_height":50,
+	
+	"item_icon_selected_x":1,
+	"item_icon_selected_y":4,
+	"item_icon_x":6,
+	"item_icon_y":4,
+	
+	"item_text_x_1":60,
+	"item_text_y_1":4,
+	"item_text_x_2":60,
+	"item_text_y_2":22,
+	
+	"item_text_selected_x_1":55,
+	"item_text_selected_y_1":4,
+	"item_text_selected_x_2":55,
+	"item_text_selected_y_2":30,
+	
+
+	"item_font_size_1":16,
+	"item_font_size_2":10,
+	"item_font_size_selected_1":18,
+	"item_font_size_selected_2":12,
+
+	"item_font_family_1":"微软雅黑",
+	"item_font_family_2":"微软雅黑",
+	"item_font_family_selected_1":"微软雅黑",
+	"item_font_family_selected_2":"微软雅黑",
+	"item_font_color_1":"#000000",
+	"item_font_color_2":"#888888",
+	"item_font_color_selected_1":"#000000",
+	"item_font_color_selected_2":"#888888",
+	
+	"item_bg_color":"#B9B9FD",
+	"item_bg_color_selected":"#E9E9FF",
+	"item_bg_picture":"C:\\Users\\Administrator\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_launcher_icons-0.13.1\\example\\default_example\\assets\\images\\christmas-background.png",
+	"item_bg_picture_selected":""
+}

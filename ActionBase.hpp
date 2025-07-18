@@ -22,16 +22,16 @@ public:
 	virtual ~ActionBase() = default;
 	// ActionBase() : _isExecutable(false), _hBitmap(nullptr)
 	// {
-		// if (gdiplusToken == 0)
-			// InitGDIPlus();
+	// if (gdiplusToken == 0)
+	// InitGDIPlus();
 	// }
 
 	// virtual ~ActionBase()
 	// {
-		// if (_hBitmap)
-		// {
-		// 	DeleteObject(_hBitmap);
-		// }
+	// if (_hBitmap)
+	// {
+	// 	DeleteObject(_hBitmap);
+	// }
 	// }
 
 	// 图标 - 从byte数组转换为HBITMAP
@@ -89,8 +89,8 @@ private:
 
 	// static void InitGDIPlus()
 	// {
-		// Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-		// Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+	// Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+	// Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 	// }
 
 	// static HBITMAP ByteArrayToHBitmap(const std::vector<BYTE>& data)

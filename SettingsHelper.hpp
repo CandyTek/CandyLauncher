@@ -3,7 +3,6 @@
 #include <fstream> // Required for file operations
 
 #include "BaseTools.hpp"
-#include "json.hpp"
 #include "Resource.h"
 #include "Constants.hpp"
 #include "ShortCutHelper.hpp"
@@ -17,21 +16,6 @@ static std::map<std::wstring, std::wstring> tabNameMap = {
 	{L"index", L"索引"},
 	{L"about", L"关于"}
 };
-
-// 配置项结构
-struct SettingItem
-{
-	std::string key;
-	std::string type;
-	std::string title;
-	std::string subPage;
-	std::vector<std::string> entries;
-	std::vector<std::string> entryValues;
-	nlohmann::json defValue;
-};
-
-static std::vector<SettingItem> settings2;
-static std::unordered_map<std::string, SettingItem> settingsMap;
 
 
 //inline std::vector<SettingItem> ParseConfig(const std::string& configStr) {
@@ -196,7 +180,7 @@ static void saveConfig2(const std::vector<std::wstring>& subPages, const std::ve
 			obj["type"] = item.type;
 			obj["subPage"] = item.subPage;
 
-			HWND hCtrl = hCtrlsByTab[tabIdx][ctrlIdx + 1]; // hLabel, hCtrl
+			HWND hCtrl = hCtrlsByTab[tabIdx][static_cast<size_t>(ctrlIdx + 1)];
 			if (item.type == "bool")
 			{
 				BOOL checked = (SendMessage(hCtrl, BM_GETCHECK, 0, 0) == BST_CHECKED);
@@ -207,7 +191,7 @@ static void saveConfig2(const std::vector<std::wstring>& subPages, const std::ve
 				wchar_t buf[256];
 				GetWindowTextW(hCtrl, buf, 256);
 				std::wstring ws(buf);
-				obj["defValue"] = std::string(ws.begin(), ws.end());
+				obj["defValue"] = wide_to_utf8(ws);
 			}
 			else if (item.type == "stringArr")
 			{
@@ -222,7 +206,7 @@ static void saveConfig2(const std::vector<std::wstring>& subPages, const std::ve
 					if (end == std::wstring::npos) end = ws.size();
 					std::wstring line = ws.substr(start, end - start);
 					if (!line.empty())
-						arr.push_back(std::string(line.begin(), line.end()));
+						arr.push_back(wide_to_utf8(line));
 					start = ws.find_first_not_of(L"\r\n", end);
 					if (start == std::wstring::npos) break;
 				}
@@ -298,7 +282,7 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std
 
 			// Retrieve the handle for the actual input control.
 			// hCtrlsByTab stores HWNDs in pairs: [hLabel1, hCtrl1, hLabel2, hCtrl2, ...]
-			HWND hCtrl = hCtrlsByTab[tabIdx][ctrlIdx + 1];
+			HWND hCtrl = hCtrlsByTab[tabIdx][static_cast<size_t>(ctrlIdx + 1)];
 			const std::string& key = item.key;
 
 			if (item.type == "bool")

@@ -1,7 +1,9 @@
 ﻿#pragma once
+#include <algorithm>
 #include <windows.h>
 #include <string>
 #include <sstream>
+#include <gdiplus.h>
 
 
 // 标准打印输出方法
@@ -88,13 +90,15 @@ static std::wstring MyTrim(const std::wstring& str)
 	return str.substr(first, last - first + 1);
 }
 
-template<typename T>
-T MyMax(const T& a, const T& b) {
+template <typename T>
+T MyMax(const T& a, const T& b)
+{
 	return (a > b) ? a : b;
 }
 
-template<typename T>
-T MyMin(const T& a, const T& b) {
+template <typename T>
+T MyMin(const T& a, const T& b)
+{
 	return (a < b) ? a : b;
 }
 
@@ -122,20 +126,23 @@ static std::wstring GetExecutableFolder()
 static std::wstring GetClipboardText()
 {
 	// 尝试打开剪贴板
-	if (!OpenClipboard(nullptr)) {
+	if (!OpenClipboard(nullptr))
+	{
 		return nullptr;
 	}
 
 	// 获取 Unicode 文本格式的剪贴板数据
 	HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-	if (hData == nullptr) {
+	if (hData == nullptr)
+	{
 		CloseClipboard();
 		return nullptr;
 	}
 
 	// 锁定内存句柄以获取实际数据指针
 	LPCWSTR pszText = static_cast<LPCWSTR>(GlobalLock(hData));
-	if (pszText == nullptr) {
+	if (pszText == nullptr)
+	{
 		CloseClipboard();
 		return nullptr;
 	}
@@ -150,4 +157,128 @@ static std::wstring GetClipboardText()
 	CloseClipboard();
 
 	return text;
+}
+
+// 从类似 "Ctrl+Alt+A(3)(65)" 字符串中提取并注册全局热键
+static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId)
+{
+	UINT modifiers = 0;
+	UINT vk = 0;
+
+	// 查找括号中的 VK 值
+	size_t posStart = hotkeyStr.rfind('(');
+	size_t posEnd = hotkeyStr.rfind(')');
+
+	if (posStart == std::wstring::npos || posEnd == std::wstring::npos || posEnd <= posStart + 1)
+	{
+		return false;
+	}
+
+	std::string vkStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
+	try
+	{
+		vk = std::stoi(vkStr);
+	}
+	catch (...)
+	{
+		return false;
+	}
+
+	// 查找 modifiers 值
+	posEnd = posStart - 1;
+	posStart = hotkeyStr.rfind('(', posEnd);
+	if (posStart == std::wstring::npos || posEnd <= posStart + 1)
+	{
+		return false;
+	}
+
+	std::string modStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
+	try
+	{
+		modifiers = std::stoi(modStr);
+	}
+	catch (...)
+	{
+		return false;
+	}
+
+	// 取消旧的热键（可选）
+	UnregisterHotKey(hWnd, hotkeyId);
+
+	// 注册新的热键
+	return RegisterHotKey(hWnd, hotkeyId, modifiers, vk);
+}
+
+// 辅助函数：将 #RRGGBB 格式的字符串转为 COLORREF
+static COLORREF HexToCOLORREF(const std::string& hex)
+{
+	if (hex.length() < 7 || hex[0] != '#')
+	{
+		return RGB(0, 0, 0); // 格式错误返回黑色
+	}
+	long r = std::stol(hex.substr(1, 2), nullptr, 16);
+	long g = std::stol(hex.substr(3, 2), nullptr, 16);
+	long b = std::stol(hex.substr(5, 2), nullptr, 16);
+	return RGB(r, g, b);
+}
+
+// 辅助函数：将 #AARRGGBB 或 #RRGGBB 格式的字符串转为 Gdiplus::Color
+static Gdiplus::Color HexToGdiplusColor(const std::string& hex)
+{
+	if (hex.empty() || hex[0] != '#')
+	{
+		return Gdiplus::Color(255, 0, 0, 0); // 默认不透明黑色
+	}
+
+	// 检查格式：
+	// - #RRGGBB（6位） → 默认 Alpha=255（不透明）
+	// - #AARRGGBB（8位） → 包含 Alpha 通道
+	if (hex.length() == 7) // #RRGGBB
+	{
+		int r = std::stoi(hex.substr(1, 2), nullptr, 16);
+		int g = std::stoi(hex.substr(3, 2), nullptr, 16);
+		int b = std::stoi(hex.substr(5, 2), nullptr, 16);
+		return Gdiplus::Color(255, r, g, b); // 默认不透明
+	}
+	else if (hex.length() == 9) // #AARRGGBB
+	{
+		int a = std::stoi(hex.substr(1, 2), nullptr, 16);
+		int r = std::stoi(hex.substr(3, 2), nullptr, 16);
+		int g = std::stoi(hex.substr(5, 2), nullptr, 16);
+		int b = std::stoi(hex.substr(7, 2), nullptr, 16);
+		return Gdiplus::Color(a, r, g, b); // 包含 Alpha
+	}
+	else
+	{
+		return Gdiplus::Color(255, 0, 0, 0); // 格式错误返回不透明黑色
+	}
+}
+
+
+static bool isValidHexColor(const std::string& color) {
+	// 检查长度：6位（#RRGGBB）或8位（#RRGGBBAA）
+	if (color.length() != 7 && color.length() != 9) {
+		return false;
+	}
+    
+	// 检查是否以#开头
+	if (color[0] != '#') {
+		return false;
+	}
+    
+	// 检查其余字符是否为十六进制数字
+	return std::all_of(color.begin() + 1, color.end(), [](char c) {
+		return std::isxdigit(static_cast<unsigned char>(c));
+	});
+}
+
+static std::string validateHexColor(const std::string& color,const std::string& defaultColor) {
+	if (color.empty() || !isValidHexColor(color)) {
+		return defaultColor;
+	}
+	return color;
+}
+
+static std::string validateHexColor(const std::string& color) {
+	return validateHexColor(color,"#FFFFFF");
 }

@@ -64,56 +64,6 @@ static bool RelaunchAsAdmin()
 	return true;
 }
 
-// 从类似 "Ctrl+Alt+A(3)(65)" 字符串中提取并注册全局热键
-static bool RegisterHotkeyFromString(HWND hWnd, const std::wstring& hotkeyStr, int hotkeyId)
-{
-	UINT modifiers = 0;
-	UINT vk = 0;
-
-	// 查找括号中的 VK 值
-	size_t posStart = hotkeyStr.rfind(L"(");
-	size_t posEnd = hotkeyStr.rfind(L")");
-
-	if (posStart == std::wstring::npos || posEnd == std::wstring::npos || posEnd <= posStart + 1)
-	{
-		return false;
-	}
-
-	std::wstring vkStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
-	try
-	{
-		vk = std::stoi(vkStr);
-	}
-	catch (...)
-	{
-		return false;
-	}
-
-	// 查找 modifiers 值
-	posEnd = posStart - 1;
-	posStart = hotkeyStr.rfind(L"(", posEnd);
-	if (posStart == std::wstring::npos || posEnd <= posStart + 1)
-	{
-		return false;
-	}
-
-	std::wstring modStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
-	try
-	{
-		modifiers = std::stoi(modStr);
-	}
-	catch (...)
-	{
-		return false;
-	}
-
-	// 取消旧的热键（可选）
-	UnregisterHotKey(hWnd, hotkeyId);
-
-	// 注册新的热键
-	return RegisterHotKey(hWnd, hotkeyId, modifiers, vk);
-}
-
 // 解析字符串并存储到 Map 中，用于主程序里的窗口快捷键
 static bool AddHotkey(const std::wstring& hotkeyStr, UINT64 action)
 {
@@ -310,10 +260,9 @@ static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager)
 		trayMenuManager.HideTrayIcon();
 	}
 
-
-	RegisterHotkeyFromString(s_mainHwnd, L"xxx(1)(75)",HOTKEY_ID_TOGGLE_MAIN_PANEL);
-
-
+	// UnregisterHotKey(s_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+	// 这里重新注册快捷键的话要设置一下延时，不然不生效
+	SetTimer(s_mainHwnd, TIMER_SET_GLOBAL_HOTKEY, 100, nullptr);
 	g_hotkeyMap.clear();
 	if (!pref_hotkey_open_file_location.empty())
 		AddHotkey(pref_hotkey_open_file_location, HOTKEY_ID_OPEN_FILE_LOCATION);
@@ -364,7 +313,8 @@ static void doPrefChanged(TrayMenuManager trayMenuManager)
 	const std::wstring startUpShortcutName = L"CandyLauncherBest";
 
 	bool pref_auto_start = (settingsMap["pref_auto_start"].defValue.get<int>() == 1);
-	bool pref_indexed_apps_show_sendto_shortcut = (settingsMap["pref_indexed_apps_show_sendto_shortcut"].defValue.get<int>() == 1);
+	bool pref_indexed_apps_show_sendto_shortcut = (settingsMap["pref_indexed_apps_show_sendto_shortcut"].defValue.get<
+		int>() == 1);
 
 	bool startupShortcutExists = IsStartupShortcutExists(startUpShortcutName);
 
@@ -387,18 +337,17 @@ static void doPrefChanged(TrayMenuManager trayMenuManager)
 
 	if (pref_indexed_apps_show_sendto_shortcut)
 	{
-		
 	}
-	
 }
 
 
 // 读取窗口位置
 static RECT LoadWindowRectFromRegistry()
 {
-	RECT rect = { CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT + MAIN_WINDOW_WIDTH, CW_USEDEFAULT + MAIN_WINDOW_HEIGHT };
+	RECT rect = {CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT + MAIN_WINDOW_WIDTH, CW_USEDEFAULT + MAIN_WINDOW_HEIGHT};
 	HKEY hKey;
-	if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+	if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+	{
 		DWORD size = sizeof(rect);
 		RegQueryValueExW(hKey, L"WindowRect", nullptr, nullptr, (LPBYTE)&rect, &size);
 		RegCloseKey(hKey);
@@ -410,11 +359,110 @@ static RECT LoadWindowRectFromRegistry()
 static void SaveWindowRectToRegistry(HWND hWnd)
 {
 	RECT rect;
-	if (GetWindowRect(hWnd, &rect)) {
+	if (GetWindowRect(hWnd, &rect))
+	{
 		HKEY hKey;
-		if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, nullptr, 0, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+		if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, nullptr, 0, KEY_WRITE, nullptr,
+							&hKey, nullptr) == ERROR_SUCCESS)
+		{
 			RegSetValueExW(hKey, L"WindowRect", 0, REG_BINARY, (const BYTE*)&rect, sizeof(rect));
 			RegCloseKey(hKey);
 		}
 	}
+}
+
+
+static void watchSkinFile()
+{
+	std::wstring directory = LR"(C:\Users\Administrator\source\repos\WindowsProject1)";
+	std::wstring fileName = L"skin_test.json";
+	
+	HANDLE hDir = CreateFileW(
+		directory.c_str(),
+		FILE_LIST_DIRECTORY,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		nullptr,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		nullptr
+	);
+
+
+	if (hDir == INVALID_HANDLE_VALUE)
+	{
+		DWORD err = GetLastError();
+		std::wcerr << L"无法打开目录句柄。错误代码：" << err << std::endl;
+		return;
+	}
+
+	// 1. (推荐) 使用 BYTE 数组作为缓冲区
+	char buffer[(sizeof(FILE_NOTIFY_INFORMATION) + MAX_PATH) * 2]{};
+	DWORD bytesReturned;
+
+	while (true) // 线程将在此循环
+	{
+		BOOL success = ReadDirectoryChangesW(
+			hDir,
+			buffer,
+			sizeof(buffer),
+			FALSE, // 不递归
+			FILE_NOTIFY_CHANGE_LAST_WRITE,
+			&bytesReturned,
+			nullptr,
+			nullptr
+		);
+
+		if (!success)
+		{
+			DWORD err = GetLastError();
+			std::wcerr << L"ReadDirectoryChangesW 失败，错误代码：" << err << std::endl;
+			break; // 发生错误，退出循环
+		}
+
+		// 2. (关键修复) 只有当确实返回了数据时才处理
+		if (bytesReturned > 0)
+		{
+			FILE_NOTIFY_INFORMATION* pNotify;
+			size_t offset = 0;
+
+			do
+			{
+				pNotify = (FILE_NOTIFY_INFORMATION*)((BYTE*)buffer + offset);
+
+				// FileNameLength 是以字节为单位的，需要转换为 WCHAR 的数量
+				std::wstring changedFile(pNotify->FileName, pNotify->FileNameLength / sizeof(WCHAR));
+
+				if (changedFile == fileName)
+				{
+					std::wcout << L"检测到文件修改：" << changedFile << std::endl;
+					PostMessage(s_mainHwnd, WM_HOTKEY, HOTKEY_ID_REFRESH_SKIN, 0);
+				}
+
+				// 移动到下一个通知记录
+				offset += pNotify->NextEntryOffset;
+			}
+			while (pNotify->NextEntryOffset != 0);
+		}
+	}
+
+	CloseHandle(hDir);
+}
+
+static int GetWindowVScrollBarThumbWidth(HWND hwnd, bool bAutoShow)
+{
+	SCROLLBARINFO sb = { 0 };
+	sb.cbSize = sizeof(SCROLLBARINFO);
+	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
+
+	if (!bAutoShow)
+		return sb.dxyLineButton;
+
+	if (sb.dxyLineButton)
+		return sb.dxyLineButton;
+
+	::ShowScrollBar(hwnd, SB_VERT, TRUE);
+	sb.cbSize = sizeof(SCROLLBARINFO);
+	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
+	::ShowScrollBar(hwnd, SB_VERT, FALSE);
+	return sb.dxyLineButton;
 }

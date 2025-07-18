@@ -27,6 +27,13 @@
 //}
 extern const std::vector<std::wstring> QuanPinArr;
 extern const std::vector<std::wstring> XiaoHePinyinArr;
+extern const std::vector<std::wstring> GuoBiaoPyArr;
+extern const std::vector<std::wstring> ZiGuangPyArr;
+extern const std::vector<std::wstring> PlusPlusPyArr;
+extern const std::vector<std::wstring> AbcPyArr;
+extern const std::vector<std::wstring> SougouPyArr;
+extern const std::vector<std::wstring> ZiRanMaPyArr;
+
 extern const std::vector<std::wstring> HanCharArr;
 
 class PinyinHelper
@@ -35,7 +42,7 @@ private:
 	static inline const std::vector<std::wstring>* pCurrPinyin = &QuanPinArr;
 
 public:
-	static void changePinyinType(std::string type)
+	static void changePinyinType(const std::string& type)
 	{
 		if (type == "normal")
 		{
@@ -44,6 +51,34 @@ public:
 		else if (type == "xiaohe")
 		{
 			pCurrPinyin = &XiaoHePinyinArr;
+		}
+		else if (type == "guobiao")
+		{
+			pCurrPinyin = &GuoBiaoPyArr;
+		}
+		else if (type == "ziguang")
+		{
+			pCurrPinyin = &ZiGuangPyArr;
+		}
+		else if (type == "plusplus")
+		{
+			pCurrPinyin = &PlusPlusPyArr;
+		}
+		else if (type == "abc")
+		{
+			pCurrPinyin = &AbcPyArr;
+		}
+		else if (type == "sougou")
+		{
+			pCurrPinyin = &SougouPyArr;
+		}
+		else if (type == "weiruan")
+		{
+			pCurrPinyin = &SougouPyArr;
+		}
+		else if (type == "ziranma")
+		{
+			pCurrPinyin = &ZiRanMaPyArr;
 		}
 	}
 

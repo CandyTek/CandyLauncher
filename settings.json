@@ -167,8 +167,8 @@
 			"title":"使用双拼",
 			"type":"list",
 			"subPage":"feature",
-			"entries":["全拼","小鹤双拼"],
-			"entryValues":["normal","xiaohe"],
+			"entries":["全拼","小鹤双拼","国标双拼","紫光双拼","拼音加加双拼","智能ABC双拼","搜狗双拼","微软双拼","自然码双拼"],
+			"entryValues":["normal","xiaohe","guobiao","ziguang","plusplus","abc","sougou","weiruan","ziranma"],
 			"defValue":"normal"
 		},
 		{

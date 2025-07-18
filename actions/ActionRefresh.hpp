@@ -17,7 +17,7 @@ public:
 
 	explicit ActionRefresh(
 		const CallbackFunction callback
-	):callback1(callback)
+	): RunCommandAction(L"", L""), callback1(callback)
 	{
 		const std::wstring justName = L"刷新列表";
 		RunCommand = PinyinHelper::GetPinyinLongStr(MyToLower(justName));
@@ -25,7 +25,6 @@ public:
 		SetTitle(justName);
 		SetSubtitle(L"刷新运行配置");
 		SetExecutable(true);
-
 	}
 
 	// 运行命令

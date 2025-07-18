@@ -42,7 +42,7 @@ add_executable(WindowsProject1
         
 )
 
-add_definitions(-DUNICODE -D_UNICODE)
+add_definitions(-DUNICODE -D_UNICODE -DNOMINMAX)
 
 # 仅在 Windows 平台上设置 GUI 子系统和相关链接选项
 if (WIN32)
@@ -52,6 +52,9 @@ if (WIN32)
     # 检查是否是 Visual Studio 2022
     if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio 17")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
+        add_compile_options(/W4 /WX)
+        add_definitions(-DUSE_VS_TOOLCHAIN=1)
+        set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # 编译资源文件（推荐使用外部命令或者手动添加）
 #        set(RESOURCE_FILE ${CMAKE_CURRENT_BINARY_DIR}/windowsproject1.res)
@@ -64,6 +67,12 @@ if (WIN32)
 #        add_custom_target(resource_target ALL DEPENDS ${RESOURCE_FILE})
 #        add_dependencies(WindowsProject1 resource_target)
 #        target_sources(WindowsProject1 PRIVATE ${RESOURCE_FILE})
+        # 关闭优化
+        if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+            if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
+            endif()
+        endif()
 
         # 检查是否是 MinGW
         if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0)
@@ -71,9 +80,6 @@ if (WIN32)
         endif()
     endif()
 endif()
-
-# 关闭优化
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
 
 set(CMAKE_GENERATOR_PLATFORM x64)  # 或者 x86，依据需要设置
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")

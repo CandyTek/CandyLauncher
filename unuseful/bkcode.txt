@@ -1,16 +1,24 @@
 ﻿todo:
 
-pref_indexed_uwp_apps_enable
-pref_hotkey_toggle_main_panel
 pref_indexed_apps_show_sendto_shortcut
-
-allow_drag_file
+UWP 索引添加排除功能
+快捷键加数字直接打开第某项
 完整匹配
-pref_indexed_folders
-pref_check_version_update
-
+允许输入法输入
 skin
 pref_night_mode
+可设置自定义整体透明度
+
+
+
+后期：
+allow_drag_file
+pref_indexed_folders
+pref_check_version_update
+添加，一键检查某些索引是否失效
+添加，语言国际化
+自定义右键菜单，可以添加一些管理索引的设置
+索引查看器
 
 
 //case WM_TIMER:
@@ -736,3 +744,327 @@ static LRESULT CALLBACK HotkeySubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, 
 			"subPage":"feature",
 			"defValue":false
 		},
+
+
+
+
+子控件设置为透明的效果很不好，非常不建议
+	case WM_CTLCOLOREDIT:
+	case WM_CTLCOLORSTATIC:
+SetBkMode(hdc, TRANSPARENT);
+return (INT_PTR)GetStockObject(NULL_BRUSH);
+
+
+
+
+
+		case WM_PAINT:
+			{
+				// 开始完全自定义绘制
+				PAINTSTRUCT ps;
+				HDC hdc = BeginPaint(hwnd, &ps);
+
+				// 创建GDI+绘图对象
+				Gdiplus::Graphics graphics(hdc);
+				graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
+				graphics.SetInterpolationMode(Gdiplus::InterpolationMode::InterpolationModeHighQualityBicubic);
+				graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+				Gdiplus::SolidBrush brush(Gdiplus::Color(0xFF, 0x22, 0x22, 0x22)); // 文本颜色
+            
+				// 准备绘制文本
+				TCHAR buffer[1024];
+				GetWindowText(hwnd, buffer, sizeof(buffer)/sizeof(buffer[0]));
+            
+				// 获取字体信息
+				HFONT hFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+				Gdiplus::Font font(hdc, hFont);
+            
+				// 计算绘制位置（考虑滚动位置和光标）
+				DWORD firstChar = (DWORD)SendMessage(hwnd, EM_CHARFROMPOS, 0, 0);
+				int xOffset = LOWORD(SendMessage(hwnd, EM_POSFROMCHAR, firstChar, 0));
+            
+				// 绘制背景
+				RECT rc;
+				GetClientRect(hwnd, &rc);
+				// 创建 GDI+ 画刷
+				Gdiplus::SolidBrush bgBrush(Gdiplus::Color(0xFF, 0x88, 0x88, 0x88));
+				graphics.FillRectangle(&bgBrush, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+				// graphics.FillRectangle(&brush, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+
+            
+				// 设置文本布局
+				Gdiplus::StringFormat format;
+				format.SetTrimming(Gdiplus::StringTrimmingNone);
+				format.SetFormatFlags(Gdiplus::StringFormatFlagsLineLimit);
+            
+				// 绘制文本
+				graphics.DrawString(
+					buffer, -1, &font,
+					Gdiplus::RectF(-xOffset, 0, rc.right + abs(xOffset), rc.bottom),
+					&format, &brush);
+				
+				EndPaint(hwnd, &ps);
+				return 0; // 完全处理，阻止默认绘制
+			}
+		case WM_ERASEBKGND:
+			return 1; // 阻止默认背景擦除
+
+
+		default: break;
+		}
+		// ctrl+o 会发出beep声，解决不了，很多原生程序的编辑框也会这样子
+		return DefSubclassProc(hwnd, msg, wParam, lParam);
+	}
+
+
+	// --- 4. 强制重绘 ---
+	// 让所有更改生效
+	// InvalidateRect(hWnd, NULL, TRUE);
+	// UpdateWindow(hWnd); // 立即重绘
+	// RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+	// ShowWindow(hWnd,SW_FORCEMINIMIZE);
+	// ShowWindow(hWnd,SW_SHOW);
+
+	// LONG style = GetWindowLong(hWnd, GWL_STYLE);
+	// SetWindowLong(hWnd, GWL_STYLE, style & ~WS_CLIPCHILDREN);
+	// RedrawWindow(hWnd, NULL, NULL, 
+	// 	RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+	// SetWindowLong(hWnd, GWL_STYLE, style);
+
+
+
+
+		case WM_ERASEBKGND:
+			{
+				HDC hdc = (HDC)wParam;
+				RECT rc;
+				GetClientRect(hwnd, &rc);
+				int width = rc.right - rc.left;
+				int height = rc.bottom - rc.top;
+
+				// GDI+ Bitmap + Graphics
+				Gdiplus::Bitmap bitmap(width, height, PixelFormat32bppARGB);
+				Gdiplus::Graphics gBmp(&bitmap);
+				gBmp.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+				// 获取父窗口的位置关系
+				// HWND hwndParent = (HWND)dwRefData;
+				HWND hwndParent = GetParent(hwnd);
+				POINT pt = { 0, 0 };
+				MapWindowPoints(hwnd, hwndParent, &pt, 1);
+
+				// 创建 GDI HDC 绑定 Graphics，供父窗口画图
+				HDC hdcMem = gBmp.GetHDC();
+
+				// 父窗口绘制内容到 gBmp 对应的 HDC
+				SendMessage(hwndParent, WM_PRINT, (WPARAM)hdcMem,
+							PRF_CLIENT | PRF_ERASEBKGND | PRF_NONCLIENT);
+
+				gBmp.ReleaseHDC(hdcMem); // 必须释放
+
+				// 显示绘制结果
+				Gdiplus::Graphics g(hdc);
+				g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+				g.DrawImage(&bitmap, 0, 0, width, height);
+
+				return TRUE;
+			}
+
+
+
+
+
+
+
+
+
+
+
+	// case WM_CTLCOLOREDIT:
+	// case WM_CTLCOLORSTATIC:
+	// 	{
+	// 		// 用于 编辑框的背景颜色
+	// 		HDC hdc = reinterpret_cast<HDC>(wParam);
+	// 		// 设置字体颜色
+	// 		if (g_skinJson!=nullptr)
+	// 		{
+	// 			std::string fontColorHex = g_skinJson.value("editbox_font_color", "#000000");
+	// 			SetTextColor(hdc, HexToCOLORREF(fontColorHex));
+	//
+	// 			// 设置背景
+	// 			// SetBkMode(hdc, TRANSPARENT); // 使背景透明，这样才能看到父窗口的背景
+	// 			
+	//
+	// 			// 返回一个空画刷，因为我们希望背景是透明的
+	// 			// 如果需要纯色背景，则创建并返回对应颜色的画刷
+	// 			std::string editBgColorHex = g_skinJson.value("editbox_bg_color", "");
+	// 			if (!editBgColorHex.empty()) {
+	// 				// static HBRUSH hEditBrush = nullptr;
+	// 				// if(hEditBrush) DeleteObject(hEditBrush); // 删除旧画刷
+	// 				// hEditBrush = CreateSolidBrush(HexToCOLORREF(editBgColorHex));
+	// 				// return (INT_PTR)hEditBrush;
+	// 			SetBkColor(hdc, RGB(255, 255, 255)); // 白色背景
+	// 				static HBRUSH hBrush = CreateSolidBrush(COLOR_UI_BG); // 深色背景
+	// 				return reinterpret_cast<INT_PTR>(hBrush);
+	// 			}else
+	// 			{
+	// 			SetBkColor(hdc, RGB(255, 255, 255)); // 白色背景
+	// 				static HBRUSH hBrush = CreateSolidBrush(HexToCOLORREF(editBgColorHex)); // 深色背景
+	// 				return reinterpret_cast<INT_PTR>(hBrush);
+	// 			}
+	//
+	// 			return (INT_PTR)GetStockObject(NULL_BRUSH);
+	// 		}else
+	// 		{
+	// 			// 设置背景透明
+	// 			static HBRUSH hBrush = CreateSolidBrush(COLOR_UI_BG); // 深色背景
+	// 			return reinterpret_cast<INT_PTR>(hBrush);
+	// 		}
+	// 	}
+
+
+	// case WM_CTLCOLOREDIT:
+	// case WM_CTLCOLORSTATIC:
+	// 	{
+	// 		if (g_skinJson!=nullptr){
+	// 			HDC hdc = reinterpret_cast<HDC>(wParam);
+	//
+	// 			// 设置字体颜色
+	// 			// std::string fontColorHex = g_skinJson.value("editbox_font_color", "#000000");
+	// 			std::string fontColorHex = "#111111";
+	// 			SetTextColor(hdc, HexToCOLORREF(fontColorHex));
+	//
+	// 			// 设置背景
+	// 			// SetBkMode(hdc, TRANSPARENT); // 使背景透明，这样才能看到父窗口的背景
+	// 						SetBkMode(hdc, OPAQUE);
+	// 			SetBkColor(hdc, RGB(255, 255, 255)); // 白色背景
+	//
+	// 			// 返回一个空画刷，因为我们希望背景是透明的
+	// 			// 如果需要纯色背景，则创建并返回对应颜色的画刷
+	// 			std::string editBgColorHex = g_skinJson.value("editbox_bg_color", "");
+	// 			if (!editBgColorHex.empty())
+	// 			{
+	// 				static HBRUSH hEditBrush = nullptr;
+	// 				if (hEditBrush) DeleteObject(hEditBrush); // 删除旧画刷
+	// 				hEditBrush = CreateSolidBrush(HexToCOLORREF(editBgColorHex));
+	// 				return (INT_PTR)hEditBrush;
+	// 			}
+	//
+	// 			return (INT_PTR)GetStockObject(NULL_BRUSH);
+	// 		}
+	// 	}
+	// 	break;
+	// case WM_CTLCOLORSTATIC:
+	// case WM_CTLCOLOREDIT:
+	// 	{
+	// 		// 这个分支处理 hEdit 控件的背景
+	// 		HDC hdc = (HDC)wParam;
+	// 		HWND hCtrl = (HWND)lParam;
+	// 		SetBkMode(hdc, OPAQUE);
+	// 		SetGraphicsMode(hdc, GM_COMPATIBLE);
+	// 		if (hCtrl == hEdit) {
+	// 			// 如果有皮肤配置，从皮肤JSON中获取颜色
+	// 			if (g_skinJson != nullptr) {
+	// 				// std::string fontColorHex = g_skinJson.value("editbox_font_color", "#222222");
+	// 				std::string fontColorHex = "#222222";
+	// 				std::string bgColorHex = g_skinJson.value("editbox_bg_color", "#FFFFFF"); // 例如，我们想要一个纯白背景
+	//
+	// 				SetTextColor(hdc, HexToCOLORREF(fontColorHex));
+	// 				SetBkColor(hdc, HexToCOLORREF(bgColorHex));
+	//
+	// 				// 创建并返回一个静态画刷，避免每次都创建导致资源泄露
+	// 				static HBRUSH hEditBrush = CreateSolidBrush(HexToCOLORREF(bgColorHex));
+	// 				return (INT_PTR)hEditBrush;
+	// 			}
+	// 			else {
+	// 				// 默认行为
+	// 				SetTextColor(hdc, RGB(10, 10, 10)); // 黑色字体
+	// 				// SetBkColor(hdc, RGB(255, 255, 255)); // 白色背景
+	// 				// SetBkColor(hdc, RGB(255, 255, 255)); // 白色背景
+	// 				SetBkColor(hdc, RGB(10, 10, 10)); // 黑色字体
+	//
+	// 				static HBRUSH hDefaultBrush = CreateSolidBrush(RGB(255, 255, 255));
+	// 				return (INT_PTR)hDefaultBrush;
+	// 			}
+	// 		}
+	// 		break; // 不要忘记 break
+	// 	}
+	
+	case WM_ERASEBKGND:
+		{
+			// if (g_skinJson!=nullptr&& g_backgroundImage==nullptr)
+			// {
+			// 	std::string bgColorStr=g_skinJson.value("window_bg_color", "#FFFFFF");
+			// 	if (bgColorStr.empty())
+			// 	{
+			// 		return 1;
+			// 	}
+			// 	
+			// 	HDC hdc = (HDC)wParam;
+			// 	RECT clientRect;
+			// 	GetClientRect(hWnd, &clientRect);
+			//
+			// 	// Default to white color if the JSON object is not available or the key is missing
+			// 	COLORREF bgColor = RGB(255, 255, 255);
+			// 	bgColor = HexToCOLORREF(bgColorStr);
+			//
+			// 	// Create a temporary brush, fill the background, and delete the brush
+			// 	HBRUSH hBgBrush = CreateSolidBrush(bgColor);
+			// 	FillRect(hdc, &clientRect, hBgBrush);
+			// 	DeleteObject(hBgBrush);
+			// }
+			return 1; // Return non-zero to indicate you have handled erasing the background
+		}
+
+
+
+	// hEdit = CreateWindowExW(
+	// 	WS_EX_CLIENTEDGE,       // 可以给一点边框样式
+	// 	MSFTEDIT_CLASS,         // ✨ 使用 Rich Edit 的类名
+	// 	L"",                    // 初始文本
+	// 	WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL,
+	// 	10, 10, 580, 35,
+	// 	hWnd,
+	// 	reinterpret_cast<HMENU>(1),
+	// 	hInstance,
+	// 	nullptr
+	// );
+	// 1. ✨ 设置不透明的背景颜色
+	// wParam 设置为 FALSE 表示 lParam 是一个 COLORREF
+	// 这里的颜色就是纯白色，完全不透明
+	// SendMessage(hEdit, EM_SETBKGNDCOLOR, FALSE, (LPARAM)RGB(255, 255, 255));
+	// CHARFORMAT2W cf{};
+	// cf.cbSize = sizeof(cf);
+	// cf.dwMask = CFM_COLOR | CFM_FACE | CFM_SIZE | CFM_WEIGHT | CFM_BACKCOLOR; // 我们要设置颜色、字体、大小、粗细 和 文字背景色
+	//
+	// cf.crTextColor = RGB(10, 10, 10); // 文本颜色
+	// cf.crBackColor = RGB(255, 255, 255); 
+	//
+	// cf.yHeight = 11 * 20; // 字体大小，单位是缇(twip), 1磅=20缇
+	// cf.wWeight = FW_NORMAL; // 正常粗细
+	// wcscpy_s(cf.szFaceName, L"Microsoft YaHei UI"); // 字体
+	//
+	// SendMessage(hEdit, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&cf);
+	// SendMessageW(hEdit, EM_SETCUEBANNER, TRUE,
+	// 	reinterpret_cast<LPARAM>(utf8_to_wide(
+	// 		settingsMap["pref_search_box_placeholder"].defValue.get<std::string>()).c_str()));
+
+
+
+// 透明键玩法
+			// HBRUSH greenBrush = CreateSolidBrush(RGB(80, 81, 82));
+			// FillRect(hdc, &ps.rcPaint, greenBrush);
+			// DeleteObject(greenBrush);
+
+
+		// std::wstringstream wss;
+		// wss << L"绘制背景." << (rcClient.right - rcClient.left) << L"x" << (rcClient.bottom - rcClient.top) << L"\t" << lplvcd->clrText<< L"\t" << lplvcd->dwItemType<< L"\t" << lplvcd->nmcd.hdc;
+		// Println(wss.str());
+
+	// if (fontsInitialized) return;
+	// Gdiplus::FontFamily fontFamily(L"Segoe UI");
+	// titleFont = std::make_unique<Gdiplus::Font>(&fontFamily, 14.0f, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	// subFont = std::make_unique<Gdiplus::Font>(&fontFamily, 12.0f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	// whiteBrush = std::make_unique<Gdiplus::SolidBrush>(Gdiplus::Color(255, 255, 255, 255));
+	// blackBrush = std::make_unique<Gdiplus::SolidBrush>(Gdiplus::Color(255, 0, 0, 0));
+	// grayBrush = std::make_unique<Gdiplus::SolidBrush>(Gdiplus::Color(255, fontColorGray, fontColorGray, fontColorGray));

@@ -13,7 +13,7 @@ public:
 		const std::wstring& description,
 		const std::wstring& icon,
 		const CallbackFunction& callback
-	): callback1(callback)
+	): RunCommandAction(justName, description), callback1(callback)
 	{
 		RunCommand = PinyinHelper::GetPinyinLongStr(MyToLower(justName));
 		targetFilePath = icon;
