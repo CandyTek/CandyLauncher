@@ -2,8 +2,9 @@
 	"version":1,
 	"window_width":500,
 	"window_height":500,
-	"window_bg_picture":"E:\\Github\\airplay\\iot-channel-app\\app\\channel-tv\\src\\main\\res\\drawable-hdpi\\plugin_bindcode_background.png",
-	"window_bg_color":"#888888",
+        "window_bg_picture":"E:\\Github\\airplay\\iot-channel-app\\app\\channel-tv\\src\\main\\res\\drawable-hdpi\\plugin_bindcode_background.png",
+        "window_bg_color":"#888888",
+        "window_opacity":255,
 
 	"editbox_width":437,
 	"editbox_height":50,
