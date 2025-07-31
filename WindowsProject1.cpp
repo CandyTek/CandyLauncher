@@ -329,12 +329,17 @@ static void refreshSkin()
 		return;
 	}
 	// --- 1. 更新主窗口 ---
-	int windowWidth = g_skinJson.value("window_width", MAIN_WINDOW_WIDTH);
-	int windowHeight = g_skinJson.value("window_height", MAIN_WINDOW_HEIGHT);
-	SetWindowPos(hWnd, nullptr, 0, 0, windowWidth, windowHeight, SWP_NOMOVE | SWP_NOZORDER);
+        int windowWidth = g_skinJson.value("window_width", MAIN_WINDOW_WIDTH);
+        int windowHeight = g_skinJson.value("window_height", MAIN_WINDOW_HEIGHT);
+        SetWindowPos(hWnd, nullptr, 0, 0, windowWidth, windowHeight, SWP_NOMOVE | SWP_NOZORDER);
 
-	// 处理背景图片
-	getSkinPictureFile(g_BgImage, "window_bg_picture");
+        int windowOpacity = g_skinJson.value("window_opacity", 255);
+        if (windowOpacity < 0) windowOpacity = 0;
+        if (windowOpacity > 255) windowOpacity = 255;
+        SetLayeredWindowAttributes(hWnd, 0, static_cast<BYTE>(windowOpacity), LWA_ALPHA);
+
+        // 处理背景图片
+        getSkinPictureFile(g_BgImage, "window_bg_picture");
 	getSkinPictureFile(g_editBgImage, "editbox_bg_picture");
 	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture");
 	getSkinPictureFile(g_listItemBgImage, "item_font_bg_picture");
