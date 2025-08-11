@@ -1,293 +1,378 @@
 {
-	"version":1,
-	"prefList":[
+	"version": 1,
+	"prefList": [
 		{
-			"key":"pref_auto_start",
-			"title":"开机自动启动",
-			"type":"bool",
-			"subPage":"normal",
-			"defValue":false
+			"key": "pref_auto_start",
+			"title": "开机自动启动",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": false
 		},
 		{
-			"key":"pref_show_tray_icon",
-			"title":"显示托盘图标",
-			"type":"bool",
-			"subPage":"normal",
-			"defValue":true
+			"key": "pref_show_tray_icon",
+			"title": "显示托盘图标",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": true
 		},
 		{
-			"key":"pref_run_app_as_admin",
-			"title":"以管理员身份启动本程序",
-			"type":"bool",
-			"subPage":"normal",
-			"defValue":true
+			"key": "pref_run_app_as_admin",
+			"title": "以管理员身份启动本程序",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": true
 		},
 		{
-			"key":"pref_hide_window_after_run",
-			"title":"静默启动本程序",
-			"type":"bool",
-			"subPage":"normal",
-			"defValue":true
+			"key": "pref_hide_window_after_run",
+			"title": "静默启动本程序",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": true
 		},
 		{
-			"key":"pref_night_mode",
-			"title":"夜间模式",
-			"type":"list",
-			"entries":["总是使用主题","总是夜间模式","自动识别"],
-			"entryValues":["day_mode","night_mode","auto_recognition"],
-			"subPage":"normal",
-			"defValue":"day_mode"
-		},
-
-		{
-			"key":"pref_hotkey_toggle_main_panel",
-			"title":"主面板显示、隐藏",
-			"type":"hotkeystring",
-			"subPage":"hotkey",
-			"defValue":""
-		},
-		{
-			"key":"pref_show_window_and_release_modifier_key",
-			"title":"主面板显示后松开修饰键",
-			"type":"bool",
-			"subPage":"hotkey",
-			"defValue":true
+			"key": "pref_night_mode",
+			"title": "夜间模式",
+			"type": "list",
+			"entries": [
+				"总是使用主题",
+				"总是夜间模式",
+				"自动识别"
+			],
+			"entryValues": [
+				"day_mode",
+				"night_mode",
+				"auto_recognition"
+			],
+			"subPage": "normal",
+			"defValue": "day_mode"
 		},
 		{
-			"key":"pref_hotkey_open_file_location",
-			"title":"打开项目文件所在位置",
-			"type":"hotkeystring",
-			"subPage":"hotkey",
-			"defValue":""
+			"key": "pref_hotkey_toggle_main_panel",
+			"title": "主面板显示、隐藏",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
 		},
 		{
-			"key":"pref_hotkey_open_target_location",
-			"title":"打开项目目标所在位置",
-			"type":"hotkeystring",
-			"subPage":"hotkey",
-			"defValue":""
+			"key": "pref_show_window_and_release_modifier_key",
+			"title": "主面板显示后松开修饰键",
+			"type": "bool",
+			"subPage": "hotkey",
+			"defValue": true
 		},
 		{
-			"key":"pref_hotkey_open_with_clipboard_params",
-			"title":"打开附带剪贴板参数",
-			"type":"hotkeystring",
-			"subPage":"hotkey",
-			"defValue":""
+			"key": "pref_hotkey_open_file_location",
+			"title": "打开项目文件所在位置",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
 		},
 		{
-			"key":"pref_hotkey_run_item_as_admin",
-			"title":"以管理员身份运行项目",
-			"type":"hotkeystring",
-			"subPage":"hotkey",
-			"defValue":""
+			"key": "pref_hotkey_open_target_location",
+			"title": "打开项目目标所在位置",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
 		},
 		{
-			"key":"pref_run_item_as_admin",
-			"title":"以管理员身份运行项目",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
+			"key": "pref_hotkey_open_with_clipboard_params",
+			"title": "打开附带剪贴板参数",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
 		},
 		{
-			"key":"pref_hide_in_fullscreen",
-			"title":"全屏应用时不显示",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
+			"key": "pref_hotkey_run_item_as_admin",
+			"title": "以管理员身份运行项目",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
 		},
 		{
-			"key":"pref_hide_in_topmost_fullscreen",
-			"title":"置顶全屏应用不弹出窗口",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":true
+			"key": "pref_run_item_as_admin",
+			"title": "以管理员身份运行项目",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_window_always_on_top",
-			"title":"窗口置于顶层",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":true
+			"key": "pref_hide_in_fullscreen",
+			"title": "全屏应用时不弹出窗口",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_window_mouse_penetration",
-			"title":"主面板鼠标穿透",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
+			"key": "pref_hide_in_topmost_fullscreen",
+			"title": "置顶全屏应用时不弹出窗口",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": true
 		},
 		{
-			"key":"pref_close_after_open_item",
-			"title":"打开项目后关闭窗口",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":true
+			"key": "pref_window_always_on_top",
+			"title": "主窗口置于顶层",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": true
 		},
 		{
-			"key":"pref_close_on_dismiss_focus",
-			"title":"失去焦点时关闭窗口",
-			"type":"list",
-			"entries":["允许拖放文件(未完善)","立即关闭窗口","无"],
-			"entryValues":["allow_drag_file","close_immediate","null"],
-			"subPage":"feature",
-			"defValue":"allow_drag_file"
+			"key": "pref_window_mouse_penetration",
+			"title": "主窗口鼠标穿透",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_window_popup_position",
-			"title":"窗口弹出位置",
-			"type":"list",
-			"subPage":"feature",
-			"entries":["上次打开的位置","当前光标所在屏幕","前台窗口所在屏幕","前台窗口范围内","固定主屏幕","固定屏幕二","固定屏幕三"],
-			"entryValues":["last_time_opened_pos","currect_cursor_on_screen","currect_window_on_screen","within_focus_window","screen_first","screen_second","screen_third"],
-			"defValue":"currect_cursor_on_screen"
+			"key": "pref_close_after_open_item",
+			"title": "打开项目后关闭窗口",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": true
 		},
 		{
-			"key":"pref_window_popup_position_offset_x",
-			"title":"窗口弹出位置水平偏移",
-			"type":"long",
-			"subPage":"feature",
-			"defValue":50
+			"key": "pref_close_on_dismiss_focus",
+			"title": "失去焦点时关闭窗口",
+			"type": "list",
+			"entries": [
+				"允许拖放文件(未完善)",
+				"立即关闭窗口",
+				"无"
+			],
+			"entryValues": [
+				"allow_drag_file",
+				"close_immediate",
+				"null"
+			],
+			"subPage": "feature",
+			"defValue": "allow_drag_file"
 		},
 		{
-			"key":"pref_window_popup_position_offset_y",
-			"title":"窗口弹出位置垂直偏移",
-			"type":"long",
-			"subPage":"feature",
-			"defValue":40
+			"key": "pref_window_popup_position",
+			"title": "窗口弹出位置",
+			"type": "list",
+			"subPage": "feature",
+			"entries": [
+				"上次打开的位置",
+				"当前光标所在屏幕",
+				"前台窗口所在屏幕",
+				"前台窗口范围内",
+				"固定主屏幕",
+				"固定屏幕二",
+				"固定屏幕三"
+			],
+			"entryValues": [
+				"last_time_opened_pos",
+				"currect_cursor_on_screen",
+				"currect_window_on_screen",
+				"within_focus_window",
+				"screen_first",
+				"screen_second",
+				"screen_third"
+			],
+			"defValue": "currect_cursor_on_screen"
 		},
 		{
-			"key":"pref_lock_window_popup_position",
-			"title":"锁定窗口位置",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
+			"key": "pref_window_popup_position_offset_x",
+			"title": "窗口弹出位置水平偏移",
+			"type": "long",
+			"subPage": "feature",
+			"defValue": 50
 		},
 		{
-			"key":"pref_pinyin_mode",
-			"title":"使用双拼",
-			"type":"list",
-			"subPage":"feature",
-			"entries":["全拼","小鹤双拼","国标双拼","紫光双拼","拼音加加双拼","智能ABC双拼","搜狗双拼","微软双拼","自然码双拼"],
-			"entryValues":["normal","xiaohe","guobiao","ziguang","plusplus","abc","sougou","weiruan","ziranma"],
-			"defValue":"normal"
+			"key": "pref_window_popup_position_offset_y",
+			"title": "窗口弹出位置垂直偏移",
+			"type": "long",
+			"subPage": "feature",
+			"defValue": 40
 		},
 		{
-			"key":"pref_force_ime_mode",
-			"title":"总是切换到输入法",
-			"type":"list",
-			"subPage":"feature",
-			"entries":["无","英文","中文","自定义"],
-			"entryValues":["null","en","ch","custom"],
-			"defValue":"null"
+			"key": "pref_lock_window_popup_position",
+			"title": "锁定窗口位置",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_custom_ime_id",
-			"title":"自定义切换输入法",
-			"type":"string",
-			"subPage":"feature",
-			"defValue":""
-		},
-
-		{
-			"key":"pref_search_box_placeholder",
-			"title":"搜索编辑框提示词",
-			"type":"string",
-			"subPage":"feature",
-			"defValue":"please input text..."
-		},
-		{
-			"key":"pref_preserve_last_search_term",
-			"title":"保留上次搜索词",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
-		},
-		{
-			"key":"pref_last_search_term_selected",
-			"title":"选中上次搜索词",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":true
-		},
-		{
-			"key":"pref_single_click_to_open",
-			"title":"单击直接打开",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
+			"key": "pref_pinyin_mode",
+			"title": "使用双拼",
+			"type": "list",
+			"subPage": "feature",
+			"entries": [
+				"全拼",
+				"小鹤双拼",
+				"国标双拼",
+				"紫光双拼",
+				"拼音加加双拼",
+				"智能ABC双拼",
+				"搜狗双拼",
+				"微软双拼",
+				"自然码双拼"
+			],
+			"entryValues": [
+				"normal",
+				"xiaohe",
+				"guobiao",
+				"ziguang",
+				"plusplus",
+				"abc",
+				"sougou",
+				"weiruan",
+				"ziranma"
+			],
+			"defValue": "normal"
 		},
 		{
-			"key":"pref_fuzzy_match",
-			"title":"模糊匹配",
-			"type":"bool",
-			"subPage":"feature",
-			"defValue":false
+			"key": "pref_force_ime_mode",
+			"title": "总是切换到输入法",
+			"type": "list",
+			"subPage": "feature",
+			"entries": [
+				"无",
+				"英文",
+				"中文",
+				"自定义"
+			],
+			"entryValues": [
+				"null",
+				"en",
+				"ch",
+				"custom"
+			],
+			"defValue": "null"
 		},
 		{
-			"key":"pref_max_search_results",
-			"title":"列表结果数量",
-			"type":"long",
-			"subPage":"feature",
-			"defValue":0
+			"key": "pref_custom_ime_id",
+			"title": "自定义切换输入法",
+			"type": "string",
+			"subPage": "feature",
+			"defValue": ""
 		},
 		{
-			"key":"pref_indexed_apps_show_sendto_shortcut",
-			"title":"在右键 \"发送到\" 菜单中显示 \"CandyLauncher 快捷方式用户目录\"",
-			"type":"bool",
-			"subPage":"index",
-			"defValue":true
+			"key": "pref_search_box_placeholder",
+			"title": "搜索编辑框提示词",
+			"type": "string",
+			"subPage": "feature",
+			"defValue": "please input text..."
 		},
 		{
-			"key":"pref_indexed_uwp_apps_enable",
-			"title":"索引UWP应用",
-			"type":"bool",
-			"subPage":"index",
-			"defValue":true
+			"key": "pref_preserve_last_search_term",
+			"title": "保留上次搜索词",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_indexed_folders",
-			"title":"索引文件夹列表(未完善)",
-			"type":"stringArr",
-			"subPage":"index",
-			"defValue":[
-				"C://",
-				"D://"
-			]
+			"key": "pref_last_search_term_selected",
+			"title": "选中上次搜索词",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": true
 		},
 		{
-			"key":"pref_app_name",
-			"title":"CandyLauncher",
-			"type":"text",
-			"subPage":"about",
-			"defValue":""
+			"key": "pref_single_click_to_open",
+			"title": "单击直接打开",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_version_name",
-			"title":"版本 V1.0(x64)",
-			"type":"text",
-			"subPage":"about",
-			"defValue":""
+			"key": "pref_fuzzy_match",
+			"title": "模糊匹配",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
 		},
 		{
-			"key":"pref_check_version_update",
-			"title":"检查更新",
-			"type":"text",
-			"subPage":"about",
-			"defValue":""
+			"key": "pref_fuzzy_match_score_threshold",
+			"title": "模糊匹配分数阈值",
+			"type": "long",
+			"subPage": "feature",
+			"defValue": 60
 		},
 		{
-			"key":"pref_acknowledgements",
-			"title":"致谢: \nCLion(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick (https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp(https://github.com/rapidfuzz/rapidfuzz-cpp)\n",
-			"type":"text",
-			"subPage":"about",
-			"defValue":""
+			"key": "pref_max_search_results",
+			"title": "列表结果数量",
+			"type": "long",
+			"subPage": "feature",
+			"defValue": 0
 		},
 		{
-			"key":"pref_project_url",
-			"title":"项目地址: https://github.com/CandyTek/CandyLauncher",
-			"type":"text",
-			"subPage":"about",
-			"defValue":""
+			"key": "pref_indexed_apps_show_sendto_shortcut",
+			"title": "在右键 \"发送到\" 菜单中显示 \"CandyLauncher 索引文件夹\"",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": true
+		},
+		{
+			"key": "pref_indexed_uwp_apps_enable",
+			"title": "索引UWP应用",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": true
+		},
+		{
+			"key": "pref_btn_indexed_manager",
+			"title": "索引查看器",
+			"type": "button",
+			"subPage": "index",
+			"defValue": ""
+		},
+		{
+			"key": "pref_app_name",
+			"title": "CandyLauncher",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_version_name",
+			"title": "版本 V1.0(x64)",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_check_version_update",
+			"title": "检查更新",
+			"type": "button",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_acknowledgements",
+			"title": "致谢: \nCLion(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick (https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp(https://github.com/rapidfuzz/rapidfuzz-cpp)\n",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_project_url",
+			"title": "项目地址: https://github.com/CandyTek/CandyLauncher",
+			"type": "button",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_open_config_folder",
+			"title": "打开配置文件夹",
+			"type": "button",
+			"subPage": "other",
+			"defValue": "open_config_folder"
+		},
+		{
+			"key": "pref_backup_settings",
+			"title": "备份设置",
+			"type": "button",
+			"subPage": "other",
+			"defValue": "backup_settings"
+		},
+		{
+			"key": "pref_restore_settings",
+			"title": "恢复设置",
+			"type": "button",
+			"subPage": "other",
+			"defValue": "restore_settings"
 		}
 	]
 }

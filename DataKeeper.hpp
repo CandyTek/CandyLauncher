@@ -59,10 +59,16 @@ extern int unknown_file_icon_index;
 extern float window_position_offset_x;
 extern float window_position_offset_y;
 
+extern int lastWindowCenterX ;
+extern int lastWindowCenterY ;
+
 
 // const int COLOR_UI_BG_VALUE = 110;
 //const int COLOR_UI_BG_VALUE = 255;
 extern int LISTITEM_ICON_SIZE;
+extern int pref_fuzzy_match_score_threshold;
+
+
 const int COLOR_UI_BG_VALUE = 170;
 const int COLOR_UI_BG_DEEP_VALUE = 130;
 
@@ -102,6 +108,8 @@ extern std::unique_ptr<Gdiplus::Font> g_listItemFont2;
 extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1;
 extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2;
 
+extern  int g_lastWindowOpacity;
+
 extern  int g_itemIconX;
 extern  int g_itemIconY;
 extern  int g_itemIconSelectedX;
@@ -123,3 +131,9 @@ extern double g_item_font_size_1;
 extern double g_item_font_size_2;
 extern double g_item_font_size_selected_1;
 extern double g_item_font_size_selected_2;
+
+extern int MAIN_WINDOW_WIDTH ;
+extern int MAIN_WINDOW_HEIGHT ;
+
+constexpr int DEFAULT_MAIN_WINDOW_WIDTH = 620;
+constexpr int DEFAULT_MAIN_WINDOW_HEIGHT = 480;

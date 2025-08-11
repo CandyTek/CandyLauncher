@@ -27,6 +27,9 @@
 #include "TrayMenuManager.h"
 #include <Richedit.h>
 
+//    #include "cli.h"
+
+
 // 全局变量:
 HWND hEdit;
 // 当前主窗口
@@ -58,7 +61,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
-
+    // 调试窗口
+//	 AttachConsoleForDebug();
 	MyRegisterClass(hInstance);
 	MyRegisterClass2(hInstance);
 
@@ -68,7 +72,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	//std::thread(watchSkinFile).detach();
 	g_watcherThread = std::thread(watchSkinFile);
 
-	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
 
 	MSG msg;
 
@@ -170,9 +174,15 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 		dw_ex_style |= WS_EX_TRANSPARENT;
 	}
 	// 从注册表读取上次窗口关闭的位置
-	RECT lastWindowPosition = LoadWindowRectFromRegistry();
+	const RECT lastWindowPosition = LoadWindowRectFromRegistry();
 	last_open_window_position_x = lastWindowPosition.left;
 	last_open_window_position_y = lastWindowPosition.top;
+	if (!IsPointOnAnyMonitor(last_open_window_position_x, last_open_window_position_y))
+	{
+		const RECT tempRc = getWindowRectMainWindowInCursorScreen();
+		last_open_window_position_x = tempRc.left;
+		last_open_window_position_y = tempRc.top;
+	}
 
 	hWnd = CreateWindowExW(
 		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_TRANSPARENT | WS_EX_LAYERED, // 扩展样式
@@ -258,6 +268,7 @@ void InitInstance(HINSTANCE hInstance, const int nCmdShow)
 	trayMenuManager.Init(hWnd, hInstance);
 	userSettingsAfterTheAppStart(trayMenuManager);
 	ShowWindow(g_settingsHwnd, SW_MINIMIZE);
+	ShowIndexedManagerWindow(g_settingsHwnd);
 	// 另一种指定透明效果，但是并不太行，有很严重的锯齿，而且没有透明度概念，很生硬
 	// SetLayeredWindowAttributes(s_mainHwnd, RGB(80, 81, 82), 0, LWA_COLORKEY);
 
@@ -329,17 +340,21 @@ static void refreshSkin()
 		return;
 	}
 	// --- 1. 更新主窗口 ---
-        int windowWidth = g_skinJson.value("window_width", MAIN_WINDOW_WIDTH);
-        int windowHeight = g_skinJson.value("window_height", MAIN_WINDOW_HEIGHT);
-        SetWindowPos(hWnd, nullptr, 0, 0, windowWidth, windowHeight, SWP_NOMOVE | SWP_NOZORDER);
+	MAIN_WINDOW_WIDTH = g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH);
+	MAIN_WINDOW_HEIGHT = g_skinJson.value("window_height", DEFAULT_MAIN_WINDOW_HEIGHT);
+	SetWindowPos(hWnd, nullptr, 0, 0, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
 
-        int windowOpacity = g_skinJson.value("window_opacity", 255);
-        if (windowOpacity < 0) windowOpacity = 0;
-        if (windowOpacity > 255) windowOpacity = 255;
-        SetLayeredWindowAttributes(hWnd, 0, static_cast<BYTE>(windowOpacity), LWA_ALPHA);
+	int windowOpacity = g_skinJson.value("window_opacity", 255);
+	if (windowOpacity < 0) windowOpacity = 0;
+	if (windowOpacity > 255) windowOpacity = 255;
+	if (g_lastWindowOpacity != windowOpacity)
+	{
+		g_lastWindowOpacity = windowOpacity;
+		SetLayeredWindowAttributes(hWnd, 0, static_cast<BYTE>(windowOpacity), LWA_ALPHA);
+	}
 
-        // 处理背景图片
-        getSkinPictureFile(g_BgImage, "window_bg_picture");
+	// 处理背景图片
+	getSkinPictureFile(g_BgImage, "window_bg_picture");
 	getSkinPictureFile(g_editBgImage, "editbox_bg_picture");
 	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture");
 	getSkinPictureFile(g_listItemBgImage, "item_font_bg_picture");
@@ -607,6 +622,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 		{
 			return 1; // Return non-zero to indicate you have handled erasing the background
 		}
+	case WM_SETFOCUS:
+		{
+			TimerIDSetFocusEdit = SetTimer(hWnd, TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
+			break;
+		}
 	case WM_NCHITTEST:
 		{
 			if (!pref_lock_window_popup_position)
@@ -744,6 +764,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 						// return TRUE;
 					}
 				}
+				else if (pnmh->code == LVN_GETDISPINFO)
+				{
+					// 这就是 ListView 在向我们请求数据
+					NMLVDISPINFO* pdi = reinterpret_cast<NMLVDISPINFOW*>(lParam);
+					listViewManager.OnGetDispInfo(pdi); // 把请求转发给 ListViewManager 处理
+					return 0; // 已处理
+				}
 			}
 			break;
 		}
@@ -820,6 +847,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 
 			trayMenuManager.TrayMenuDestroy();
 			PostQuitMessage(0);
+			ExitProcess(0);
 		}
 		break;
 	case WM_TRAYICON:

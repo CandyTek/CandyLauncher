@@ -33,6 +33,7 @@ public:
 		bool recursive = false;
 	};
 
+	static void TraverseUwpApps(const TraverseOptions& options, std::vector<std::shared_ptr<RunCommandAction>>& outActions);
 	static void TraverseFiles(const std::wstring& folderPath, const TraverseOptions& options,
 							std::vector<std::shared_ptr<RunCommandAction>>& outActions);
 
@@ -46,4 +47,10 @@ private:
 
 	static std::vector<std::wstring> SplitWords(const std::wstring& input);
 	static void WriteDefaultConfig(const std::wstring& path);
+
+    static void TraverseFilesForEverything(const std::wstring &folderPath, const TraverseOptions &options,
+                                    std::vector<std::shared_ptr<RunCommandAction>> &outActions);
+
+    static void TraverseFilesForEverythingSDK(const std::wstring &folderPath, const TraverseOptions &options,
+                                       std::vector<std::shared_ptr<RunCommandAction>> &outActions);
 };

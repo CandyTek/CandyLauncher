@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <algorithm>
+#include <chrono>
 #include <windows.h>
 #include <string>
 #include <sstream>
@@ -255,30 +256,51 @@ static Gdiplus::Color HexToGdiplusColor(const std::string& hex)
 }
 
 
-static bool isValidHexColor(const std::string& color) {
+static bool isValidHexColor(const std::string& color)
+{
 	// 检查长度：6位（#RRGGBB）或8位（#RRGGBBAA）
-	if (color.length() != 7 && color.length() != 9) {
+	if (color.length() != 7 && color.length() != 9)
+	{
 		return false;
 	}
-    
+
 	// 检查是否以#开头
-	if (color[0] != '#') {
+	if (color[0] != '#')
+	{
 		return false;
 	}
-    
+
 	// 检查其余字符是否为十六进制数字
-	return std::all_of(color.begin() + 1, color.end(), [](char c) {
+	return std::all_of(color.begin() + 1, color.end(), [](char c)
+	{
 		return std::isxdigit(static_cast<unsigned char>(c));
 	});
 }
 
-static std::string validateHexColor(const std::string& color,const std::string& defaultColor) {
-	if (color.empty() || !isValidHexColor(color)) {
+static std::string validateHexColor(const std::string& color, const std::string& defaultColor)
+{
+	if (color.empty() || !isValidHexColor(color))
+	{
 		return defaultColor;
 	}
 	return color;
 }
 
-static std::string validateHexColor(const std::string& color) {
-	return validateHexColor(color,"#FFFFFF");
+static std::string validateHexColor(const std::string& color)
+{
+	return validateHexColor(color, "#FFFFFF");
+}
+
+static std::chrono::time_point<std::chrono::steady_clock> methodTimerStartTimestamp;
+inline void MethodTimerStart()
+{
+	methodTimerStartTimestamp = std::chrono::high_resolution_clock::now();
+}
+
+inline void MethodTimerEnd(const std::wstring& label = L"Method")
+{
+	OutputDebugStringW(
+		(label+L": " + std::to_wstring(
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - methodTimerStartTimestamp).
+			count()) + L" ms\n").c_str());
 }

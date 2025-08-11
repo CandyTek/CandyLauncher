@@ -77,3 +77,76 @@ static bool IsStartupShortcutExists(const std::wstring& shortcutName) {
     return PathFileExistsW(shortcutPath.c_str());
 }
 
+
+static const wchar_t* kLinkName = L"CandyLauncher 索引文件夹.lnk";
+static const wchar_t* kLinkDesc = L"CandyLauncher 索引文件夹";
+
+static bool InstallSendToEntry(const std::wstring& exePath)
+{
+    HRESULT hr = CoInitialize(nullptr);
+    bool needUninit = SUCCEEDED(hr);
+
+    PWSTR sendto = nullptr;
+    std::wstring linkPath;
+    bool ok = false;
+
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_SendTo, 0, nullptr, &sendto))) {
+        linkPath.assign(sendto);
+        if (!linkPath.empty() && linkPath.back() != L'\\') linkPath += L'\\';
+        linkPath += kLinkName;
+
+        IShellLinkW* psl = nullptr;
+        hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_PPV_ARGS(&psl));
+        if (SUCCEEDED(hr)) {
+            psl->SetPath(exePath.c_str());          // 目标：CreateShortcut.exe
+            psl->SetDescription(kLinkDesc);
+            // 这里不需要设置 "%1"；SendTo 会自动把所选文件路径附加为参数
+            // 如需自定义前缀参数，可： psl->SetArguments(L"--mode index");
+
+            IPersistFile* ppf = nullptr;
+            hr = psl->QueryInterface(IID_PPV_ARGS(&ppf));
+            if (SUCCEEDED(hr)) {
+                hr = ppf->Save(linkPath.c_str(), TRUE);
+                ppf->Release();
+                ok = SUCCEEDED(hr);
+            }
+            psl->Release();
+        }
+        CoTaskMemFree(sendto);
+    }
+
+    if (needUninit) CoUninitialize();
+    return ok;
+}
+
+static bool DeleteSendToEntry(const std::wstring& shortcutName)
+{
+    HRESULT hr = CoInitialize(nullptr);
+    bool needUninit = SUCCEEDED(hr);
+
+    bool ok = false;
+    PWSTR sendto = nullptr;
+
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_SendTo, 0, nullptr, &sendto))) {
+        std::wstring linkPath(sendto);
+        if (!linkPath.empty() && linkPath.back() != L'\\')
+            linkPath += L'\\';
+        linkPath += shortcutName; // 例如 L"CandyLauncher 索引文件夹.lnk"
+
+        // 尝试删除文件
+        if (DeleteFileW(linkPath.c_str())) {
+            ok = true;
+        } else {
+            // 如果不存在也视为成功
+            ok = (GetLastError() == ERROR_FILE_NOT_FOUND);
+        }
+
+        CoTaskMemFree(sendto);
+    }
+
+    if (needUninit)
+        CoUninitialize();
+
+    return ok;
+}

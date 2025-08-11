@@ -1,26 +1,38 @@
 ﻿todo:
 
-pref_indexed_apps_show_sendto_shortcut
-UWP 索引添加排除功能
-快捷键加数字直接打开第某项
-完整匹配
-允许输入法输入
-skin
-pref_night_mode
-可设置自定义整体透明度
+索引查看器
+添加，一键检查某些快捷方式是否失效，以及使用everything来找回文件的位置，并可以编辑快捷方式
+自动检查更新，不在提示
+pref_check_version_update
+(shift+右键)自定义右键菜单，可以添加一些管理索引的设置，移除该项，重命名该项，以管理员身份运行，在控制台项目打开该项，杀死进程，复制路径
 
+当不使用透明图片背景时，使用传统的gdi 来渲染窗口内容
+pref_night_mode
+skin
+托盘帮助(直接转到 Github wiki)
+托盘关于
+
+列表设置项：主面板esc 用于清空编辑框，主面板esc 再次按下退出
+runner 也在桌面找应用
+包括已在注册表中注册的应用
+在 %PATH% 上的任何位置包含应用
+
+简单的扩展：
+执行命令：cmd  打开一个新控制台，在里面输入命令
+计算： cal 使用一个科学计算库，来计算算式，保存历史记录，
+gdi+ 实现编辑框的hint
+设置项，使用everything 来建立索引
+ctrl 加数字键启动第X项
 
 
 后期：
-allow_drag_file
-pref_indexed_folders
-pref_check_version_update
-添加，一键检查某些索引是否失效
+暴力测试各种设置项
 添加，语言国际化
-自定义右键菜单，可以添加一些管理索引的设置
-索引查看器
+allow_drag_file
 
 
+//完整匹配
+//解决更改主题后，列表内容显示不全
 //case WM_TIMER:
 //	if (wParam == 1001) {
 //		KillTimer(hWnd, 1001);
@@ -1068,3 +1080,133 @@ return (INT_PTR)GetStockObject(NULL_BRUSH);
 	// whiteBrush = std::make_unique<Gdiplus::SolidBrush>(Gdiplus::Color(255, 255, 255, 255));
 	// blackBrush = std::make_unique<Gdiplus::SolidBrush>(Gdiplus::Color(255, 0, 0, 0));
 	// grayBrush = std::make_unique<Gdiplus::SolidBrush>(Gdiplus::Color(255, fontColorGray, fontColorGray, fontColorGray));
+
+		// throw std::runtime_error("设置基础文件不存在");
+		// exit(1);
+
+
+			const wchar_t* name = MsgName(message);
+			if (name) {
+				Println( name);
+			}
+
+
+ static const wchar_t* MsgName(UINT m) {
+ #define CASE(x) case x: return L#x
+ 	switch (m) {
+ 		CASE(WM_NULL);       CASE(WM_CREATE);   CASE(WM_DESTROY);
+ 		CASE(WM_MOVE);       CASE(WM_SIZE);     CASE(WM_PAINT);
+ 		CASE(WM_CLOSE);      CASE(WM_QUIT);     CASE(WM_TIMER);
+ 		CASE(WM_SETFOCUS);   CASE(WM_KILLFOCUS);
+ 		CASE(WM_KEYDOWN);    CASE(WM_KEYUP);    CASE(WM_CHAR);
+ 		CASE(WM_MOUSEMOVE);  CASE(WM_LBUTTONDOWN); CASE(WM_LBUTTONUP);
+ 		CASE(WM_RBUTTONDOWN);CASE(WM_RBUTTONUP);CASE(WM_MOUSEWHEEL);
+ 		CASE(WM_COMMAND);    CASE(WM_NOTIFY);
+ 	default: return nullptr;
+ 	}
+ #undef CASE
+ }
+
+
+    char *args22[] = {
+            (char*)"program_name",
+            (char*)"-p",
+            (char*)"D:\\Download3\\ES-1.1.0.30.src\\ES-1.1.0.30\\src",
+//            (char*)"D:\\DengYuhua\\",
+            nullptr
+    };
+
+    Everything_SetSearchW(L"hello1");
+    Everything_QueryW(TRUE);
+    DWORD num = Everything_GetNumResults();
+
+    for (DWORD i = 0; i < num; i++) {
+        wchar_t buf[MAX_PATH];
+        Everything_GetResultFullPathNameW(i, buf, MAX_PATH);
+        MessageBoxW(NULL, buf, L"Search Result", MB_OK);
+    }
+
+
+//    int temp=main22(0,args22);
+//    std::string temp2;
+//    temp2.append("done");
+//    temp2.append(std::to_string(temp));
+    
+//    std::cout << temp2 << std::endl;
+
+
+
+void TraverseFilesForEverythingSDK2(
+        const std::wstring& folderPath,
+        const ListedRunnerPlugin::TraverseOptions& options,
+        std::vector<std::shared_ptr<RunCommandAction>>& outActions)
+{
+    if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
+
+    auto addFile = [&](const fs::path& path)
+    {
+        std::wstring filename = path.stem().wstring();
+        if (shouldExclude(options, filename)) return;
+
+        if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
+            filename = it->second;
+
+        outActions.push_back(std::make_shared<RunCommandAction>(
+                filename, path.wstring(), false, true, path.parent_path().wstring()
+        ));
+    };
+
+    // 构造搜索正则，例如: (\\.exe|\\.txt)$
+    std::wstringstream regex_stream;
+    if (!options.extensions.empty())
+    {
+        regex_stream << L"(";
+        for (size_t i = 0; i < options.extensions.size(); ++i)
+        {
+            std::wstring ext = options.extensions[i];
+            if (!ext.empty() && ext[0] != L'.') ext = L"." + ext;
+            regex_stream << L"\\" << ext;
+            if (i < options.extensions.size() - 1) regex_stream << L"|";
+        }
+        regex_stream << L")$";
+    }
+
+    // 构造搜索关键字：限制路径 + 正则扩展名
+    std::wstringstream search_query;
+    search_query << L"\"" << folderPath << L"\" ";
+    if (!options.extensions.empty())
+        search_query << L"regex:" << regex_stream.str();
+
+    std::wcout << search_query.str() << std::endl;
+    
+    // 使用 Everything SDK
+    Everything_SetSearchW(search_query.str().c_str());
+//    Everything_SetMatchPath(TRUE);
+    Everything_SetRegex(TRUE);
+    Everything_QueryW(TRUE);
+
+    DWORD numResults = Everything_GetNumResults();
+    fs::path searchFolderPath(folderPath);
+
+    for (DWORD i = 0; i < numResults; i++)
+    {
+        wchar_t fullPath[MAX_PATH];
+        Everything_GetResultFullPathNameW(i, fullPath, MAX_PATH);
+
+        fs::path filePath(fullPath);
+
+        if (!options.recursive)
+        {
+            if (filePath.parent_path() != searchFolderPath)
+                continue;
+        }
+//        std::cout << filePath << std::endl;
+        addFile(filePath);
+    }
+    // 查询结束后，最好恢复默认设置，以免影响后续其他可能的查询
+    if (!options.extensions.empty())
+    {
+        Everything_SetRegex(FALSE);
+    }
+
+}

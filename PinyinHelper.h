@@ -480,8 +480,13 @@ public:
 		const std::wstring input = ConvertEnWordsToFourChar(enStr);
 		if (input.length() > 1)
 			result += input;
+		// std::wstring outputdebug;
+		// outputdebug += str;
+		// outputdebug += L" ";
+		// outputdebug += MyTrim(result);
+		// std::wcout << outputdebug << std::endl;
 
 		// 去除多余空格
-		return MyTrim(result);
+		return str + L" "+ MyTrim(result);
 	}
 };

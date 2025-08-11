@@ -15,11 +15,8 @@ public:
 		const CallbackFunction& callback
 	): RunCommandAction(justName, description), callback1(callback)
 	{
-		RunCommand = PinyinHelper::GetPinyinLongStr(MyToLower(justName));
 		targetFilePath = icon;
-		SetTitle(justName);
 		SetSubtitle(description);
-		SetExecutable(true);
 	}
 
 	// 运行命令

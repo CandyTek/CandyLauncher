@@ -1,0 +1,39 @@
+﻿[
+	{
+		"command": "Users 开始菜单",
+		"folder": "C:\\Users\\Administrator\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs",
+		"exclude_words": ["卸载","uninstall","帮助","说明","Help","Document","Website","Release Notes","更新","使用","Chaos"],
+		"excludes": [
+			"启动有道云笔记",
+			"有道云笔记网页剪报",
+			"Control Panel"
+		],
+		"rename_sources": [
+			"DesktopOverlayHost"
+		],
+		"rename_targets": [
+			"MSI 桌面显示帧数"
+		]
+	},
+	{
+		"command": "Default 开始菜单",
+		"folder": "C:\\Users\\Default\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs",
+		"exclude_words": ["卸载","uninstall","帮助","说明","Help","Document","Website","Release Notes","更新","使用"],
+		"rename_sources": [
+			"Control Panel",
+			"Magnify",
+			"Narrator",
+			"On-Screen Keyboard",
+			"Administrative Tools",
+			"File Explorer"
+		],
+		"rename_targets": [
+			"控制面板 Control Panel",
+			"放大镜",
+			"讲述人",
+			"屏幕键盘",
+			"管理工具",
+			"资源管理器"
+		]
+	}
+]

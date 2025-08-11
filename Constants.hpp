@@ -48,7 +48,5 @@ constexpr UINT MOD_CTRL_SHIFT_ALT_WIN_KEY = 15;
 
 
 constexpr int SETTINGS_WINDOW_WIDTH = 705;
-constexpr int SETTINGS_WINDOW_HEIGHT = 460;
+constexpr int SETTINGS_WINDOW_HEIGHT = 470;
 
-constexpr int MAIN_WINDOW_WIDTH = 620;
-constexpr int MAIN_WINDOW_HEIGHT = 480;

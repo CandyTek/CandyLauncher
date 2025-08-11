@@ -26,11 +26,11 @@
 
 // 不能少
 #include <shellapi.h>
+#include <Everything.h>
 
 #ifndef ESI_ALLITEMS
 #define ESI_ALLITEMS 0x00000040
 #endif
-
 
 namespace fs = std::filesystem;
 
@@ -83,13 +83,25 @@ static std::string WStringToUtf8(const std::wstring& wstr)
 	return str;
 }
 
+auto shouldExclude = [](const ListedRunnerPlugin::TraverseOptions& options,const std::wstring& name) -> bool
+{
+	std::wstring nameLower = name;
+	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
+	if (options.excludeNames.find(nameLower) != options.excludeNames.end()) return true;
+
+	for (const auto& word : options.excludeWords)
+	{
+		if (nameLower.find(word) != std::wstring::npos) return true;
+	}
+	return false;
+};
 
 /// <summary>
 /// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
 /// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
 /// </summary>
 /// <param name="actions">The list of actions to add UWP apps to.</param>
-static void LoadUwpApps(std::vector<std::shared_ptr<RunCommandAction>>& actions)
+static void LoadUwpApps(const ListedRunnerPlugin::TraverseOptions& options,std::vector<std::shared_ptr<RunCommandAction>>& actions)
 {
 	if (FAILED(CoInitialize(NULL)))
 	{
@@ -152,7 +164,18 @@ static void LoadUwpApps(std::vector<std::shared_ptr<RunCommandAction>>& actions)
 									pShellItem->Release();
 									continue;
 								}
-
+								// 进行UWP列表项的筛选，排除，重命名
+								std::wstring uwpAppName = pwszDisplayName;
+								if (shouldExclude(options,uwpAppName)) {
+									CoTaskMemFree(pwszParsingName);
+									pShellItem->Release();
+									continue;
+								}
+								if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end())
+								{
+									uwpAppName = it->second;
+								}
+								
 								HBITMAP hBitmap = nullptr;
 								IShellItemImageFactory* pImageFactory = nullptr;
 								// 大小可以调整。 256x256是一个很好的高质量尺寸。
@@ -178,14 +201,14 @@ static void LoadUwpApps(std::vector<std::shared_ptr<RunCommandAction>>& actions)
 									// TODO: 使用HBITMAP并管理其生命周期
 									actions.push_back(
 										std::make_shared<RunCommandAction>(
-											pwszDisplayName, uwpCommand, uwpCommandS, hBitmap));
+											uwpAppName, uwpCommand, uwpCommandS, hBitmap));
 								}
 								else
 								{
 									// 无法加载图标的后备
 									actions.push_back(
 										std::make_shared<RunCommandAction>(
-											pwszDisplayName, uwpCommand, uwpCommandS, nullptr));
+											uwpAppName, uwpCommand, uwpCommandS, nullptr));
 								}
 
 								CoTaskMemFree(pwszDisplayName);
@@ -210,6 +233,7 @@ static void LoadUwpApps(std::vector<std::shared_ptr<RunCommandAction>>& actions)
 
 void ListedRunnerPlugin::LoadConfiguration()
 {
+    MethodTimerStart();
 	actions.clear();
 	// std::shared_ptr<ActionNormal> refreshAction = ;
 	// actions.push_back(refreshAction);
@@ -333,8 +357,16 @@ void ListedRunnerPlugin::LoadConfiguration()
 						}
 					}
 				}
-
-				TraverseFiles(folderPath, traverseOptions, actions);
+				if (cmd.contains("special_uwp"))
+				{
+					TraverseUwpApps(traverseOptions,actions);
+				}
+				else
+				{
+//					TraverseFiles(folderPath, traverseOptions, actions);
+//                    TraverseFilesForEverything(folderPath, traverseOptions, actions);
+                    TraverseFilesForEverythingSDK(folderPath, traverseOptions, actions);
+				}
 			}
 			else
 			{
@@ -347,20 +379,7 @@ void ListedRunnerPlugin::LoadConfiguration()
 			continue;
 		}
 	}
-
-	// *** UWP应用程序加载逻辑 ***
-	if (settingsMap["pref_indexed_uwp_apps_enable"].defValue.get<int>() == 1)
-	{
-		if (IsWindows8OrGreater())
-			try
-			{
-				LoadUwpApps(actions);
-			}
-			catch (const std::exception& e)
-			{
-				std::wcerr << L"Failed to load UWP apps: " << Utf8ToWString(e.what()) << std::endl;
-			}
-	}
+    MethodTimerEnd(L"loadlist");
 }
 
 
@@ -439,7 +458,7 @@ std::wstring ListedRunnerPlugin::GetShortcutTarget(const std::wstring& lnkPath)
 
 HICON ListedRunnerPlugin::GetFileIcon(const std::wstring& filePath, const bool largeIcon)
 {
-	SHFILEINFOW sfi = { 0 };;
+	SHFILEINFOW sfi = {0};;
 	UINT flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
 	flags |= largeIcon ? SHGFI_LARGEICON : SHGFI_SMALLICON;
 
@@ -548,6 +567,26 @@ static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
 }
 
 
+void ListedRunnerPlugin::TraverseUwpApps(
+	const ListedRunnerPlugin::TraverseOptions& options,
+	std::vector<std::shared_ptr<RunCommandAction>>& outActions
+)
+{
+	// *** UWP应用程序加载逻辑 ***
+	if (settingsMap["pref_indexed_uwp_apps_enable"].defValue.get<int>() == 1)
+	{
+		if (IsWindows8OrGreater())
+			try
+			{
+				LoadUwpApps(options,outActions);
+			}
+		catch (const std::exception& e)
+		{
+			std::wcerr << L"Failed to load UWP apps: " << Utf8ToWString(e.what()) << std::endl;
+		}
+	}
+}
+
 void ListedRunnerPlugin::TraverseFiles(
 	const std::wstring& folderPath,
 	const ListedRunnerPlugin::TraverseOptions& options,
@@ -563,24 +602,11 @@ void ListedRunnerPlugin::TraverseFiles(
 							[&](const std::wstring& ex) { return _wcsicmp(ext.c_str(), ex.c_str()) == 0; });
 	};
 
-	auto shouldExclude = [&](const std::wstring& name) -> bool
-	{
-		std::wstring nameLower = name;
-		std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
-		if (options.excludeNames.find(nameLower) != options.excludeNames.end()) return true;
-
-		for (const auto& word : options.excludeWords)
-		{
-			if (nameLower.find(word) != std::wstring::npos) return true;
-		}
-		return false;
-	};
-
 	auto addFile = [&](const fs::path& path)
 	{
 		std::wstring filename = path.stem().wstring(); // without extension
 
-		if (shouldExclude(filename)) return;
+		if (shouldExclude(options,filename)) return;
 
 		// 重命名映射
 		if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
@@ -603,7 +629,7 @@ void ListedRunnerPlugin::TraverseFiles(
 
 			const auto ext = entry.path().extension().wstring();
 			if (!extMatch(ext)) continue;
-
+            std::cout << entry.path() << std::endl;
 			addFile(entry.path());
 		}
 	}
@@ -615,8 +641,187 @@ void ListedRunnerPlugin::TraverseFiles(
 
 			const auto ext = entry.path().extension().wstring();
 			if (!extMatch(ext)) continue;
-
+            std::cout << entry.path() << std::endl;
 			addFile(entry.path());
 		}
 	}
+}
+
+void ListedRunnerPlugin::TraverseFilesForEverything(
+        const std::wstring& folderPath,
+        const ListedRunnerPlugin::TraverseOptions& options,
+        std::vector<std::shared_ptr<RunCommandAction>>& outActions)
+{
+    if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
+
+    // addFile lambda 保持不变，可以完美复用
+    auto addFile = [&](const fs::path& path)
+    {
+        std::wstring filename = path.stem().wstring(); // without extension
+
+        if (shouldExclude(options, filename)) return;
+
+        // 重命名映射
+        if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
+        {
+            filename = it->second;
+        }
+
+        const auto action = std::make_shared<RunCommandAction>(
+                filename, path.wstring(), false, true, path.parent_path().wstring()
+        );
+
+        outActions.push_back(action);
+    };
+
+    // 1. 构建 Everything 查询命令
+    std::wstringstream command;
+    // 假设 es.exe 在 PATH 中，或者提供完整路径
+    command << L"D:\\Download3\\ES-1.1.0.30.x64\\es.exe -utf8-bom ";
+
+    // -p 指定搜索路径
+    command << L"-p \"" << folderPath << L"\" ";
+
+    // 从扩展名列表动态生成正则表达式
+    if (!options.extensions.empty())
+    {
+        std::wstringstream regex_stream;
+        regex_stream << L"\"("; // 正则表达式部分用引号括起来
+
+        for (size_t i = 0; i < options.extensions.size(); ++i)
+        {
+            std::wstring ext = options.extensions[i];
+
+            // 为正则表达式转义特殊字符，尤其是 '.'
+            std::wstring escaped_ext;
+            for (wchar_t c : ext)
+            {
+                if (c == L'.' || c == L'\\' || c == L'?' || c == L'*' || c == L'+' || c == L'(' || c == L')' || c == L'[' || c == L']' || c == L'{' || c == L'}' || c == L'^' || c == L'$')
+                {
+                    escaped_ext += L'\\';
+                }
+                escaped_ext += c;
+            }
+
+            regex_stream << escaped_ext << (i < options.extensions.size() - 1 ? L"|" : L"");
+        }
+        regex_stream << L")$\""; // 以 $ 结尾，确保是文件扩展名
+
+        // -r 指定正则表达式
+        command << L"-r " << regex_stream.str();
+    }
+
+    try
+    {
+        // 2. 执行命令并获取纯文本输出
+        std::string commandOutput = ExecuteCommandAndGetOutput(command.str());
+//        std::cout << commandOutput << std::endl;
+
+        if (commandOutput.empty()) return;
+
+        // 3. 逐行解析输出
+        std::stringstream ss(commandOutput);
+        std::string line;
+        fs::path searchFolderPath(folderPath); // 预先创建path对象用于比较
+
+        while (std::getline(ss, line))
+        {
+            if (line.empty()) continue;
+            line.erase(line.find_last_not_of("\r\n") + 1);
+            // es.exe 的输出是UTF-8编码，使用u8path可以正确处理包含非英文字符的路径
+//            fs::path filePath = fs::u8path(line);
+            std::wstring wide_path_str = MultiByteToWide(line, CP_ACP); // CP_ACP 表示系统的当前活动代码页
+            // 直接用 wstring 构造 path 对象，这是在Windows上最可靠的方式
+//            std::cout << WStringToUtf8(wide_path_str) << std::endl;
+
+            fs::path filePath(wide_path_str);
+//            std::cout << WStringToUtf8(filePath.wstring()) << std::endl;
+
+            // 4. 如果是非递归搜索，需要额外判断父目录是否匹配
+            if (!options.recursive)
+            {
+                if (filePath.parent_path() != searchFolderPath)
+                {
+                    continue; // 如果父目录不匹配，则跳过此文件
+                }
+            }
+
+            // 复用 addFile 逻辑
+//            std::cout << filePath << std::endl;
+            addFile(filePath);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        // 错误处理，可以考虑回退到原始的文件系统遍历方法
+        // e.g., LogError("Failed to search with Everything: " + std::string(e.what()));
+        std::cout << ("Failed to search with Everything: " + std::string(e.what())) << std::endl;
+
+    }
+}
+
+
+void ListedRunnerPlugin::TraverseFilesForEverythingSDK(
+        const std::wstring& folderPath,
+        const ListedRunnerPlugin::TraverseOptions& options,
+        std::vector<std::shared_ptr<RunCommandAction>>& outActions)
+{
+    if (!fs::exists(folderPath) || !fs::is_directory(folderPath) || options.extensions.empty()) return;
+
+    auto addFile = [&](const fs::path& path)
+    {
+        std::wstring filename = path.stem().wstring();
+        if (shouldExclude(options, filename)) return;
+
+        if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
+            filename = it->second;
+
+        outActions.push_back(std::make_shared<RunCommandAction>(
+                filename, path.wstring(), false, true, path.parent_path().wstring()
+        ));
+    };
+
+
+    // 构造更高效的搜索查询
+    // 例如: parent:"C:\ProgramData\Microsoft\Windows\Start Menu\Programs" ext:exe;lnk
+    std::wstringstream search_query;
+    if (options.recursive)
+    {
+        // 如果是递归搜索，则使用原始的路径搜索
+        search_query << L"\"" << folderPath << L"\" ";
+    }
+    else
+    {
+        // 如果不递归，使用 parent: 函数更精确、更高效
+        search_query << L"parent:\"" << folderPath << L"\" ";
+    }
+
+    // 使用 ext: 过滤器，比正则表达式更简单快速
+    search_query << L"ext:";
+    for (size_t i = 0; i < options.extensions.size(); ++i)
+    {
+        std::wstring ext = options.extensions[i];
+        // 去掉可能存在的点
+        if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
+        search_query << ext;
+        if (i < options.extensions.size() - 1) search_query << L";";
+    }
+
+    std::wcout << L"Executing optimized Everything search: " << search_query.str() << std::endl;
+
+    // 使用 Everything SDK
+    Everything_SetSearchW(search_query.str().c_str());
+    Everything_QueryW(TRUE);
+
+    DWORD numResults = Everything_GetNumResults();
+
+    for (DWORD i = 0; i < numResults; i++)
+    {
+        wchar_t fullPath[MAX_PATH];
+        Everything_GetResultFullPathNameW(i, fullPath, MAX_PATH);
+
+        // 因为查询已经精确过滤，不再需要手动判断父目录了
+        // if (!options.recursive) { ... } 这段逻辑可以移除
+        addFile(fs::path(fullPath));
+    }
 }

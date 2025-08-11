@@ -1,0 +1,44 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "msvc-x64",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17"
+      }
+    },
+    {
+      "name": "ninja-msvc",
+      "generator": "Ninja",
+      "binaryDir": "build/ninja-msvc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "ninja-mingw",
+      "generator": "Ninja",
+      "binaryDir": "build/ninja-mingw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      },
+      "environment": {
+        "CC": "gcc",
+        "CXX": "g++"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "build-msvc-x64-Debug", "configurePreset": "msvc-x64", "configuration": "Debug" },
+    { "name": "build-msvc-x64-Release", "configurePreset": "msvc-x64", "configuration": "Release" },
+    { "name": "build-ninja-msvc", "configurePreset": "ninja-msvc" },
+    { "name": "build-ninja-mingw", "configurePreset": "ninja-mingw" }
+  ],
+  "testPresets": [
+    { "name": "test-msvc-x64-Debug", "configurePreset": "msvc-x64", "configuration": "Debug" }
+  ]
+}

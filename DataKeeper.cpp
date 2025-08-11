@@ -31,8 +31,12 @@ int last_open_window_position_y = 0;
 int unknown_file_icon_index = 0;
 int LISTITEM_ICON_SIZE = 48;
 
-float window_position_offset_x = 0.5;
-float window_position_offset_y = 0.5;
+float window_position_offset_x = 0.5f;
+float window_position_offset_y = 0.5f;
+
+int lastWindowCenterX = -1;
+int lastWindowCenterY = -1;
+int pref_fuzzy_match_score_threshold = 60;
 
 
 // 皮肤
@@ -56,6 +60,8 @@ std::unique_ptr<Gdiplus::Font> g_listItemFont2 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2 = nullptr;
 
+int g_lastWindowOpacity = 255;
+
 int g_itemIconX = 4;
 int g_itemIconY = 4;
 int g_itemIconSelectedX = 4;
@@ -78,3 +84,5 @@ double g_item_font_size_2 = 12.0;
 double g_item_font_size_selected_1 = 14.0;
 double g_item_font_size_selected_2 = 12.0;
 
+int MAIN_WINDOW_WIDTH = 620;
+int MAIN_WINDOW_HEIGHT = 480;

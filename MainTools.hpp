@@ -57,6 +57,17 @@ static void HideWindow(HWND hWnd, HWND hEdit, HWND hListView)
 	{
 		PostMessageW(hEdit, EM_SETSEL, 0, -1);
 	}
+	RECT saveRect;
+	if (!GetWindowRect(hWnd, &saveRect))
+	{
+		lastWindowCenterX=-1;
+		lastWindowCenterY=-1;
+	}else
+	{
+		lastWindowCenterX=saveRect.left;
+		lastWindowCenterY=saveRect.top;
+	}
+
 	ShowWindow(hWnd, SW_HIDE);
 
 	//ListView_DeleteAllItems(hListView);
@@ -66,7 +77,7 @@ static void HideWindow(HWND hWnd, HWND hEdit, HWND hListView)
 	// SetTimer(hWnd, 1001, 50, NULL);
 }
 
-static void RestoreWindowIfMinimized(HWND hWnd)
+inline void RestoreWindowIfMinimized(HWND hWnd)
 {
 	if (IsIconic(hWnd))
 	{
@@ -74,8 +85,6 @@ static void RestoreWindowIfMinimized(HWND hWnd)
 	}
 }
 
-static int lastWindowCenterX = -1;
-static int lastWindowCenterY = -1;
 
 static void showMainWindowInCursorScreen(HWND hWnd)
 {
@@ -91,10 +100,10 @@ static void showMainWindowInCursorScreen(HWND hWnd)
 	GetMonitorInfo(hMonitor, &mi);
 
 	// 计算位置
-	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-		window_position_offset_x;
-	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-		window_position_offset_y;
+	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x);
+	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y);
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
 	{
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
@@ -109,6 +118,32 @@ static void showMainWindowInCursorScreen(HWND hWnd)
 	}
 }
 
+static RECT getWindowRectMainWindowInCursorScreen()
+{
+	POINT pt;
+	GetCursorPos(&pt);
+
+	// 获取鼠标所在的显示器
+	HMONITOR hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+
+	// 获取该显示器的信息
+	MONITORINFO mi = {};
+	mi.cbSize = sizeof(mi);
+	GetMonitorInfo(hMonitor, &mi);
+
+	// 计算位置
+	const int centerX = static_cast<int>(mi.rcWork.left + (float)(mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x);
+	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y);
+	RECT result;
+	result.left = centerX;
+	result.top = centerY;
+	result.right = centerX +1;
+	result.bottom = centerY+1;
+	return result;
+}
+
 static void showMainWindowInIndexScreen(HWND hWnd, int index)
 {
 	// 枚举所有显示器
@@ -116,7 +151,7 @@ static void showMainWindowInIndexScreen(HWND hWnd, int index)
 	EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitors));
 
 	MONITORINFOEX mi;
-	if (monitors.size() == 0)
+	if (monitors.empty())
 	{
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
 					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
@@ -131,10 +166,10 @@ static void showMainWindowInIndexScreen(HWND hWnd, int index)
 		mi = monitors[0].mi;
 	}
 	// 计算位置
-	const int centerX = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-		window_position_offset_x;
-	const int centerY = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-		window_position_offset_y;
+	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x);
+	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
+		window_position_offset_y);
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
 	{
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
@@ -167,10 +202,10 @@ static void showMainWindowInForegroundRect(HWND hWnd)
 		int width = rect.right - rect.left;
 		int height = rect.bottom - rect.top;
 
-		std::cout << "前台窗口位置: (" << x << ", " << y << ")" << std::endl;
-		std::cout << "前台窗口大小: " << width << " x " << height << std::endl;
+		std::wcout << L"前台窗口位置: (" << x << ", " << y << ")" << std::endl;
+		std::wcout << L"前台窗口大小: " << width << " x " << height << std::endl;
 
-		const int centerX = x + (width - MAIN_WINDOW_WIDTH) * window_position_offset_x;
+		const int centerX = (x + (width - MAIN_WINDOW_WIDTH) * window_position_offset_x);
 		const int centerY = y + (height - MAIN_WINDOW_HEIGHT) * window_position_offset_y;
 		if (centerX == lastWindowCenterX && centerY == lastWindowCenterY)
 		{
@@ -187,7 +222,7 @@ static void showMainWindowInForegroundRect(HWND hWnd)
 	}
 	else
 	{
-		std::cout << "获取窗口矩形失败。" << std::endl;
+		std::wcout << L"获取窗口矩形失败。" << std::endl;
 		showMainWindowInCursorScreen(hWnd);
 		return;
 	}
@@ -369,7 +404,7 @@ static void ShowMainWindowSimple(HWND hWnd, HWND hEdit)
 	SetFocus(hEdit);
 	MyMoveWindow(hWnd);
 	SetForegroundWindow(hWnd);
-	if (g_hklIme != NULL)
+	if (g_hklIme != nullptr)
 		PostMessageW(hEdit, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM)g_hklIme);
 }
 
@@ -435,12 +470,12 @@ static void ReleaseAltKey()
 // 		return output;
 // 	}
 
-static bool IsChineseChar2(const std::wstring& str)
+inline bool IsChineseChar2(const std::wstring& str)
 {
 	return str[0] >= 0x4E00 && str[0] <= 0x9FFF;
 }
 
-static bool IsChineseChar(const wchar_t ch)
+inline bool IsChineseChar(const wchar_t ch)
 {
 	return ch >= 0x4E00 && ch <= 0x9FFF;
 }
@@ -673,7 +708,173 @@ static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth, HFONT hFon
 	return height;
 }
 
-static void SetControlFont(HWND hCtrl, HFONT hFont)
+inline void SetControlFont(HWND hCtrl, HFONT hFont)
 {
 	SendMessageW(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
+}
+static int GetWindowVScrollBarThumbWidth(HWND hwnd, bool bAutoShow)
+{
+	SCROLLBARINFO sb = { 0 };
+	sb.cbSize = sizeof(SCROLLBARINFO);
+	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
+
+	if (!bAutoShow)
+		return sb.dxyLineButton;
+
+	if (sb.dxyLineButton)
+		return sb.dxyLineButton;
+
+	::ShowScrollBar(hwnd, SB_VERT, TRUE);
+	sb.cbSize = sizeof(SCROLLBARINFO);
+	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
+	::ShowScrollBar(hwnd, SB_VERT, FALSE);
+	return sb.dxyLineButton;
+}
+
+inline bool IsPointOnAnyMonitor(int lastWindowPositionX, int lastWindowPositionY) {
+	const POINT pt = { lastWindowPositionX, lastWindowPositionY };
+	return MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != nullptr;
+}
+
+inline bool IsRectOnAnyMonitor(const RECT& rc) {
+	return MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) != nullptr;
+}
+
+#include <windows.h>
+#include <string>
+#include <vector>
+#include <stdexcept>
+#include <array>
+
+// 辅助函数：执行命令行并获取其标准输出
+static std::string ExecuteCommandAndGetOutput(const std::wstring& command)
+{
+    HANDLE hChildStd_OUT_Rd = NULL;
+    HANDLE hChildStd_OUT_Wr = NULL;
+    SECURITY_ATTRIBUTES sa;
+
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+
+    // 创建一个管道用于子进程的 STDOUT
+    if (!CreatePipe(&hChildStd_OUT_Rd, &hChildStd_OUT_Wr, &sa, 0))
+    {
+        throw std::runtime_error("StdoutRd CreatePipe failed");
+    }
+    if (!SetHandleInformation(hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
+    {
+        throw std::runtime_error("Stdout SetHandleInformation failed");
+    }
+
+    PROCESS_INFORMATION piProcInfo;
+    STARTUPINFOW siStartInfo;
+    BOOL bSuccess = FALSE;
+
+    ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+    ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
+    siStartInfo.cb = sizeof(STARTUPINFOW);
+    siStartInfo.hStdError = hChildStd_OUT_Wr;
+    siStartInfo.hStdOutput = hChildStd_OUT_Wr;
+    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+    std::wstring cmd = command;
+    std::vector<wchar_t> cmdline(cmd.begin(), cmd.end());
+    cmdline.push_back(L'\0');
+    
+    bSuccess = CreateProcessW(NULL,
+                              cmdline.data(),     // command line 
+                              NULL,          // process security attributes 
+                              NULL,          // primary thread security attributes 
+                              TRUE,          // handles are inherited 
+                              CREATE_NO_WINDOW, // creation flags: 不显示命令行窗口
+                              NULL,          // use parent's environment 
+                              NULL,          // use parent's starting directory 
+                              &siStartInfo,  // STARTUPINFO pointer 
+                              &piProcInfo);  // receives PROCESS_INFORMATION 
+
+    if (!bSuccess)
+    {
+        CloseHandle(hChildStd_OUT_Rd);
+        CloseHandle(hChildStd_OUT_Wr);
+        throw std::runtime_error("CreateProcess failed");
+    }
+
+    // 必须关闭写管道句柄，否则 ReadFile 会一直阻塞等待
+    CloseHandle(hChildStd_OUT_Wr);
+
+    std::string result;
+    DWORD dwRead;
+    std::array<char, 4096> buffer;
+
+    // 从管道读取子进程的输出
+    for (;;)
+    {
+        bSuccess = ReadFile(hChildStd_OUT_Rd, buffer.data(), buffer.size(), &dwRead, NULL);
+        if (!bSuccess || dwRead == 0) break;
+        result.append(buffer.data(), dwRead);
+    }
+
+    // 清理
+    CloseHandle(hChildStd_OUT_Rd);
+    CloseHandle(piProcInfo.hProcess);
+    CloseHandle(piProcInfo.hThread);
+
+    return result;
+}
+
+// 辅助函数：将使用指定代码页的多字节字符串转换为宽字符串(wstring)
+static std::wstring MultiByteToWide(const std::string& mb_str, UINT codePage)
+{
+    if (mb_str.empty()) {
+        return std::wstring();
+    }
+    int wide_len = MultiByteToWideChar(codePage, 0, mb_str.c_str(), -1, NULL, 0);
+    if (wide_len == 0) {
+        // 可以根据需要进行错误处理
+        return std::wstring();
+    }
+    std::wstring wide_str(wide_len, 0);
+    MultiByteToWideChar(codePage, 0, mb_str.c_str(), -1, &wide_str[0], wide_len);
+    // MultiByteToWideChar转换后会包含null终止符，我们可能需要去掉
+    if (!wide_str.empty() && wide_str.back() == L'\0') {
+        wide_str.pop_back();
+    }
+    return wide_str;
+}
+
+static bool IsShortcutInvalid(const std::wstring& shortcutPath)
+{
+    ComInitGuard guard;
+    if (FAILED(guard.hr)) return true;
+
+    IShellLink* pShellLink = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)&pShellLink);
+    if (FAILED(hr)) return true;
+
+    IPersistFile* pPersistFile = nullptr;
+    hr = pShellLink->QueryInterface(IID_IPersistFile, (void**)&pPersistFile);
+    if (FAILED(hr)) {
+        pShellLink->Release();
+        return true;
+    }
+
+    hr = pPersistFile->Load(shortcutPath.c_str(), STGM_READ);
+    if (FAILED(hr)) {
+        pPersistFile->Release();
+        pShellLink->Release();
+        return true;
+    }
+
+    wchar_t targetPath[MAX_PATH] = {0};
+    hr = pShellLink->GetPath(targetPath, MAX_PATH, nullptr, 0);
+    
+    pPersistFile->Release();
+    pShellLink->Release();
+
+    if (FAILED(hr)) return true;
+
+    // Check if target file exists
+    DWORD attributes = GetFileAttributes(targetPath);
+    return (attributes == INVALID_FILE_ATTRIBUTES);
 }

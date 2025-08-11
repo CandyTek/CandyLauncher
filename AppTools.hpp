@@ -300,7 +300,6 @@ static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager)
 	}
 }
 
-
 /**
  * 当用户配置更改时，执行一些功能变更操作
  */
@@ -316,6 +315,7 @@ static void doPrefChanged(TrayMenuManager trayMenuManager)
 	bool pref_indexed_apps_show_sendto_shortcut = (settingsMap["pref_indexed_apps_show_sendto_shortcut"].defValue.get<
 		int>() == 1);
 
+	
 	bool startupShortcutExists = IsStartupShortcutExists(startUpShortcutName);
 
 	if (pref_auto_start)
@@ -335,8 +335,33 @@ static void doPrefChanged(TrayMenuManager trayMenuManager)
 		}
 	}
 
-	if (pref_indexed_apps_show_sendto_shortcut)
+    PWSTR sendto = nullptr;
+	if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_SendTo, 0, nullptr, &sendto)))
 	{
+		// 需要编译CreateShortcut 文件夹里的win32 程序，然后把exe放在CandyLauncher.exe 同一个目录下
+		std::wstring createShortcutExePath;
+		createShortcutExePath.append(GetExecutableFolder()).append(L"\\CreateShortcut.exe");
+		std::wstring sendToShortcutName;
+		sendToShortcutName.append(sendto).append(L"\\").append(kLinkName);
+		
+		bool sendtoShortcutExists = PathFileExistsW(sendToShortcutName.c_str());
+
+		if (pref_indexed_apps_show_sendto_shortcut)
+		{
+			if (!sendtoShortcutExists)
+			{
+				// 创建快捷方式
+				InstallSendToEntry(createShortcutExePath);
+			}
+		}
+		else
+		{
+			if (sendtoShortcutExists)
+			{
+				bool result = DeleteSendToEntry(kLinkName);
+				// ShowErrorMsgBox(L"删除快捷方式" + result);
+			}
+		}
 	}
 }
 
@@ -371,7 +396,7 @@ static void SaveWindowRectToRegistry(HWND hWnd)
 	}
 }
 
-
+// 监听皮肤文件
 static void watchSkinFile()
 {
 	std::wstring directory = LR"(C:\Users\Administrator\source\repos\WindowsProject1)";
@@ -448,21 +473,14 @@ static void watchSkinFile()
 	CloseHandle(hDir);
 }
 
-static int GetWindowVScrollBarThumbWidth(HWND hwnd, bool bAutoShow)
+/**
+ * 打开一个控制台，用于显示调试信息
+ */
+inline void AttachConsoleForDebug()
 {
-	SCROLLBARINFO sb = { 0 };
-	sb.cbSize = sizeof(SCROLLBARINFO);
-	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
-
-	if (!bAutoShow)
-		return sb.dxyLineButton;
-
-	if (sb.dxyLineButton)
-		return sb.dxyLineButton;
-
-	::ShowScrollBar(hwnd, SB_VERT, TRUE);
-	sb.cbSize = sizeof(SCROLLBARINFO);
-	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
-	::ShowScrollBar(hwnd, SB_VERT, FALSE);
-	return sb.dxyLineButton;
+	AllocConsole();
+	FILE* fp;
+	freopen_s(&fp, "CONOUT$", "w", stdout);
+	freopen_s(&fp, "CONOUT$", "w", stderr);
+	std::wcout << "Console attached!" << std::endl;
 }
