@@ -30,8 +30,15 @@
 			"defValue": true
 		},
 		{
+			"key": "pref_check_app_version",
+			"title": "自动检查更新(未完善)",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": true
+		},
+		{
 			"key": "pref_night_mode",
-			"title": "夜间模式",
+			"title": "夜间模式(未完善)",
 			"type": "list",
 			"entries": [
 				"总是使用主题",
@@ -87,6 +94,20 @@
 			"type": "hotkeystring",
 			"subPage": "hotkey",
 			"defValue": ""
+		},
+		{
+			"key": "pref_ctrl_number_launch_item",
+			"title": "Ctrl + 数字键启动列表项目",
+			"type": "bool",
+			"subPage": "hotkey",
+			"defValue": false
+		},
+		{
+			"key": "pref_alt_number_launch_item",
+			"title": "Alt + 数字键启动列表项目",
+			"type": "bool",
+			"subPage": "hotkey",
+			"defValue": true
 		},
 		{
 			"key": "pref_run_item_as_admin",
@@ -270,8 +291,34 @@
 			"defValue": true
 		},
 		{
+			"key": "pref_esc_key_feature",
+			"title": "ESC 按键功能",
+			"type": "list",
+			"subPage": "feature",
+			"entries": [
+				"关闭主窗口",
+				"清除输入",
+				"清除输入，再次按下关闭窗口",
+				"无"
+			],
+			"entryValues": [
+				"close",
+				"clear",
+				"clear_and_close",
+				"null"
+			],
+			"defValue": "close"
+		},
+		{
 			"key": "pref_single_click_to_open",
-			"title": "单击直接打开",
+			"title": "单击直接打开项目",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
+		},
+		{
+			"key": "pref_switch_list_right_click_with_shift_right_click",
+			"title": "调换项目右键 与 Shift + 右键功能",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -312,6 +359,20 @@
 			"defValue": true
 		},
 		{
+			"key": "pref_indexed_regist_apps",
+			"title": "索引注册表中注册的应用",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": false
+		},
+		{
+			"key": "pref_indexed_envpath_apps",
+			"title": "索引 %PATH% 中的可执行文件",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": false
+		},
+		{
 			"key": "pref_btn_indexed_manager",
 			"title": "索引查看器",
 			"type": "button",
@@ -341,7 +402,7 @@
 		},
 		{
 			"key": "pref_acknowledgements",
-			"title": "致谢: \nCLion(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick (https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp(https://github.com/rapidfuzz/rapidfuzz-cpp)\n",
+			"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""

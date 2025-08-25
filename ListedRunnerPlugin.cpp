@@ -5,6 +5,8 @@
 
 #include "ListedRunnerPlugin.h"
 #include "DataKeeper.hpp"
+#include "TraverseFilesHelper.hpp"
+#include "MainTools.hpp"
 
 #include <shobjidl.h>
 #include <windows.h>
@@ -32,12 +34,6 @@
 #define ESI_ALLITEMS 0x00000040
 #endif
 
-namespace fs = std::filesystem;
-
-static bool FolderExists(const std::wstring& folderPath)
-{
-	return std::filesystem::exists(folderPath) && std::filesystem::is_directory(folderPath);
-}
 
 static std::unordered_map<std::string, std::function<void()>> callbackFunctions;
 
@@ -57,51 +53,14 @@ const std::vector<std::shared_ptr<RunCommandAction>>& ListedRunnerPlugin::GetAct
 	return actions;
 }
 
-static std::wstring Utf8ToWString(const std::string& str)
-{
-	if (str.empty()) return {};
 
-	const int wideLen = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
-	if (wideLen == 0) throw std::runtime_error("MultiByteToWideChar failed");
-
-	std::wstring wstr(wideLen - 1, 0); // -1 去掉 null terminator
-	MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], wideLen);
-
-	return wstr;
-}
-
-static std::string WStringToUtf8(const std::wstring& wstr)
-{
-	if (wstr.empty()) return "";
-
-	const int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
-	if (size_needed == 0) throw std::runtime_error("WideCharToMultiByte failed");
-
-	std::string str(size_needed - 1, 0); // -1 去除 null terminator
-	WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &str[0], size_needed, nullptr, nullptr);
-
-	return str;
-}
-
-auto shouldExclude = [](const ListedRunnerPlugin::TraverseOptions& options,const std::wstring& name) -> bool
-{
-	std::wstring nameLower = name;
-	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
-	if (options.excludeNames.find(nameLower) != options.excludeNames.end()) return true;
-
-	for (const auto& word : options.excludeWords)
-	{
-		if (nameLower.find(word) != std::wstring::npos) return true;
-	}
-	return false;
-};
 
 /// <summary>
 /// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
 /// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
 /// </summary>
 /// <param name="actions">The list of actions to add UWP apps to.</param>
-static void LoadUwpApps(const ListedRunnerPlugin::TraverseOptions& options,std::vector<std::shared_ptr<RunCommandAction>>& actions)
+static void LoadUwpApps(const TraverseOptions& options,std::vector<std::shared_ptr<RunCommandAction>>& actions)
 {
 	if (FAILED(CoInitialize(NULL)))
 	{
@@ -231,6 +190,7 @@ static void LoadUwpApps(const ListedRunnerPlugin::TraverseOptions& options,std::
 }
 
 
+
 void ListedRunnerPlugin::LoadConfiguration()
 {
     MethodTimerStart();
@@ -245,18 +205,8 @@ void ListedRunnerPlugin::LoadConfiguration()
 													callbackFunctions["restart"]));
 	actions.push_back(std::make_shared<ActionNormal>(L"软件设置", L"打开本软件设置界面", EXE_FOLDER_PATH + L"\\refresh.ico",
 													callbackFunctions["settings"]));
-	std::ifstream in((configPath.data())); // 用 std::ifstream 而不是 std::wifstream
-	if (!in)
-	{
-		std::wcerr << L"配置文件不存在：" << configPath << std::endl;
-		return;
-	}
-
-	// 读取整个文件内容（UTF-8 编码）
-	std::ostringstream buffer;
-	buffer << in.rdbuf();
-	std::string utf8json = buffer.str();
-
+	std::string utf8json = ReadUtf8File(configPath);
+	
 	// 解析 JSON
 	nlohmann::json configJson;
 	try
@@ -301,62 +251,10 @@ void ListedRunnerPlugin::LoadConfiguration()
 			}
 			else if (cmd.contains("folder"))
 			{
-				if (!cmd["folder"].is_string())
-				{
-					std::wcerr << L"'folder' 字段类型错误，跳过该项。" << std::endl;
-					continue;
-				}
+				
+				TraverseOptions traverseOptions = getTraverseOptions(cmd);
+				if (!traverseOptions.command.empty()) continue;
 
-				std::wstring folderPath = Utf8ToWString(cmd["folder"].get<std::string>());
-				if (!FolderExists(folderPath))
-				{
-					std::wcerr << L"指定的文件夹不存在：" << folderPath << std::endl;
-					continue;
-				}
-
-				ListedRunnerPlugin::TraverseOptions traverseOptions;
-				traverseOptions.extensions = {L".exe", L".lnk"};
-				traverseOptions.recursive = true;
-
-				if (cmd.contains("excludes") && cmd["excludes"].is_array())
-				{
-					for (const auto& name : cmd["excludes"])
-					{
-						if (name.is_string())
-						{
-							traverseOptions.excludeNames.insert(Utf8ToWString(name.get<std::string>()));
-						}
-					}
-				}
-
-				if (cmd.contains("exclude_words") && cmd["exclude_words"].is_array())
-				{
-					for (const auto& word : cmd["exclude_words"])
-					{
-						if (word.is_string())
-						{
-							traverseOptions.excludeWords.insert(Utf8ToWString(word.get<std::string>()));
-						}
-					}
-				}
-
-				if (cmd.contains("rename_sources") && cmd["rename_sources"].is_array() &&
-					cmd.contains("rename_targets") && cmd["rename_targets"].is_array())
-				{
-					const auto& sources = cmd["rename_sources"];
-					const auto& targets = cmd["rename_targets"];
-					size_t count = (((sources.size()) < (targets.size())) ? (sources.size()) : (targets.size()));
-
-					for (size_t i = 0; i < count; ++i)
-					{
-						if (sources[i].is_string() && targets[i].is_string())
-						{
-							std::wstring src = Utf8ToWString(sources[i].get<std::string>());
-							std::wstring dst = Utf8ToWString(targets[i].get<std::string>());
-							traverseOptions.renameMap[src] = dst;
-						}
-					}
-				}
 				if (cmd.contains("special_uwp"))
 				{
 					TraverseUwpApps(traverseOptions,actions);
@@ -365,8 +263,18 @@ void ListedRunnerPlugin::LoadConfiguration()
 				{
 //					TraverseFiles(folderPath, traverseOptions, actions);
 //                    TraverseFilesForEverything(folderPath, traverseOptions, actions);
-                    TraverseFilesForEverythingSDK(folderPath, traverseOptions, actions);
+					::TraverseFilesForEverythingSDK(traverseOptions.folder, traverseOptions, [&](const std::wstring& name,
+																					 const std::wstring& fullPath,
+																					 const std::wstring& parent,
+																					 const std::wstring& ext)
+					{
+						const auto action = std::make_shared<RunCommandAction>(
+								name, fullPath, false, true, parent
+						);
+						actions.push_back(action);
+					});
 				}
+
 			}
 			else
 			{
@@ -379,7 +287,13 @@ void ListedRunnerPlugin::LoadConfiguration()
 			continue;
 		}
 	}
-    MethodTimerEnd(L"loadlist");
+	//TraverseOptions noOptions;
+	//TraverseRegistryApps(noOptions,actions);
+	//TraversePATHExecutables(actions);
+	// TODO: 解决这个崩溃问题
+	TraversePATHExecutables2(actions);
+
+	MethodTimerEnd(L"loadlist");
 }
 
 
@@ -424,38 +338,6 @@ std::vector<std::wstring> ListedRunnerPlugin::SplitWords(const std::wstring& inp
 	return result;
 }
 
-std::wstring ListedRunnerPlugin::GetShortcutTarget(const std::wstring& lnkPath)
-{
-	CoInitialize(nullptr);
-
-	std::wstring target;
-
-	IShellLink* psl = nullptr;
-	if (SUCCEEDED(
-		CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, reinterpret_cast<void**>(&psl)
-		)))
-	{
-		IPersistFile* ppf = nullptr;
-		if (SUCCEEDED(psl->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&ppf))))
-		{
-			if (SUCCEEDED(ppf->Load(lnkPath.c_str(), STGM_READ)))
-			{
-				WCHAR szPath[MAX_PATH];
-				WIN32_FIND_DATA wfd = {0};
-				if (SUCCEEDED(psl->GetPath(szPath, MAX_PATH, &wfd, SLGP_UNCPRIORITY)))
-				{
-					target = szPath;
-				}
-			}
-			ppf->Release();
-		}
-		psl->Release();
-	}
-
-	CoUninitialize();
-	return target;
-}
-
 HICON ListedRunnerPlugin::GetFileIcon(const std::wstring& filePath, const bool largeIcon)
 {
 	SHFILEINFOW sfi = {0};;
@@ -480,9 +362,9 @@ HBITMAP ListedRunnerPlugin::GetIconFromPath(const std::wstring& path)
 {
 	std::wstring actualPath = path;
 
-	if (path.size() > 4 && path.substr(path.size() - 4) == L".lnk")
+	if (MyEndsWith(path, L".lnk"))
 	{
-		actualPath = ListedRunnerPlugin::GetShortcutTarget(path);
+		actualPath = GetShortcutTarget(path);
 	}
 
 	HICON hIcon = GetFileIcon(actualPath, true);
@@ -554,7 +436,7 @@ static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
 
 	STATSTG stat;
 	pStream->Stat(&stat, STATFLAG_NONAME);
-	const ULONG size = stat.cbSize.QuadPart;
+	const ULONG size = static_cast<ULONG>(stat.cbSize.QuadPart);
 
 	buffer.resize(size);
 	const LARGE_INTEGER liZero = {};
@@ -568,12 +450,12 @@ static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
 
 
 void ListedRunnerPlugin::TraverseUwpApps(
-	const ListedRunnerPlugin::TraverseOptions& options,
+	const TraverseOptions& options,
 	std::vector<std::shared_ptr<RunCommandAction>>& outActions
 )
 {
 	// *** UWP应用程序加载逻辑 ***
-	if (settingsMap["pref_indexed_uwp_apps_enable"].defValue.get<int>() == 1)
+	if (g_settings_map["pref_indexed_uwp_apps_enable"].boolValue)
 	{
 		if (IsWindows8OrGreater())
 			try
@@ -587,241 +469,3 @@ void ListedRunnerPlugin::TraverseUwpApps(
 	}
 }
 
-void ListedRunnerPlugin::TraverseFiles(
-	const std::wstring& folderPath,
-	const ListedRunnerPlugin::TraverseOptions& options,
-	std::vector<std::shared_ptr<RunCommandAction>>& outActions
-)
-{
-	if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
-
-	auto extMatch = [&](const std::wstring& ext) -> bool
-	{
-		if (options.extensions.empty()) return true;
-		return std::any_of(options.extensions.begin(), options.extensions.end(),
-							[&](const std::wstring& ex) { return _wcsicmp(ext.c_str(), ex.c_str()) == 0; });
-	};
-
-	auto addFile = [&](const fs::path& path)
-	{
-		std::wstring filename = path.stem().wstring(); // without extension
-
-		if (shouldExclude(options,filename)) return;
-
-		// 重命名映射
-		if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
-		{
-			filename = it->second;
-		}
-
-		const auto action = std::make_shared<RunCommandAction>(
-			filename, path.wstring(), false, true, path.parent_path().wstring()
-		);
-
-		outActions.push_back(action);
-	};
-
-	if (options.recursive)
-	{
-		for (const auto& entry : fs::recursive_directory_iterator(folderPath))
-		{
-			if (!entry.is_regular_file()) continue;
-
-			const auto ext = entry.path().extension().wstring();
-			if (!extMatch(ext)) continue;
-            std::cout << entry.path() << std::endl;
-			addFile(entry.path());
-		}
-	}
-	else
-	{
-		for (const auto& entry : fs::directory_iterator(folderPath))
-		{
-			if (!entry.is_regular_file()) continue;
-
-			const auto ext = entry.path().extension().wstring();
-			if (!extMatch(ext)) continue;
-            std::cout << entry.path() << std::endl;
-			addFile(entry.path());
-		}
-	}
-}
-
-void ListedRunnerPlugin::TraverseFilesForEverything(
-        const std::wstring& folderPath,
-        const ListedRunnerPlugin::TraverseOptions& options,
-        std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
-    if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
-
-    // addFile lambda 保持不变，可以完美复用
-    auto addFile = [&](const fs::path& path)
-    {
-        std::wstring filename = path.stem().wstring(); // without extension
-
-        if (shouldExclude(options, filename)) return;
-
-        // 重命名映射
-        if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
-        {
-            filename = it->second;
-        }
-
-        const auto action = std::make_shared<RunCommandAction>(
-                filename, path.wstring(), false, true, path.parent_path().wstring()
-        );
-
-        outActions.push_back(action);
-    };
-
-    // 1. 构建 Everything 查询命令
-    std::wstringstream command;
-    // 假设 es.exe 在 PATH 中，或者提供完整路径
-    command << L"D:\\Download3\\ES-1.1.0.30.x64\\es.exe -utf8-bom ";
-
-    // -p 指定搜索路径
-    command << L"-p \"" << folderPath << L"\" ";
-
-    // 从扩展名列表动态生成正则表达式
-    if (!options.extensions.empty())
-    {
-        std::wstringstream regex_stream;
-        regex_stream << L"\"("; // 正则表达式部分用引号括起来
-
-        for (size_t i = 0; i < options.extensions.size(); ++i)
-        {
-            std::wstring ext = options.extensions[i];
-
-            // 为正则表达式转义特殊字符，尤其是 '.'
-            std::wstring escaped_ext;
-            for (wchar_t c : ext)
-            {
-                if (c == L'.' || c == L'\\' || c == L'?' || c == L'*' || c == L'+' || c == L'(' || c == L')' || c == L'[' || c == L']' || c == L'{' || c == L'}' || c == L'^' || c == L'$')
-                {
-                    escaped_ext += L'\\';
-                }
-                escaped_ext += c;
-            }
-
-            regex_stream << escaped_ext << (i < options.extensions.size() - 1 ? L"|" : L"");
-        }
-        regex_stream << L")$\""; // 以 $ 结尾，确保是文件扩展名
-
-        // -r 指定正则表达式
-        command << L"-r " << regex_stream.str();
-    }
-
-    try
-    {
-        // 2. 执行命令并获取纯文本输出
-        std::string commandOutput = ExecuteCommandAndGetOutput(command.str());
-//        std::cout << commandOutput << std::endl;
-
-        if (commandOutput.empty()) return;
-
-        // 3. 逐行解析输出
-        std::stringstream ss(commandOutput);
-        std::string line;
-        fs::path searchFolderPath(folderPath); // 预先创建path对象用于比较
-
-        while (std::getline(ss, line))
-        {
-            if (line.empty()) continue;
-            line.erase(line.find_last_not_of("\r\n") + 1);
-            // es.exe 的输出是UTF-8编码，使用u8path可以正确处理包含非英文字符的路径
-//            fs::path filePath = fs::u8path(line);
-            std::wstring wide_path_str = MultiByteToWide(line, CP_ACP); // CP_ACP 表示系统的当前活动代码页
-            // 直接用 wstring 构造 path 对象，这是在Windows上最可靠的方式
-//            std::cout << WStringToUtf8(wide_path_str) << std::endl;
-
-            fs::path filePath(wide_path_str);
-//            std::cout << WStringToUtf8(filePath.wstring()) << std::endl;
-
-            // 4. 如果是非递归搜索，需要额外判断父目录是否匹配
-            if (!options.recursive)
-            {
-                if (filePath.parent_path() != searchFolderPath)
-                {
-                    continue; // 如果父目录不匹配，则跳过此文件
-                }
-            }
-
-            // 复用 addFile 逻辑
-//            std::cout << filePath << std::endl;
-            addFile(filePath);
-        }
-    }
-    catch (const std::exception& e)
-    {
-        // 错误处理，可以考虑回退到原始的文件系统遍历方法
-        // e.g., LogError("Failed to search with Everything: " + std::string(e.what()));
-        std::cout << ("Failed to search with Everything: " + std::string(e.what())) << std::endl;
-
-    }
-}
-
-
-void ListedRunnerPlugin::TraverseFilesForEverythingSDK(
-        const std::wstring& folderPath,
-        const ListedRunnerPlugin::TraverseOptions& options,
-        std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
-    if (!fs::exists(folderPath) || !fs::is_directory(folderPath) || options.extensions.empty()) return;
-
-    auto addFile = [&](const fs::path& path)
-    {
-        std::wstring filename = path.stem().wstring();
-        if (shouldExclude(options, filename)) return;
-
-        if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
-            filename = it->second;
-
-        outActions.push_back(std::make_shared<RunCommandAction>(
-                filename, path.wstring(), false, true, path.parent_path().wstring()
-        ));
-    };
-
-
-    // 构造更高效的搜索查询
-    // 例如: parent:"C:\ProgramData\Microsoft\Windows\Start Menu\Programs" ext:exe;lnk
-    std::wstringstream search_query;
-    if (options.recursive)
-    {
-        // 如果是递归搜索，则使用原始的路径搜索
-        search_query << L"\"" << folderPath << L"\" ";
-    }
-    else
-    {
-        // 如果不递归，使用 parent: 函数更精确、更高效
-        search_query << L"parent:\"" << folderPath << L"\" ";
-    }
-
-    // 使用 ext: 过滤器，比正则表达式更简单快速
-    search_query << L"ext:";
-    for (size_t i = 0; i < options.extensions.size(); ++i)
-    {
-        std::wstring ext = options.extensions[i];
-        // 去掉可能存在的点
-        if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
-        search_query << ext;
-        if (i < options.extensions.size() - 1) search_query << L";";
-    }
-
-    std::wcout << L"Executing optimized Everything search: " << search_query.str() << std::endl;
-
-    // 使用 Everything SDK
-    Everything_SetSearchW(search_query.str().c_str());
-    Everything_QueryW(TRUE);
-
-    DWORD numResults = Everything_GetNumResults();
-
-    for (DWORD i = 0; i < numResults; i++)
-    {
-        wchar_t fullPath[MAX_PATH];
-        Everything_GetResultFullPathNameW(i, fullPath, MAX_PATH);
-
-        // 因为查询已经精确过滤，不再需要手动判断父目录了
-        // if (!options.recursive) { ... } 这段逻辑可以移除
-        addFile(fs::path(fullPath));
-    }
-}

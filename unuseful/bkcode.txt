@@ -1,34 +1,47 @@
 ﻿todo:
 
-索引查看器
-添加，一键检查某些快捷方式是否失效，以及使用everything来找回文件的位置，并可以编辑快捷方式
-自动检查更新，不在提示
-pref_check_version_update
-(shift+右键)自定义右键菜单，可以添加一些管理索引的设置，移除该项，重命名该项，以管理员身份运行，在控制台项目打开该项，杀死进程，复制路径
+左侧栏提高一些，然后铺满，项目使用图标，左对齐
+
+索引查看器:
+快捷方式修复器，添加，一键检查某些快捷方式是否失效，以及使用everything来找回文件的位置，并可以编辑快捷方式
+
+
+主面板：
+把listview edit 主窗口的编辑框按键监听统一
+
+
 
 当不使用透明图片背景时，使用传统的gdi 来渲染窗口内容
 pref_night_mode
 skin
-托盘帮助(直接转到 Github wiki)
-托盘关于
 
-列表设置项：主面板esc 用于清空编辑框，主面板esc 再次按下退出
-runner 也在桌面找应用
-包括已在注册表中注册的应用
-在 %PATH% 上的任何位置包含应用
 
-简单的扩展：
-执行命令：cmd  打开一个新控制台，在里面输入命令
-计算： cal 使用一个科学计算库，来计算算式，保存历史记录，
-gdi+ 实现编辑框的hint
+设置项，包括已在注册表中注册的应用
+设置项，在 %PATH% 上的任何位置包含exe bat lnkw
 设置项，使用everything 来建立索引
-ctrl 加数字键启动第X项
+
 
 
 后期：
+小细节，编辑框 paint重绘，再次显示界面时 选中词语背景有点问题
+小细节，统一窗口，列表，编辑框的一些共同按键事件
+完善预设runner.json 也在桌面找应用
 暴力测试各种设置项
 添加，语言国际化
 allow_drag_file
+
+
+自动检查更新，不在提示
+pref_check_version_update
+
+索引查看器:
+添加查看排除了哪些项
+
+
+
+#简单的扩展：
+#执行命令：cmd  打开一个新控制台，在里面输入命令
+#计算： cal 使用一个科学计算库，来计算算式，保存历史记录，
 
 
 //完整匹配
@@ -1210,3 +1223,250 @@ void TraverseFilesForEverythingSDK2(
     }
 
 }
+
+
+[[maybe_unused]] void TrayMenuManager::Init2(HWND parent, HINSTANCE hInstance)
+{
+	// 初始化托盘图标
+	ZeroMemory(&nid, sizeof(NOTIFYICONDATA));
+	nid.cbSize = sizeof(NOTIFYICONDATA);
+	nid.hWnd = parent;
+	nid.uID = TRAY_ICON_ID;
+	nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+	nid.uCallbackMessage = WM_TRAYICON;
+	nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_WINDOWSPROJECT1));
+	hInstance2 = hInstance;
+	wcscpy_s(nid.szTip, L"My App");
+	Shell_NotifyIcon(NIM_ADD, &nid);
+
+	// 创建托盘菜单
+	hTrayMenu = CreatePopupMenu();
+	AppendMenu(hTrayMenu, MF_STRING, TRAY_MENU_ID_SHOW_WINDOW, L"打开主窗口(&C)");
+	AppendMenu(hTrayMenu, MF_SEPARATOR, 0, nullptr); // 插入分隔线
+	AppendMenu(hTrayMenu, MF_STRING, TRAY_MENU_ID_HELP, L"帮助文档(&H)");
+	// 🔹 创建一个子菜单
+	HMENU hSubMenu = CreatePopupMenu();
+	AppendMenu(hSubMenu, MF_STRING, TRAY_MENU_ID_EDIT_CONFIG, L"编辑配置文件（记事本）(&O)");
+	AppendMenu(hSubMenu, MF_STRING, TRAY_MENU_ID_OPEN_FOLDER, L"在资源管理器打开路径(&I)");
+	AppendMenu(hSubMenu, MF_STRING, TRAY_MENU_ID_GITHUB, L"打开 Github 主页");
+	AppendMenu(hSubMenu, MF_SEPARATOR, 0, nullptr); // 插入分隔线
+	AppendMenu(hSubMenu, MF_STRING, TRAY_MENU_ID_RESTART, L"重启软件(&R)");
+
+//	AppendMenu(hTrayMenu, MF_STRING, TRAY_MENU_ID_RESTART, L"重启软件");
+// 把子菜单加到主菜单
+	AppendMenu(hTrayMenu, MF_SEPARATOR, 0, nullptr); // 插入分隔线
+	AppendMenu(hTrayMenu, MF_POPUP, (UINT_PTR)hSubMenu, L"更多...(&M)");
+
+	AppendMenu(hTrayMenu, MF_STRING, TRAY_MENU_ID_SETTINGS, L"设置(&S)");
+	AppendMenu(hTrayMenu, MF_STRING, TRAY_MENU_ID_EXIT, L"退出(&E)");
+}
+
+enum class SettingType {
+	BOOL,
+	STRING,
+	INT,
+	FLOAT,
+	LIST,
+	HOTKEYSTRING,
+	BUTTON,
+	TEXT,
+};
+
+
+	int value_int;
+	bool value_bool;
+	std::string value_string;
+	SettingType type;
+	std::any getValue(){
+		switch (type) {
+			case SettingType::BOOL:{
+				return value_bool;
+			}
+			case SettingType::STRING:
+				return value_string;
+			case SettingType::INT:
+				return value_int;
+			case SettingType::FLOAT:
+				break;
+			case SettingType::LIST:
+				break;
+			case SettingType::HOTKEYSTRING:
+				break;
+			case SettingType::BUTTON:
+				break;
+			case SettingType::TEXT:
+				break;
+		}
+		return "";
+	}
+
+
+//inline std::vector<SettingItem> ParseConfig(const std::string& configStr) {
+//    nlohmann::json j = nlohmann::json::parse(configStr);
+//    std::vector<SettingItem> settings;
+//    for (auto& item : j["prefList"]) {
+//        settings.push_back({
+//            item["key"].get<std::string>(),
+//            item["type"].get<std::string>(),
+//            item["subPage"].get<std::string>(),
+//            item["defValue"]
+//            });
+//    }
+//    return settings;
+//}
+
+/**
+ * 更改tab页，但是btn不会相应的更改高亮
+ * @param tabName 
+ */
+static void SwitchToTab2(const std::wstring &tabName) {
+	int newIdx = FindTabIndexByName(tabName);
+	int oldIdx = currentSubPageIndex;
+	if (newIdx >= 0 && newIdx < static_cast<int>(tabContainers.size())) {
+		ShowWindow(tabContainers[currentSubPageIndex], SW_HIDE);
+		ShowWindow(tabContainers[newIdx], SW_SHOW);
+		currentSubPageIndex = newIdx;
+		// TODO: UpdateTabButtonSelection(newIdx); - Function removed
+	}
+}
+
+
+
+
+static void saveConfig2(const std::vector<std::wstring> &subPages, const std::vector<SettingItem> &settings2,
+						const std::vector<std::vector<HWND>> &hCtrlsByTab) {
+	nlohmann::json newConfig;
+	newConfig["version"] = 1;
+	newConfig["prefList"] = nlohmann::json::array();
+
+	// 遍历每个tab
+	for (size_t tabIdx = 0; tabIdx < subPages.size(); ++tabIdx) {
+		int ctrlIdx = 0;
+		for (size_t i = 0; i < settings2.size(); ++i) {
+			const auto &item = settings2[i];
+			if (utf8_to_wide(item.subPage) != subPages[tabIdx])
+				continue;
+
+			nlohmann::json obj;
+			obj["key"] = item.key;
+			obj["type"] = item.type;
+			obj["subPage"] = item.subPage;
+
+			HWND hCtrl = hCtrlsByTab[tabIdx][static_cast<size_t>(ctrlIdx + 1)];
+			if (item.type == "bool") {
+				bool checked = GetSwitchState(hCtrl);
+				obj["defValue"] = checked;
+			} else if (item.type == "string") {
+				wchar_t buf[256];
+				GetWindowTextW(hCtrl, buf, 256);
+				std::wstring ws(buf);
+				obj["defValue"] = wide_to_utf8(ws);
+			} else if (item.type == "stringArr") {
+				wchar_t buf[1024];
+				GetWindowTextW(hCtrl, buf, 1024);
+				std::wstring ws(buf);
+				std::vector<std::string> arr;
+				size_t start = 0;
+				while (start < ws.size()) {
+					size_t end = ws.find_first_of(L"\r\n", start);
+					if (end == std::wstring::npos) end = ws.size();
+					std::wstring line = ws.substr(start, end - start);
+					if (!line.empty())
+						arr.push_back(wide_to_utf8(line));
+					start = ws.find_first_not_of(L"\r\n", end);
+					if (start == std::wstring::npos) break;
+				}
+				obj["defValue"] = arr;
+			} else if (item.type == "list") {
+				int selIdx = (int) SendMessage(hCtrl, CB_GETCURSEL, 0, 0);
+				std::string val = item.entryValues[selIdx];
+				obj["defValue"] = val;
+			} else if (item.type == "long") {
+				wchar_t buf[32];
+				GetWindowTextW(hCtrl, buf, 32);
+				obj["defValue"] = _wtol(buf); // 宽字符转 long
+			} else if (item.type == "hotkeystring") {
+				wchar_t buf[256];
+				GetWindowTextW(hCtrl, buf, 256);
+				std::string hotkeyStr = wide_to_utf8(std::wstring(buf));
+				obj["defValue"] = _wtol(buf); // 宽字符转 long
+			} else if (item.type == "button") {
+				// Button类型保持原始的defValue（action名称）
+				obj["defValue"] = item.defValue;
+			}
+
+			newConfig["prefList"].push_back(obj);
+			ctrlIdx += 2; // hLabel, hCtrl
+		}
+	}
+	// 你可以保存 newConfig.dump(4) 到文件
+	std::string temp = newConfig.dump(4);
+	ShowErrorMsgBox(temp);
+	// MessageBoxW(hwnd, L"保存成功（实际存储代码请补全）", L"提示", MB_OK);
+}
+
+
+
+//static bool IsChinese(const std::wstring& str)
+//{
+//return std::ranges::any_of(str, [](wchar_t ch)
+//{
+//	return ch >= 0x4E00 && ch <= 0x9FFF;
+//});
+//	for (wchar_t ch : str)
+//	{
+//		if (ch >= 0x4E00 && ch <= 0x9FFF)
+//			return true;
+//	}
+//	return false;
+//}
+
+
+
+
+
+
+
+
+// 更新快捷方式列表
+static void UpdateShortcutList2(int selectedIndex) {
+	// 清空列表
+	ListView_DeleteAllItems(g_shortcutListView);
+
+	if (selectedIndex < 0 || selectedIndex >= static_cast<int>(g_runnerConfigs.size())) {
+		return;
+	}
+
+	const TraverseOptions &config = g_runnerConfigs[selectedIndex];
+	std::vector<std::wstring> shortcuts;
+	TraverseFilesForEverythingSDK(config.folder, config, [&](const std::wstring &name,
+															 const std::wstring &fullPath,
+															 const std::wstring &parent,
+															 const std::wstring &ext) {
+		shortcuts.push_back(fullPath);
+	});
+
+	// 添加快捷方式到列表视图
+	SendMessage(g_shortcutListView, WM_SETREDRAW, FALSE, 0); // 暂停重绘
+	for (size_t i = 0; i < shortcuts.size(); ++i) {
+		LVITEMW item = {};
+		item.mask = LVIF_TEXT;
+		item.iItem = static_cast<int>(i);
+		item.iSubItem = 0;
+		item.pszText = const_cast<LPWSTR>(shortcuts[i].c_str());
+		//ListView_InsertItem(g_shortcutListView, &item);
+	}
+	ListView_SetItemCountEx(g_shortcutListView, (int)shortcuts.size(), LVSICF_NOINVALIDATEALL);
+
+	SendMessage(g_shortcutListView, WM_SETREDRAW, TRUE, 0);  // 恢复重绘
+	InvalidateRect(g_shortcutListView, nullptr, TRUE);       // 立即刷新
+}
+
+
+// 处理编辑框的滚动通知
+			else if (HIWORD(wParam) == EN_VSCROLL) {
+				HWND editHwnd = (HWND)lParam;
+				if (editHwnd == g_renameSourcesEdit || editHwnd == g_renameTargetsEdit) {
+					//g_editSync.SynchronizeScroll(editHwnd);
+				}
+			}

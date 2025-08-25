@@ -19,6 +19,10 @@ CandyLauncher 是一个用 C++ 编写的轻量级 Windows 快捷启动器，能�
 - 完善目录索引与拖放交互
 - 补充设置界面的更多选项
 
+## note
+
+- 使用 UTF-8 with BOM 保存文件
+
 ## 构建方式
 ### Visual Studio 2022
 - 安装组件：使用 C++ 的桌面开发（含 Windows SDK、MSVC 工具集、CMake 集成）

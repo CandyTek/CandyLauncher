@@ -1,4 +1,5 @@
 ﻿#include "ListViewManager.h"
+#include "MainTools.hpp"
 #include <shlobj.h>
 #include <shlguid.h>
 #include <sstream>
@@ -21,11 +22,38 @@
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Comctl32.lib")
 
-ListViewManager::ListViewManager() = default;
+// Static variable definitions
+HIMAGELIST ListViewManager::hImageList = nullptr;
+std::vector<std::shared_ptr<RunCommandAction>> ListViewManager::allActions;
+std::vector<std::shared_ptr<RunCommandAction>> ListViewManager::filteredActions;
+ThreadPool ListViewManager::pool(std::thread::hardware_concurrency());
 
 typedef HRESULT (WINAPI *SHGetImageListPtr)(int iImageList, REFIID riid, void **ppv);
 
-ThreadPool ListViewManager::pool(std::thread::hardware_concurrency());
+
+// 使listview监听esc键
+LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam,
+											 UINT_PTR, const DWORD_PTR dwRefData)
+{
+	switch (message)
+	{
+		case WM_KEYDOWN:
+			if (wParam == VK_ESCAPE)
+			{
+				HWND hEdit = reinterpret_cast<HWND>(dwRefData);
+				HideWindow(GetParent(hWnd), hEdit, hWnd);
+				return 0;
+			}
+			break;
+		case WM_MBUTTONUP:
+			TimerIDSetFocusEdit = SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
+			break;
+
+		default: break;
+	}
+	return DefSubclassProc(hWnd, message, wParam, lParam);
+}
+
 
 static HIMAGELIST GetSystemImageListEx(const int size) {
 	SHFILEINFO sfi = {};
@@ -87,19 +115,19 @@ void ListViewManager::Initialize(HWND parent, HINSTANCE hInstance, const int x, 
 	const DWORD style = LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_CHILD | WS_VISIBLE | LVS_OWNERDRAWFIXED |
 						WS_VSCROLL |
 						LVS_NOCOLUMNHEADER | LVS_OWNERDATA;
-	hListView = CreateWindowExW(0, WC_LISTVIEW, L"", style,
-								x, y, width, height, parent, reinterpret_cast<HMENU>(2), hInstance, nullptr);
+	g_listViewHwnd = CreateWindowExW(0, WC_LISTVIEW, L"", style,
+									 x, y, width, height, parent, reinterpret_cast<HMENU>(2), hInstance, nullptr);
 
 	// 设置列 0（主标题），即使我们不显示它，也必须添加
 	LVCOLUMN col = {LVCF_TEXT | LVCF_WIDTH};
 	col.pszText = const_cast<LPWSTR>(L"Title");
 	col.cx = 500;
-	ListView_InsertColumn(hListView, 0, &col);
+	ListView_InsertColumn(g_listViewHwnd, 0, &col);
 
 	//hImageList = GetSystemImageList(true);
 	hImageList = GetSystemImageListEx(SHIL_EXTRALARGE); // 使用 48x48 图标
 
-	ListView_SetImageList(hListView, hImageList, LVSIL_NORMAL);
+	ListView_SetImageList(g_listViewHwnd, hImageList, LVSIL_NORMAL);
 	InitializeGraphicsResources(); // 确保字体和画刷已初始化
 }
 
@@ -208,7 +236,7 @@ void ListViewManager::Exactmatch_Optimized(const std::wstring &keyword) {
 		if (isMatch) {
 			// 只将匹配项添加到 vector 中
 			filteredActions.push_back(action);
-			if (pref_max_search_results > 0 && filteredActions.size() >= pref_max_search_results) {
+			if (pref_max_search_results > 0 && filteredActions.size() >= static_cast<size_t>(pref_max_search_results)) {
 				break; // 达到最大结果数，停止筛选
 			}
 		}
@@ -292,7 +320,7 @@ void ListViewManager::Fuzzymatch_MultiThreaded(const std::wstring &keyword) {
 	}
 
 	// 排序：按分数从高到低排序 (在主线程中完成)
-	if (pref_max_search_results > 0 && scoredActions.size() > pref_max_search_results) {
+	if (pref_max_search_results > 0 && scoredActions.size() > static_cast<size_t>(pref_max_search_results)) {
 		// 只对前 pref_max_search_results 个元素进行部分排序
 		std::partial_sort(scoredActions.begin(),
 						  scoredActions.begin() + pref_max_search_results,
@@ -398,7 +426,7 @@ void ListViewManager::Filter(const std::wstring &keyword) {
 	filteredActions.clear();
 
 	if (keyword.empty()) {
-		ListView_SetItemCountEx(hListView, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 		return;
 	}
 
@@ -418,16 +446,16 @@ void ListViewManager::Filter(const std::wstring &keyword) {
 		MethodTimerEnd(L"Exactmatch");
 	}
 	// 关键方法，用于提交列表数据更新
-	ListView_SetItemCountEx(hListView, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+	ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 	if (!filteredActions.empty()) {
 		// 清除所有项的选中状态
 		//ListView_SetItemState(hListView, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
 		// 设置第一项为选中状态
-		ListView_SetItemState(hListView, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+		ListView_SetItemState(g_listViewHwnd, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 		// 确保第一项可见
-		ListView_EnsureVisible(hListView, 0, FALSE);
+		ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
 	}
-	InvalidateRect(hListView, NULL, TRUE);
+	InvalidateRect(g_listViewHwnd, NULL, TRUE);
 }
 
 
@@ -608,7 +636,7 @@ void ListViewManager::setUnknownFileIcon(HDC hdc, const RECT rc) {
 	}
 }
 
-void ListViewManager::DrawItem(const DRAWITEMSTRUCT *lpDrawItem) const {
+void ListViewManager::DrawItem(const DRAWITEMSTRUCT *lpDrawItem) {
 	const UINT index = lpDrawItem->itemID;
 	if (index < 0 || index >= static_cast<int>(filteredActions.size()))
 		return;

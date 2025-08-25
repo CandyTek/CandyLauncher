@@ -2,6 +2,7 @@
 #include <functional>
 #include <Shobjidl.h>
 #include <string>
+#include <variant>
 
 #include "json.hpp"
 #include "BaseTools.hpp"
@@ -13,6 +14,7 @@
 // 定义我们的高性能查找“数组” -> 哈希表，键是 UINT64，值是对应的动作
 using HotkeyMap = std::unordered_map<UINT64, UINT64>;
 
+
 // 配置项结构
 struct SettingItem
 {
@@ -23,24 +25,36 @@ struct SettingItem
 	std::vector<std::string> entries;
 	std::vector<std::string> entryValues;
 	nlohmann::json defValue;
+	//	std::any value;
+	int64_t intValue;
+	bool boolValue;
+	double doubleValue;
+	std::string stringValue;
+//	std::variant<int64_t, bool,double, std::string> value;
 };
 
 
 // 全局常驻变量
-extern HWND s_mainHwnd;
+extern HWND g_mainHwnd;
 extern HWND g_settingsHwnd;
+extern HWND g_editHwnd;
+extern HWND g_listViewHwnd;
 extern HKL g_hklIme;
 extern UINT_PTR TimerIDSetFocusEdit;
 
 extern HotkeyMap g_hotkeyMap;
-extern std::vector<SettingItem> settings2;
-extern std::unordered_map<std::string, SettingItem> settingsMap;
+extern std::vector<SettingItem> g_settings2;
+extern std::unordered_map<std::string, SettingItem> g_settings_map;
 
 extern std::wstring EXE_FOLDER_PATH;
+extern std::wstring EDIT_HINT_TEXT;
 extern std::string pref_force_ime_mode;
 extern std::string pref_hotkey_toggle_main_panel;
 
 extern bool pref_show_window_and_release_modifier_key;
+extern bool pref_ctrl_number_launch_item;
+extern bool pref_alt_number_launch_item;
+extern bool pref_switch_list_right_click_with_shift_right_click;
 extern bool pref_run_item_as_admin;
 extern bool pref_hide_in_fullscreen;
 extern bool pref_hide_in_topmost_fullscreen;
@@ -51,7 +65,7 @@ extern bool pref_fuzzy_match;
 extern bool pref_last_search_term_selected;
 extern bool pref_close_after_open_item;
 
-extern int pref_max_search_results;
+extern int64_t pref_max_search_results;
 extern int last_open_window_position_x;
 extern int last_open_window_position_y;
 extern int unknown_file_icon_index;
@@ -66,7 +80,7 @@ extern int lastWindowCenterY ;
 // const int COLOR_UI_BG_VALUE = 110;
 //const int COLOR_UI_BG_VALUE = 255;
 extern int LISTITEM_ICON_SIZE;
-extern int pref_fuzzy_match_score_threshold;
+extern int64_t pref_fuzzy_match_score_threshold;
 
 
 const int COLOR_UI_BG_VALUE = 170;

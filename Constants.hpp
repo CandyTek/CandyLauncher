@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <Shobjidl.h>
 #include <string>
+#include <unordered_set>
 
 #define WM_EDIT_CONTROL_HOTKEY (WM_USER + 100)
 #define WM_EDIT_OPEN_PATH (WM_USER + 101)
@@ -24,6 +25,17 @@
 #define HOTKEY_ID_OPEN_FILE_LOCATION (101)
 #define HOTKEY_ID_OPEN_TARGET_LOCATION (102)
 #define HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS (103)
+
+// Hotkey IDs for Ctrl+numeric keys (1-9)
+#define HOTKEY_ID_INVOKE_ITEM_1 (120)
+#define HOTKEY_ID_INVOKE_ITEM_2 (121)
+#define HOTKEY_ID_INVOKE_ITEM_3 (122)
+#define HOTKEY_ID_INVOKE_ITEM_4 (123)
+#define HOTKEY_ID_INVOKE_ITEM_5 (124)
+#define HOTKEY_ID_INVOKE_ITEM_6 (125)
+#define HOTKEY_ID_INVOKE_ITEM_7 (126)
+#define HOTKEY_ID_INVOKE_ITEM_8 (127)
+#define HOTKEY_ID_INVOKE_ITEM_9 (128)
 
 // 下面的键位没有用
 constexpr UINT MOD_CTRL_KEY = 0x02;
@@ -50,3 +62,35 @@ constexpr UINT MOD_CTRL_SHIFT_ALT_WIN_KEY = 15;
 constexpr int SETTINGS_WINDOW_WIDTH = 705;
 constexpr int SETTINGS_WINDOW_HEIGHT = 470;
 
+
+constexpr const char* SETTINGS_PREF_TYPE_STRING = "string";
+//constexpr int settings_pref_type_ = 2;
+
+
+const std::unordered_set<std::wstring> systemProcesses = {
+		L"explorer.exe",
+		L"svchost.exe",
+		L"wininit.exe",
+		L"csrss.exe",
+		L"winlogon.exe",
+		L"lsass.exe",
+		L"services.exe",
+		L"smss.exe",
+		L"sihost.exe",
+		L"wmiapsrv.exe",
+		L"dwm.exe",
+		L"dllhost.exe",
+		L"runtimebroker.exe",
+		L"applicationframehost.exe",
+		L"system", // SYSTEM 内核进程
+};
+
+struct SwitchInfo {
+	HWND hwnd;
+	bool isOn;
+	bool isHovered;
+	bool isPressed;
+	bool isAnimating;
+	float animationProgress; // 0.0f to 1.0f
+	DWORD animationStartTime;
+};

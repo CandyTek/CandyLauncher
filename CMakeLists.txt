@@ -46,6 +46,18 @@ add_executable(WindowsProject1 WIN32
         app.manifest
         ThreadPool.h
         IndexedManager.hpp
+        SkinHelper.h
+        TraverseFilesHelper.hpp
+        TraverseOptions.h
+        CustomButtonHelper.hpp
+        SwitchView.h
+        HotkeyEditView.h
+        SwitchViewStyle.h
+        EditScrollSyncHelper.hpp
+        RenameDialog.hpp
+        ShortcutFixWindow.hpp
+        FileInfo.hpp
+        ToolTipHelper.hpp
 )
 
 target_precompile_headers(WindowsProject1

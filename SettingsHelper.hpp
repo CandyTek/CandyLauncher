@@ -9,30 +9,41 @@
 #include "ShortCutHelper.hpp"
 #include "DataKeeper.hpp"
 #include "IndexedManager.hpp"
+#include "SwitchView.h"
+#include "PinyinHelper.h"
 
-static std::map<std::wstring, std::wstring> tabNameMap = {
-		{L"normal",  L"常规"},
-		{L"feature", L"功能"},
-		{L"other",   L"其他"},
-		{L"hotkey",  L"快捷键"},
-		{L"index",   L"索引"},
-		{L"about",   L"关于"}
-};
+// Global button list
 
 
-//inline std::vector<SettingItem> ParseConfig(const std::string& configStr) {
-//    nlohmann::json j = nlohmann::json::parse(configStr);
-//    std::vector<SettingItem> settings;
-//    for (auto& item : j["prefList"]) {
-//        settings.push_back({
-//            item["key"].get<std::string>(),
-//            item["type"].get<std::string>(),
-//            item["subPage"].get<std::string>(),
-//            item["defValue"]
-//            });
-//    }
-//    return settings;
-//}
+
+
+
+static bool to_bool(const nlohmann::json& v) {
+	if (v.is_boolean()) return v.get<bool>();
+	if (v.is_number_integer()) return v.get<int>() != 0;          // 兼容 0/1
+	if (v.is_string()) {
+		std::string s = v.get<std::string>();
+		std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+		return (s == "true" || s == "1" || s == "yes" || s == "on");
+	}
+	throw std::runtime_error("not a boolean-like value");
+}
+
+inline void setSettingItemValue(SettingItem& item){
+	if (item.type == "string" || item.type == "hotkeystring" || item.type == "list") {
+		item.stringValue = item.defValue.get<std::string>();
+	}else if(item.type == "long"){
+		item.intValue = item.defValue.get<int64_t>();
+//		ShowErrorMsgBox(L""+std::to_wstring(std::get<int64_t>(item.value)));
+	}else if(item.type == "bool"){
+		item.boolValue = to_bool(item.defValue);
+		
+//		ShowErrorMsgBox(L""+std::to_wstring(item.boolValue));
+	}else if(item.type == "double"){
+		item.doubleValue = item.defValue.get<double>();
+	}
+}
+
 
 
 inline std::vector<SettingItem> ParseConfig(const std::string &configStr) {
@@ -60,7 +71,7 @@ inline std::vector<SettingItem> ParseConfig(const std::string &configStr) {
 		}
 
 		setting.defValue = item["defValue"]; // 保持原始 JSON 类型，灵活性更高
-
+		setSettingItemValue(setting);
 		settings.push_back(setting);
 	}
 
@@ -92,30 +103,9 @@ static std::string GetSettingsJsonText2() {
 #ifndef NDEBUG
 
 static std::string GetSettingsJsonText() {
-
-	std::wstring configPath = LR"(C:\Users\Administrator\source\repos\WindowsProject1\settings.json)";
-	FILE *fp = nullptr;
-	if (_wfopen_s(&fp, configPath.c_str(), L"rb") != 0 || !fp) {
-		std::wcerr << L"设置基础文件不存在：" << configPath << std::endl;
-		return GetSettingsJsonText2();
-	}
-
-	std::string data;
-	constexpr size_t kBuf = 4096;
-	std::vector<char> buf(kBuf);
-	size_t n;
-	while ((n = fread(buf.data(), 1, buf.size(), fp)) > 0) {
-		data.append(buf.data(), n);
-	}
-	fclose(fp);
-	// 如果文件是 UTF-8 BOM，去掉 BOM
-	if (data.size() >= 3 &&
-		static_cast<unsigned char>(data[0]) == 0xEF &&
-		static_cast<unsigned char>(data[1]) == 0xBB &&
-		static_cast<unsigned char>(data[2]) == 0xBF) {
-		data.erase(0, 3);
-	}
-	return data;
+	std::string jsonText = ReadUtf8File(LR"(C:\Users\Administrator\source\repos\WindowsProject1\settings.json)");
+	if (jsonText.empty())return GetSettingsJsonText2();
+	return jsonText;
 }
 
 #else
@@ -134,12 +124,7 @@ static std::string GetSettingsJsonText()
  * Returns an empty json object if the file doesn't exist or is invalid.
  */
 static nlohmann::json loadUserConfig(const std::string &filename = "user_settings.json") {
-	std::ifstream f(filename);
-	if (!f.is_open()) {
-		// File doesn't exist, probably the first run. Return empty.
-		return {};
-	}
-
+	std::string f=ReadUtf8File(filename);
 	nlohmann::json userConfig;
 	try {
 		// Parse the file content into the JSON object.
@@ -156,82 +141,10 @@ static nlohmann::json loadUserConfig(const std::string &filename = "user_setting
 }
 
 
-static void saveConfig2(const std::vector<std::wstring> &subPages, const std::vector<SettingItem> &settings2,
-						const std::vector<std::vector<HWND>> &hCtrlsByTab) {
-	nlohmann::json newConfig;
-	newConfig["version"] = 1;
-	newConfig["prefList"] = nlohmann::json::array();
-
-	// 遍历每个tab
-	for (size_t tabIdx = 0; tabIdx < subPages.size(); ++tabIdx) {
-		int ctrlIdx = 0;
-		for (size_t i = 0; i < settings2.size(); ++i) {
-			const auto &item = settings2[i];
-			if (utf8_to_wide(item.subPage) != subPages[tabIdx])
-				continue;
-
-			nlohmann::json obj;
-			obj["key"] = item.key;
-			obj["type"] = item.type;
-			obj["subPage"] = item.subPage;
-
-			HWND hCtrl = hCtrlsByTab[tabIdx][static_cast<size_t>(ctrlIdx + 1)];
-			if (item.type == "bool") {
-				BOOL checked = (SendMessage(hCtrl, BM_GETCHECK, 0, 0) == BST_CHECKED);
-				obj["defValue"] = checked;
-			} else if (item.type == "string") {
-				wchar_t buf[256];
-				GetWindowTextW(hCtrl, buf, 256);
-				std::wstring ws(buf);
-				obj["defValue"] = wide_to_utf8(ws);
-			} else if (item.type == "stringArr") {
-				wchar_t buf[1024];
-				GetWindowTextW(hCtrl, buf, 1024);
-				std::wstring ws(buf);
-				std::vector<std::string> arr;
-				size_t start = 0;
-				while (start < ws.size()) {
-					size_t end = ws.find_first_of(L"\r\n", start);
-					if (end == std::wstring::npos) end = ws.size();
-					std::wstring line = ws.substr(start, end - start);
-					if (!line.empty())
-						arr.push_back(wide_to_utf8(line));
-					start = ws.find_first_not_of(L"\r\n", end);
-					if (start == std::wstring::npos) break;
-				}
-				obj["defValue"] = arr;
-			} else if (item.type == "list") {
-				int selIdx = (int) SendMessage(hCtrl, CB_GETCURSEL, 0, 0);
-				std::string val = item.entryValues[selIdx];
-				obj["defValue"] = val;
-			} else if (item.type == "long") {
-				wchar_t buf[32];
-				GetWindowTextW(hCtrl, buf, 32);
-				obj["defValue"] = _wtol(buf); // 宽字符转 long
-			} else if (item.type == "hotkeystring") {
-				wchar_t buf[256];
-				GetWindowTextW(hCtrl, buf, 256);
-				std::string hotkeyStr = wide_to_utf8(std::wstring(buf));
-				obj["defValue"] = _wtol(buf); // 宽字符转 long
-			} else if (item.type == "button") {
-				// Button类型保持原始的defValue（action名称）
-				obj["defValue"] = item.defValue;
-			}
-
-			newConfig["prefList"].push_back(obj);
-			ctrlIdx += 2; // hLabel, hCtrl
-		}
-	}
-	// 你可以保存 newConfig.dump(4) 到文件
-	std::string temp = newConfig.dump(4);
-	ShowErrorMsgBox(temp);
-	// MessageBoxW(hwnd, L"保存成功（实际存储代码请补全）", L"提示", MB_OK);
-}
-
 static void LoadSettingsMap() {
-	settingsMap.clear();
-	for (const auto &item: settings2) {
-		settingsMap[item.key] = item;
+	g_settings_map.clear();
+	for (const auto &item: g_settings2) {
+		g_settings_map[item.key] = item;
 	}
 }
 
@@ -266,9 +179,9 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std
 			const std::string &key = item.key;
 
 			if (item.type == "bool") {
-				BOOL value = (SendMessage(hCtrl, BM_GETCHECK, 0, 0) == BST_CHECKED);
+				bool value = GetSwitchState(hCtrl);
 				newConfig[key] = value;
-				item.defValue = nlohmann::json(value); // ADDED: Update the setting's default value
+				item.defValue = nlohmann::json(value);
 			} else if (item.type == "string") {
 				wchar_t buf[256];
 				GetWindowTextW(hCtrl, buf, 256);
@@ -325,7 +238,7 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std
 				newConfig[key] = value;
 				item.defValue = nlohmann::json(value);
 			}
-
+			setSettingItemValue(item);
 
 			// Move to the next pair of controls for the next setting item
 			ctrlIdx += 2;
@@ -349,7 +262,76 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std
 	// MessageBoxW(hwnd, L"Settings saved successfully!", L"Success", MB_OK);
 	LoadSettingsMap();
 	ShowWindow(g_settingsHwnd, SW_MINIMIZE);
-	PostMessage(s_mainHwnd, WM_CONFIG_SAVED, 1, 0);
+	PostMessage(g_mainHwnd, WM_CONFIG_SAVED, 1, 0);
+}
+
+
+static void initGlobalVariable() {
+	pref_show_window_and_release_modifier_key = (g_settings_map["pref_show_window_and_release_modifier_key"].boolValue);
+	pref_ctrl_number_launch_item = (g_settings_map["pref_ctrl_number_launch_item"].boolValue);
+	pref_alt_number_launch_item = (g_settings_map["pref_alt_number_launch_item"].boolValue);
+	pref_switch_list_right_click_with_shift_right_click = (g_settings_map["pref_switch_list_right_click_with_shift_right_click"].boolValue);
+	pref_show_window_and_release_modifier_key = (g_settings_map["pref_show_window_and_release_modifier_key"].boolValue);
+	pref_run_item_as_admin = (g_settings_map["pref_run_item_as_admin"].boolValue);
+	pref_hide_in_fullscreen = (g_settings_map["pref_hide_in_fullscreen"].boolValue);
+	pref_hide_in_topmost_fullscreen = (g_settings_map["pref_hide_in_topmost_fullscreen"].boolValue);
+	pref_lock_window_popup_position = (g_settings_map["pref_lock_window_popup_position"].boolValue);
+	pref_preserve_last_search_term = (g_settings_map["pref_preserve_last_search_term"].boolValue);
+	pref_single_click_to_open = (g_settings_map["pref_single_click_to_open"].boolValue);
+	pref_fuzzy_match = (g_settings_map["pref_fuzzy_match"].boolValue);
+	pref_last_search_term_selected = (g_settings_map["pref_last_search_term_selected"].boolValue);
+	pref_close_after_open_item = (g_settings_map["pref_close_after_open_item"].boolValue);
+	pref_force_ime_mode = g_settings_map["pref_force_ime_mode"].stringValue;
+	pref_max_search_results = g_settings_map["pref_max_search_results"].intValue;
+	pref_hotkey_toggle_main_panel = g_settings_map["pref_hotkey_toggle_main_panel"].stringValue;
+	pref_fuzzy_match_score_threshold = g_settings_map["pref_fuzzy_match_score_threshold"].intValue;
+	EDIT_HINT_TEXT = utf8_to_wide(g_settings_map["pref_search_box_placeholder"].stringValue);
+
+	int64_t tempX = g_settings_map["pref_window_popup_position_offset_x"].intValue;
+	int64_t tempY = g_settings_map["pref_window_popup_position_offset_y"].intValue;
+	if (tempX >= 0 && tempX <= 100) {
+		window_position_offset_x = static_cast<float>(tempX) / 100.0f;
+	}
+	if (tempY >= 0 && tempY <= 100) {
+		window_position_offset_y = static_cast<float>(tempY) / 100.0f;
+	}
+}
+
+static void LoadSettingList() {
+	const std::string settingsText = GetSettingsJsonText();
+	try {
+		g_settings2 = ParseConfig(settingsText);
+	}
+	catch (...) {
+		ShowErrorMsgBox(L"解析基础设置项失败！");
+		ExitProcess(1);
+	}
+	nlohmann::json userConfig = loadUserConfig();
+	// 将用户设置合并到主要设置结构中。此此更新在UI构建之前更新每个项目的“ defvalue”。
+	if (!userConfig.is_null() && !userConfig.empty()) {
+		for (auto &setting: g_settings2) {
+			if (userConfig.contains(setting.key)) {
+				// 该键存在一个保存的值。用用户的值将设置的默认值置换。Nlohmann:: JSON库自动处理类型转换。
+				setting.defValue = userConfig[setting.key];
+				if(setting.defValue.is_boolean()){
+//					ShowErrorMsgBox(L""+std::to_wstring(setting.defValue.get<bool>()));
+
+				}else if(setting.defValue.is_number_integer()) {
+//					ShowErrorMsgBox(L""+std::to_wstring(setting.defValue.get<int>()));
+				}
+				try
+				{
+					setSettingItemValue(setting);
+				} catch (...) {
+
+				}
+			}
+		}
+	}
+	LoadSettingsMap();
+	initGlobalVariable();
+	const std::string pref_pinyin_mode = g_settings_map["pref_pinyin_mode"].stringValue;
+	PinyinHelper::changePinyinType(pref_pinyin_mode);
 }
 
 static void resetToDefaults(HWND hwnd, const std::vector<std::wstring> &subPages,
@@ -380,19 +362,19 @@ static void resetToDefaults(HWND hwnd, const std::vector<std::wstring> &subPages
 				HWND hCtrl = hCtrlsByTab[tabIdx][static_cast<size_t>(ctrlIdx + 1)];
 
 				if (item.type == "bool") {
-					bool defaultValue = defaultItem->defValue.get<bool>();
-					SendMessage(hCtrl, BM_SETCHECK, defaultValue ? BST_CHECKED : BST_UNCHECKED, 0);
+					bool defaultValue = defaultItem->boolValue;
+					SetSwitchState(hCtrl, defaultValue);
 					item.defValue = defaultItem->defValue;
 				} else if (item.type == "string" || item.type == "hotkeystring") {
-					std::string defaultValue = defaultItem->defValue.get<std::string>();
+					std::string defaultValue = defaultItem->stringValue;
 					SetWindowTextW(hCtrl, utf8_to_wide(defaultValue).c_str());
 					item.defValue = defaultItem->defValue;
 				} else if (item.type == "long") {
-					long defaultValue = defaultItem->defValue.get<long>();
+					int64_t defaultValue = defaultItem->intValue;
 					SetWindowTextW(hCtrl, std::to_wstring(defaultValue).c_str());
 					item.defValue = defaultItem->defValue;
 				} else if (item.type == "list") {
-					std::string defaultValue = defaultItem->defValue.get<std::string>();
+					std::string defaultValue = defaultItem->stringValue;
 					for (size_t i = 0; i < item.entryValues.size(); ++i) {
 						if (item.entryValues[i] == defaultValue) {
 							SendMessage(hCtrl, CB_SETCURSEL, i, 0);
@@ -429,25 +411,17 @@ static void applySettings(HWND hwnd, const std::vector<std::wstring> &subPages,
 	MessageBoxW(hwnd, L"设置已应用", L"应用完成", MB_OK | MB_ICONINFORMATION);
 }
 
-static std::wstring GetCurrentDirectoryW() {
-	wchar_t buffer[MAX_PATH];
-	DWORD result = ::GetCurrentDirectoryW(MAX_PATH, buffer);
-	if (result > 0 && result <= MAX_PATH) {
-		return std::wstring(buffer);
-	}
-	return L".";
-}
 
 
-static void handleButtonAction(HWND hwnd, const std::string &action) {
-	if (action == "open_config_folder") {
+static void handleButtonAction(HWND hwnd, const std::string &key) {
+	if (key == "pref_open_config_folder") {
 		// Open the configuration folder
-		std::wstring currentPath = GetCurrentDirectoryW();
+		std::wstring currentPath = GetCurrentWorkingDirectoryW();
 		ShellExecuteW(hwnd, L"open", L"explorer.exe", currentPath.c_str(), nullptr, SW_SHOW);
-	} else if (action.empty()) {
+	} else if (key == "pref_btn_indexed_manager") {
 		// This is the indexed manager button (pref_btn_indexed_manager)
 		ShowIndexedManagerWindow(hwnd);
-	} else if (action == "backup_settings") {
+	} else if (key == "pref_backup_settings") {
 		// Create a backup of current settings
 		wchar_t fileName[MAX_PATH];
 		SYSTEMTIME st;
@@ -461,7 +435,7 @@ static void handleButtonAction(HWND hwnd, const std::string &action) {
 		} else {
 			MessageBoxW(hwnd, L"备份失败", L"错误", MB_OK | MB_ICONERROR);
 		}
-	} else if (action == "restore_settings") {
+	} else if (key == "pref_restore_settings") {
 		// Show file dialog to select backup file
 		OPENFILENAMEW ofn;
 		wchar_t szFile[260] = {0};

@@ -95,7 +95,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)3rdparty\RapidFuzz;$(ProjectDir)3rdparty\EverythingSDK\include;$(ProjectDir)3rdparty\EverythingSDK\ipc</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;6031</DisableSpecificWarnings>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -142,7 +142,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir)3rdparty\RapidFuzz;$(ProjectDir)3rdparty\EverythingSDK\include;$(ProjectDir)3rdparty\EverythingSDK\ipc</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;6031</DisableSpecificWarnings>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -205,6 +205,7 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SettingsHelper.hpp" />
     <ClInclude Include="SettingWindow.hpp" />
+    <ClInclude Include="SkinHelper.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="ThreadPool.h" />
     <ClInclude Include="TrayMenuManager.h" />

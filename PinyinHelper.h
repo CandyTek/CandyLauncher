@@ -9,22 +9,8 @@
 #include <locale>
 
 #include "BaseTools.hpp"
-#include "MainTools.hpp"
 
 
-//static bool IsChinese(const std::wstring& str)
-//{
-//return std::ranges::any_of(str, [](wchar_t ch)
-//{
-//	return ch >= 0x4E00 && ch <= 0x9FFF;
-//});
-//	for (wchar_t ch : str)
-//	{
-//		if (ch >= 0x4E00 && ch <= 0x9FFF)
-//			return true;
-//	}
-//	return false;
-//}
 extern const std::vector<std::wstring> QuanPinArr;
 extern const std::vector<std::wstring> XiaoHePinyinArr;
 extern const std::vector<std::wstring> GuoBiaoPyArr;

@@ -1,16 +1,13 @@
 ﻿#pragma once
 #include "ActionBase.hpp"
-#include "MainTools.hpp"
 #include "PinyinHelper.h"
+#include "DataKeeper.hpp"
 #include <ShlObj.h>
 #include <wrl/client.h>
 #include <shlwapi.h>
 #include <shobjidl.h>
 // 不能少
 #include <shellapi.h>
-
-#include "BaseTools.hpp"
-#include "DataKeeper.hpp"
 
 using namespace Microsoft::WRL;
 
@@ -94,11 +91,11 @@ public:
 
 
 	// 运行命令
-	void InvokeWithTarget(const wchar_t* target)
+	void InvokeWithTarget(const wchar_t* target,bool isForceAdmin)
 	{
 		if (IsUwpItem)
 		{
-			HINSTANCE hInst = ShellExecuteW(nullptr, pref_run_item_as_admin ? L"runas" : L"open",
+			HINSTANCE hInst = ShellExecuteW(nullptr, (pref_run_item_as_admin||isForceAdmin) ? L"runas" : L"open",
 											targetFilePath.c_str(), target, nullptr, SW_SHOWNORMAL);
 			if (reinterpret_cast<INT_PTR>(hInst) <= 32)
 			{
@@ -108,7 +105,7 @@ public:
 		}
 		else
 		{
-			HINSTANCE hInst = ShellExecuteW(nullptr, pref_run_item_as_admin ? L"runas" : L"open",
+			HINSTANCE hInst = ShellExecuteW(nullptr, (pref_run_item_as_admin||isForceAdmin) ? L"runas" : L"open",
 											targetFilePath.c_str(), target,
 											workingDirectory.c_str(), SW_SHOWNORMAL);
 			//char const* temp=WStringToConstChar(targetFilePath);
@@ -124,13 +121,13 @@ public:
 	// 运行命令
 	void Invoke() override
 	{
-		InvokeWithTarget(nullptr);
+		InvokeWithTarget(nullptr,false);
 	}
 
 	// 运行附带剪贴板参数
 	void InvokeWithTargetClipBoard()
 	{
-		InvokeWithTarget(GetClipboardText().c_str());
+		InvokeWithTarget(GetClipboardText().c_str(),false);
 	}
 
 	// 打开所在文件夹

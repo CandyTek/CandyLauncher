@@ -6,34 +6,34 @@
 #include "ListedRunnerPlugin.h"
 #include "ThreadPool.h"
 
+LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam,
+											 UINT_PTR, const DWORD_PTR dwRefData);
 
 class ListViewManager
 {
 public:
-	ListViewManager();
-	void Initialize(HWND parent, HINSTANCE hInstance, int x, int y, int width, int height);
-	void LoadActions(const std::vector<std::shared_ptr<RunCommandAction>>& actions);
-	void Exactmatch(const std::wstring& keyword);
-	void Exactmatch_Optimized(const std::wstring& keyword);
-	void Fuzzymatch_MultiThreaded(const std::wstring& keyword);
-	void Fuzzymatch_MultiThreaded2(const std::wstring& keyword);
-	void Fuzzymatch(const std::wstring& keyword);
-	void Filter(const std::wstring& keyword);
-	[[nodiscard]] HWND GetHandle() const { return hListView; }
-	[[nodiscard]] HIMAGELIST GetImageList() const { return hImageList; }
-	void OnGetDispInfo(NMLVDISPINFOW* pdi);
+	static void Initialize(HWND parent, HINSTANCE hInstance, int x, int y, int width, int height);
+	static void LoadActions(const std::vector<std::shared_ptr<RunCommandAction>>& actions);
+	static void Exactmatch(const std::wstring& keyword);
+	static void Exactmatch_Optimized(const std::wstring& keyword);
+	static void Fuzzymatch_MultiThreaded(const std::wstring& keyword);
+	static void Fuzzymatch_MultiThreaded2(const std::wstring& keyword);
+	static void Fuzzymatch(const std::wstring& keyword);
+	static void Filter(const std::wstring& keyword);
+	static HIMAGELIST GetImageList() { return hImageList; }
+	static void OnGetDispInfo(NMLVDISPINFOW* pdi);
 	static void InitializeGraphicsResources();
-	void Cleanup();
+	static void Cleanup();
 	static void setUnknownFileIcon(HDC hdc, RECT rc);
-	void DrawItem(const DRAWITEMSTRUCT* lpDrawItem) const;
+	static void DrawItem(const DRAWITEMSTRUCT* lpDrawItem);
 	static LRESULT OnCustomDraw(LPNMLVCUSTOMDRAW lplvcd);
 	static void MeasureItem(MEASUREITEMSTRUCT* lpMeasureItem);
-	HWND hListView = nullptr;
-	std::vector<std::shared_ptr<RunCommandAction>> filteredActions;
+	
+	static std::vector<std::shared_ptr<RunCommandAction>> filteredActions;
 
 private:
-	HIMAGELIST hImageList = nullptr;
-	std::vector<std::shared_ptr<RunCommandAction>> allActions;
+	static HIMAGELIST hImageList;
+	static std::vector<std::shared_ptr<RunCommandAction>> allActions;
 	static ThreadPool pool; 
 
 };

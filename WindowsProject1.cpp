@@ -25,18 +25,15 @@
 #include "EditHelper.hpp"
 #include "SettingWindow.hpp"
 #include "TrayMenuManager.h"
+#include "SkinHelper.h"
 #include <Richedit.h>
 
 //    #include "cli.h"
 
 
-// 全局变量:
-HWND hEdit;
-// 当前主窗口
-HWND hWnd;
 // 当前实例
 HINSTANCE hInst;
-ListViewManager listViewManager;
+// ListViewManager is now static - no instance needed
 TrayMenuManager trayMenuManager;
 ListedRunnerPlugin plugin;
 // 此代码模块中包含的函数的前向声明:
@@ -63,16 +60,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(lpCmdLine);
     // 调试窗口
 //	 AttachConsoleForDebug();
+	InitializeButtonResources();
+
 	MyRegisterClass(hInstance);
 	MyRegisterClass2(hInstance);
-
+	//ShowShell32IcoViewer(hInstance);
 	InitInstance(hInstance, nCmdShow);
 	// 启动监听线程 用于皮肤测试
 	// std::thread watcfeherThread(watchSkinFile);
 	//std::thread(watchSkinFile).detach();
+	ShowIndexedManagerWindow(g_settingsHwnd);
 	g_watcherThread = std::thread(watchSkinFile);
+	
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
+	refreshSkin(g_listViewHwnd);
 
 	MSG msg;
 
@@ -100,7 +102,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 		g_watcherThread.join();
 	}
-
+	CleanupButtonResources();
 	return static_cast<int>(msg.wParam);
 }
 
@@ -108,7 +110,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 static void refreshList()
 {
 	plugin.LoadConfiguration();
-	listViewManager.LoadActions(plugin.GetActions());
+	ListViewManager::LoadActions(plugin.GetActions());
 }
 
 // 注册窗口类。
@@ -154,7 +156,7 @@ ATOM MyRegisterClass2(HINSTANCE hInstance)
 static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 {
 	unsigned long dw_style;
-	bool pref_hide_window_after_run = settingsMap["pref_hide_window_after_run"].defValue.get<int>() == 1;
+	bool pref_hide_window_after_run = g_settings_map["pref_hide_window_after_run"].boolValue;
 	if (pref_hide_window_after_run)
 	{
 		// dw_style = WS_POPUP|WS_OVERLAPPEDWINDOW;
@@ -165,11 +167,11 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 		dw_style = WS_POPUP | WS_VISIBLE;
 	}
 	long dw_ex_style = WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
-	if (settingsMap["pref_window_always_on_top"].defValue.get<int>() == 1)
+	if (g_settings_map["pref_window_always_on_top"].boolValue)
 	{
 		dw_ex_style |= WS_EX_TOPMOST;
 	}
-	if (settingsMap["pref_window_mouse_penetration"].defValue.get<int>() == 1)
+	if (g_settings_map["pref_window_mouse_penetration"].boolValue)
 	{
 		dw_ex_style |= WS_EX_TRANSPARENT;
 	}
@@ -184,7 +186,7 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 		last_open_window_position_y = tempRc.top;
 	}
 
-	hWnd = CreateWindowExW(
+	g_mainHwnd = CreateWindowExW(
 		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_TRANSPARENT | WS_EX_LAYERED, // 扩展样式
 		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, // 扩展样式
 		dw_ex_style,
@@ -201,33 +203,32 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 		hInstance, // 实例句柄
 		nullptr // 附加参数
 	);
-	if (!hWnd)
+	if (!g_mainHwnd)
 	{
 		ShowErrorMsgBox(L"创建窗口失败，hWnd为空");
 		ExitProcess(1);
 	}
-	s_mainHwnd = hWnd;
 	if (!pref_hide_window_after_run)
 	{
-		ShowWindow(hWnd, nCmdShow);
-		UpdateWindow(hWnd);
-		MyMoveWindow(hWnd);
+		ShowWindow(g_mainHwnd, nCmdShow);
+		UpdateWindow(g_mainHwnd);
+		MyMoveWindow(g_mainHwnd);
 	}
 
 	// 用于皮肤测试
-	RegisterHotkeyFromString(s_mainHwnd, "xx(1)(81)",HOTKEY_ID_REFRESH_SKIN);
+	RegisterHotkeyFromString(g_mainHwnd, "xx(1)(81)", HOTKEY_ID_REFRESH_SKIN);
 }
 
 static void InitControls(HINSTANCE hInstance, HWND hWnd)
 {
 	// 编辑框（搜索框）
-	hEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
+	g_editHwnd = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
 						10, 10, 580, 35, hWnd, reinterpret_cast<HMENU>(1), hInstance, nullptr);
-	SendMessageW(hEdit, EM_SETCUEBANNER, TRUE,
+	SendMessageW(g_editHwnd, EM_SETCUEBANNER, TRUE,
 				reinterpret_cast<LPARAM>(utf8_to_wide(
-					settingsMap["pref_search_box_placeholder"].defValue.get<std::string>()).c_str()));
+						g_settings_map["pref_search_box_placeholder"].stringValue).c_str()));
 
-	listViewManager.Initialize(hWnd, hInstance, 10, 45, 580, 380);
+	ListViewManager::Initialize(hWnd, hInstance, 10, 45, 580, 380);
 	std::unordered_map<std::string, std::function<void()>> callbacks;
 	callbacks["refreshList"] = refreshList;
 	callbacks["quit"] = [hWnd]()
@@ -244,16 +245,16 @@ static void InitControls(HINSTANCE hInstance, HWND hWnd)
 	};
 	plugin = ListedRunnerPlugin(callbacks);
 
-	listViewManager.LoadActions(plugin.GetActions());
-	EditHelper::Attach(hEdit, reinterpret_cast<DWORD_PTR>(listViewManager.hListView));
-	SetWindowSubclass(listViewManager.hListView, ListViewSubclassProc, 1,
-					reinterpret_cast<DWORD_PTR>(hEdit));
+	ListViewManager::LoadActions(plugin.GetActions());
+	EditHelper::Attach(g_editHwnd, reinterpret_cast<DWORD_PTR>(g_listViewHwnd));
+	SetWindowSubclass(g_listViewHwnd, ListViewSubclassProc, 1,
+					  reinterpret_cast<DWORD_PTR>(g_editHwnd));
 	// 不要使用透明，和主窗口的透明起冲突了
 	// SetWindowLong(hEdit, GWL_EXSTYLE,
 	// 			GetWindowLong(hEdit, GWL_EXSTYLE) | WS_EX_TRANSPARENT);
-	ListView_SetBkColor(listViewManager.hListView, COLOR_UI_BG);
-	ListView_SetTextBkColor(listViewManager.hListView, COLOR_UI_BG);
-	SetFocus(hEdit);
+	ListView_SetBkColor(g_listViewHwnd, COLOR_UI_BG);
+	ListView_SetTextBkColor(g_listViewHwnd, COLOR_UI_BG);
+	SetFocus(g_editHwnd);
 }
 
 
@@ -264,176 +265,32 @@ void InitInstance(HINSTANCE hInstance, const int nCmdShow)
 	ShowSettingsWindow(hInstance, nullptr);
 	// return;
 	CreateMainWindow(hInstance, nCmdShow);
-	InitControls(hInstance, hWnd);
-	trayMenuManager.Init(hWnd, hInstance);
+	InitControls(hInstance, g_mainHwnd);
+	trayMenuManager.Init(g_mainHwnd, hInstance);
 	userSettingsAfterTheAppStart(trayMenuManager);
-	ShowWindow(g_settingsHwnd, SW_MINIMIZE);
-	ShowIndexedManagerWindow(g_settingsHwnd);
+//	ShowWindow(g_settingsHwnd, SW_MINIMIZE);
+
 	// 另一种指定透明效果，但是并不太行，有很严重的锯齿，而且没有透明度概念，很生硬
 	// SetLayeredWindowAttributes(s_mainHwnd, RGB(80, 81, 82), 0, LWA_COLORKEY);
 
 	// EnableBlur(hWnd);
-	// EnableBlur2(listViewManager.hListView);
+	// EnableBlur2(ListViewManager::hListView);
 	// EnableBlur2(hEdit);
 
 	// MARGINS margins={-1};
 	// DwmExtendFrameIntoClientArea(s_mainHwnd,&margins);
-	// DwmExtendFrameIntoClientArea(listViewManager.hListView,&margins);
+	// DwmExtendFrameIntoClientArea(ListViewManager::hListView,&margins);
 	// DwmExtendFrameIntoClientArea(hEdit,&margins);
 
 	DWM_BLURBEHIND db{};
 	db.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
 	db.hRgnBlur = CreateRectRgn(0, 0, -1, -1);
 	db.fEnable = TRUE;
-	DwmEnableBlurBehindWindow(s_mainHwnd, &db);
-	// DwmEnableBlurBehindWindow(listViewManager.hListView, &db);
+	DwmEnableBlurBehindWindow(g_mainHwnd, &db);
+	// DwmEnableBlurBehindWindow(ListViewManager::hListView, &db);
 	// DwmEnableBlurBehindWindow(hEdit, &db);
 
 	Println(L"Windows inited.");
-}
-
-static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey)
-{
-	const std::string picturePath = g_skinJson.value(skinKey, "");
-	if (image)
-	{
-		// 删除旧的图片对象
-		delete image;
-		image = nullptr;
-	}
-	if (!picturePath.empty())
-	{
-		image = new Gdiplus::Image(utf8_to_wide(picturePath).c_str());
-		if (image->GetLastStatus() != Gdiplus::Ok)
-		{
-			delete image;
-			image = nullptr;
-			ShowErrorMsgBox(L"加载背景图片失败");
-		}
-	}
-}
-
-static void refreshSkin()
-{
-	std::wstring skinPath = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
-	std::ifstream in((skinPath.data()));
-	if (!in)
-	{
-		std::wcerr << L"文件不存在：" << skinPath << std::endl;
-		return;
-	}
-
-	// 读取整个文件内容（UTF-8 编码）
-	std::ostringstream buffer;
-	buffer << in.rdbuf();
-	std::string utf8json = buffer.str();
-
-	// 解析 JSON
-	try
-	{
-		g_skinJson = nlohmann::json::parse(utf8json);
-		in.close();
-	}
-	catch (const nlohmann::json::parse_error& e)
-	{
-		std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
-		return;
-	}
-	// --- 1. 更新主窗口 ---
-	MAIN_WINDOW_WIDTH = g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH);
-	MAIN_WINDOW_HEIGHT = g_skinJson.value("window_height", DEFAULT_MAIN_WINDOW_HEIGHT);
-	SetWindowPos(hWnd, nullptr, 0, 0, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
-
-	int windowOpacity = g_skinJson.value("window_opacity", 255);
-	if (windowOpacity < 0) windowOpacity = 0;
-	if (windowOpacity > 255) windowOpacity = 255;
-	if (g_lastWindowOpacity != windowOpacity)
-	{
-		g_lastWindowOpacity = windowOpacity;
-		SetLayeredWindowAttributes(hWnd, 0, static_cast<BYTE>(windowOpacity), LWA_ALPHA);
-	}
-
-	// 处理背景图片
-	getSkinPictureFile(g_BgImage, "window_bg_picture");
-	getSkinPictureFile(g_editBgImage, "editbox_bg_picture");
-	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture");
-	getSkinPictureFile(g_listItemBgImage, "item_font_bg_picture");
-	getSkinPictureFile(g_listItemBgImageSelected, "item_font_bg_picture_selected");
-
-	// --- 2. 更新编辑框 (hEdit) ---
-	int editX = g_skinJson.value("editbox_x", 10);
-	int editY = g_skinJson.value("editbox_y", 10);
-	int editWidth = g_skinJson.value("editbox_width", 580);
-	int editHeight = g_skinJson.value("editbox_height", 35);
-	SetWindowPos(hEdit, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
-
-	// 更新编辑框字体
-	std::wstring editFontFamily = utf8_to_wide(g_skinJson.value("editbox_font_family", "宋体"));
-	double editFontSize = g_skinJson.value("editbox_font_size", 12.0);
-	HDC hdc = GetDC(hEdit);
-	HFONT hEditFont = CreateFontW(
-		-MulDiv(static_cast<int>(editFontSize), GetDeviceCaps(hdc, LOGPIXELSY), 72),
-		0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-		DEFAULT_PITCH | FF_DONTCARE, editFontFamily.c_str()
-	);
-	ReleaseDC(hEdit, hdc);
-	if (hEditFont)
-	{
-		SendMessage(hEdit, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
-	}
-	SendMessage(hEdit, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
-
-	// 初始化GDI+图形对象
-
-
-	// Gdiplus::Graphics graphics(hEdit);
-	// graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
-	// Gdiplus::FontFamily fontFamily(L"微软雅黑");
-	// Gdiplus::Font gdiFont(&fontFamily, 25, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	// LOGFONTW logfont;
-	// Gdiplus::Status status = gdiFont.GetLogFontW(&graphics,&logfont);
-	// HFONT hFont = CreateFontIndirect(&logfont);
-	// SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-	// 注意：编辑框的背景色和前景色需要在 WM_CTLCOLOREDIT 中处理
-
-	// --- 3. 更新列表视图 (ListView) ---
-
-	int listX = g_skinJson.value("listview_x", 10);
-	int listY = g_skinJson.value("listview_y", 45);
-	g_itemListWidth = g_skinJson.value("listview_width", 580);
-	g_itemListHeight = g_skinJson.value("listview_height", 380);
-	SetWindowPos(listViewManager.hListView, nullptr, listX, listY, g_itemListWidth, g_itemListHeight, SWP_NOZORDER);
-	int thumbWidth = GetWindowVScrollBarThumbWidth(listViewManager.hListView, true);
-	ListView_SetColumnWidth(listViewManager.hListView, 0, g_itemListWidth-thumbWidth-6);
-	listViewManager.InitializeGraphicsResources(); // 确保字体和画刷已初始化
-
-	// 更新列表视图颜色
-	// COLORREF listBgColor = HexToCOLORREF(g_skinJson.value("listview_bg_color", "#FFFFFF"));
-	// COLORREF listFontColor = HexToCOLORREF(g_skinJson.value("listview_font_color", "#000000"));
-	// ListView_SetBkColor(listViewManager.hListView, listBgColor);
-	// ListView_SetTextBkColor(listViewManager.hListView, listBgColor); // 文本背景色通常和列表背景色一致
-	// ListView_SetTextColor(listViewManager.hListView, listFontColor);
-
-	// 更新列表视图字体 (与编辑框类似)
-	// 注意: ListViewManager 的自定义绘制(WM_DRAWITEM)也需要使用新的字体和颜色信息
-	// 你可能需要在 ListViewManager 类中添加方法来存储这些皮肤设置
-
-	// ListView_SetBkColor(listViewManager.hListView, CLR_NONE);
-	// ListView_SetTextBkColor(listViewManager.hListView, CLR_NONE);
-
-	// 暴力强制渲染
-	RECT rc;
-	GetWindowRect(hWnd, &rc);
-	// 临时缩小窗口
-	SetWindowPos(hWnd, nullptr, rc.left, rc.top, rc.left + 1, rc.top + 1,
-				SWP_NOZORDER);
-	// 恢复原大小
-	SetWindowPos(hWnd, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
-				SWP_NOZORDER);
-	ShowWindow(hWnd,SW_FORCEMINIMIZE);
-	SetTimer(s_mainHwnd, TIMER_SHOW_WINDOW, 50, nullptr);
 }
 
 static std::wstring buffer;
@@ -452,14 +309,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			if (wmId == 1 && wmEvent == EN_CHANGE)
 			{
 				buffer.resize(256, L'\0');
-				buffer.resize(GetWindowTextW(hEdit, &buffer[0], 256));
-				SendMessage(listViewManager.hListView, WM_SETREDRAW, FALSE, 0);
-				listViewManager.Filter(buffer);
-				SendMessage(listViewManager.hListView, WM_SETREDRAW, TRUE, 0);
+				buffer.resize(GetWindowTextW(g_editHwnd, &buffer[0], 256));
+				SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0);
+				ListViewManager::Filter(buffer);
+				SendMessage(g_listViewHwnd, WM_SETREDRAW, TRUE, 0);
 			}
 			else if (wmId > TRAY_MENU_ID_BASE && wmId < TRAY_MENU_ID_BASE_END)
 			{
-				TrayMenuManager::TrayMenuClick(wmId, hWnd, hEdit);
+				TrayMenuManager::TrayMenuClick(wmId, hWnd, g_editHwnd);
 			}
 		}
 		break;
@@ -518,7 +375,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 
 			if (lpDrawItem->CtlID == 2) // 控件 ID，确保正确
 			{
-				listViewManager.DrawItem(lpDrawItem);
+				ListViewManager::DrawItem(lpDrawItem);
 				return TRUE;
 			}
 		}
@@ -543,7 +400,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 					Println(L"Hotkey Alt + K");
 					if (IsWindowVisible(hWnd))
 					{
-						HideWindow(hWnd, hEdit, listViewManager.hListView);
+						HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 					}
 					else
 					{
@@ -558,14 +415,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 						{
 							if (pref_show_window_and_release_modifier_key)
 								ReleaseAltKey();
-							ShowMainWindowSimple(hWnd, hEdit);
+							ShowMainWindowSimple(hWnd, g_editHwnd);
 						}
 					}
 				}
 				return 0;
 			case HOTKEY_ID_REFRESH_SKIN:
 				{
-					refreshSkin();
+					refreshSkin(g_listViewHwnd);
 				}
 				return 0;
 			default: break;
@@ -575,7 +432,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 	case WM_KEYDOWN:
 		{
 			// 1. 获取当前按下的虚拟键码
-			UINT vk = wParam;
+			UINT vk = static_cast<UINT>(wParam);
 			// 2. 获取当前的修饰符状态
 			UINT currentModifiers = 0;
 
@@ -590,7 +447,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 				if (vk == VK_ESCAPE)
 				{
 					Println(L"Key Esc");
-					HideWindow(hWnd, hEdit, listViewManager.hListView);
+					HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
+					return 0;
+				}
+			}
+			// Ctrl + 数字键 (1-9) 快速启动列表项
+			else if (currentModifiers == MOD_CTRL_KEY)
+			{
+				if (vk >= '1' && vk <= '9')
+				{
+					int index = vk - '1'; // Convert '1'-'9' to 0-8
+					if (index < static_cast<int>(ListViewManager::filteredActions.size()))
+					{
+						const std::shared_ptr<RunCommandAction> action = ListViewManager::filteredActions[index];
+						if (action)
+						{
+							if (pref_close_after_open_item)
+								HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
+							action->Invoke();
+						}
+					}
 					return 0;
 				}
 			}
@@ -646,18 +522,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			// 如果是 WA_INACTIVE，说明窗口从激活变为非激活状态（失去焦点）
 			if (LOWORD(wParam) == WA_INACTIVE)
 			{
-				if (settingsMap["pref_close_on_dismiss_focus"].defValue.get<std::string>() == "close_immediate")
-					HideWindow(hWnd, hEdit, listViewManager.hListView);
+				if (g_settings_map["pref_close_on_dismiss_focus"].stringValue == "close_immediate")
+					HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 			}
 		}
 		break;
 	case WM_EDIT_CONTROL_HOTKEY:
 		{
 			const std::shared_ptr<RunCommandAction> it = GetListViewSelectedAction(
-				listViewManager.hListView, listViewManager.filteredActions);
+					g_listViewHwnd, ListViewManager::filteredActions);
 			if (!it) return 0;
 			if (pref_close_after_open_item)
-				HideWindow(hWnd, hEdit, listViewManager.hListView);
+				HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 
 			switch (wParam)
 			{
@@ -691,7 +567,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 	case WM_NOTIFY:
 		{
 			LPNMHDR pnmh = reinterpret_cast<LPNMHDR>(lParam);
-			if (pnmh->hwndFrom == listViewManager.hListView)
+			if (pnmh->hwndFrom == g_listViewHwnd)
 			{
 				if (pnmh->code == NM_CLICK)
 				{
@@ -701,11 +577,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 				{
 					LPNMITEMACTIVATE pia = reinterpret_cast<LPNMITEMACTIVATE>(lParam);
 					int index = pia->iItem;
-					if (index != -1 && listViewManager.filteredActions.size() > index)
+					if (index != -1 && ListViewManager::filteredActions.size() > index)
 					{
-						const std::shared_ptr<RunCommandAction> it = listViewManager.filteredActions[index];
+						const std::shared_ptr<RunCommandAction> it = ListViewManager::filteredActions[index];
 						if (pref_close_after_open_item)
-							HideWindow(hWnd, hEdit, listViewManager.hListView);
+							HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 						it->Invoke();
 						// 你可以通过 index 找到 filteredActions[index]
 						// 比如执行该 action
@@ -717,11 +593,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 				{
 					LPNMITEMACTIVATE pia = reinterpret_cast<LPNMITEMACTIVATE>(lParam);
 					int index = pia->iItem;
-					if (index != -1 && listViewManager.filteredActions.size() > index)
+					if (index != -1 && ListViewManager::filteredActions.size() > index)
 					{
-						const std::shared_ptr<RunCommandAction> it = listViewManager.filteredActions[index];
+						const std::shared_ptr<RunCommandAction>& it = ListViewManager::filteredActions[index];
 						if (pref_close_after_open_item)
-							HideWindow(hWnd, hEdit, listViewManager.hListView);
+							HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 						it->Invoke();
 					}
 					return TRUE;
@@ -735,16 +611,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 					// 获取当前点击项
 					LVHITTESTINFO lvhti = {};
 					POINT ptClient = pt;
-					ScreenToClient(listViewManager.hListView, &ptClient);
+					ScreenToClient(g_listViewHwnd, &ptClient);
 					lvhti.pt = ptClient;
-					int index = ListView_HitTest(listViewManager.hListView, &lvhti);
+					int index = ListView_HitTest(g_listViewHwnd, &lvhti);
 					if (index != -1)
 					{
 						// 选中当前项（可选）
-						// ListView_SetItemState(listViewManager.hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-						std::shared_ptr<RunCommandAction> it = listViewManager.filteredActions[index];
-						auto temp = it->GetTargetPath();
-						ShowShellContextMenu(hWnd, temp, pt);
+						// ListView_SetItemState(ListViewManager::hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+						std::shared_ptr<RunCommandAction>& it = ListViewManager::filteredActions[index];
+						const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+						if (shiftDown ^ pref_switch_list_right_click_with_shift_right_click) {
+							UINT cmd = ShowMyContextMenu(hWnd, it->GetTargetPath(), pt);
+							DoMyContextMenuAction(cmd,index, it);
+						} else {
+							// 非 Shift：走你原本的 Shell 右键菜单
+							ShowShellContextMenu(hWnd, it->GetTargetPath(), pt);
+						}
+
 					}
 					PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
 					return TRUE;
@@ -760,7 +643,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 					{
 						// Forward to our manager and return the result
 						LPNMLVCUSTOMDRAW lplvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lParam);
-						SetWindowLongPtr(hWnd, DWLP_MSGRESULT, listViewManager.OnCustomDraw(lplvcd));
+						SetWindowLongPtr(hWnd, DWLP_MSGRESULT, ListViewManager::OnCustomDraw(lplvcd));
 						// return TRUE;
 					}
 				}
@@ -768,7 +651,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 				{
 					// 这就是 ListView 在向我们请求数据
 					NMLVDISPINFO* pdi = reinterpret_cast<NMLVDISPINFOW*>(lParam);
-					listViewManager.OnGetDispInfo(pdi); // 把请求转发给 ListViewManager 处理
+					ListViewManager::OnGetDispInfo(pdi); // 把请求转发给 ListViewManager 处理
 					return 0; // 已处理
 				}
 			}
@@ -781,25 +664,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			{
 				KillTimer(hWnd, TimerIDSetFocusEdit);
 			}
-			SetFocus(hEdit);
+			SetFocus(g_editHwnd);
 		}
 		else if (wParam == TIMER_SET_GLOBAL_HOTKEY)
 		{
 			KillTimer(hWnd, TIMER_SET_GLOBAL_HOTKEY);
-			RegisterHotkeyFromString(s_mainHwnd, pref_hotkey_toggle_main_panel,HOTKEY_ID_TOGGLE_MAIN_PANEL);
+			RegisterHotkeyFromString(g_mainHwnd, pref_hotkey_toggle_main_panel, HOTKEY_ID_TOGGLE_MAIN_PANEL);
 		}
 		else if (wParam == TIMER_SHOW_WINDOW)
 		{
 			KillTimer(hWnd, TIMER_SHOW_WINDOW);
-			ShowMainWindowSimple(hWnd, hEdit);
+			ShowMainWindowSimple(hWnd, g_editHwnd);
 		}
 		break;
 	case WM_FOCUS_EDIT:
-		SetFocus(hEdit);
+		SetFocus(g_editHwnd);
 		break;
 	case WM_CLOSE:
 		{
-			HideWindow(hWnd, hEdit, listViewManager.hListView);
+			HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 			return 0;
 		}
 	case WM_SYSCOMMAND:
@@ -807,7 +690,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			if ((wParam & 0xFFF0) == SC_MINIMIZE)
 			{
 				// 阻止默认最小化行为
-				HideWindow(hWnd, hEdit, listViewManager.hListView);
+				HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 				return 0;
 			}
 		}
@@ -817,7 +700,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			if (wParam == SIZE_MINIMIZED)
 			{
 				// 阻止默认最小化行为
-				HideWindow(hWnd, hEdit, listViewManager.hListView);
+				HideWindow(hWnd, g_editHwnd, g_listViewHwnd);
 				return 0;
 			}
 		}
@@ -841,11 +724,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 			}
 
 			SaveWindowRectToRegistry(hWnd);
-			ListView_DeleteAllItems(listViewManager.hListView);
-			listViewManager.Cleanup();
+			ListView_DeleteAllItems(g_listViewHwnd);
+			ListViewManager::Cleanup();
 			//Gdiplus::GdiplusShutdown(gdiplusToken);
 
-			trayMenuManager.TrayMenuDestroy();
+			TrayMenuManager::TrayMenuDestroy();
 			PostQuitMessage(0);
 			ExitProcess(0);
 		}
@@ -854,7 +737,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, const UINT message, const WPARAM wParam, con
 		{
 			if (lParam == WM_RBUTTONUP)
 			{
-				trayMenuManager.TrayMenuShow(hWnd);
+				TrayMenuManager::TrayMenuShow(hWnd);
 			}
 		}
 		break;

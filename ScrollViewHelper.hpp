@@ -19,8 +19,8 @@ static void UpdateScrollRange(HWND hwnd, int contentHeight)
 	SetScrollPos(hwnd, SB_VERT, 0, TRUE);
 }
 
-static std::vector<std::vector<HWND>> hCtrlsByTab; // tab下所有控件句柄
-static std::vector<HWND> tabContainers;
+inline std::vector<std::vector<HWND>> hCtrlsByTab; // tab下所有控件句柄
+inline std::vector<HWND> tabContainers;
 
 // 這是專門為 ComboBox 的下拉列表視窗設計的子類化回呼函式
 static LRESULT CALLBACK ComboBoxListSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
@@ -50,7 +50,7 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 {
 	switch (msg)
 	{
-	case WM_VSCROLL:
+		case WM_VSCROLL:
 		{
 			// 1. 获取当前滚动信息
 			SCROLLINFO si;
@@ -100,7 +100,7 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			auto it = std::find(tabContainers.begin(), tabContainers.end(), hwnd);
 			if (it != tabContainers.end())
 			{
-				int tabIdx = std::distance(tabContainers.begin(), it);
+				int tabIdx = static_cast<int>(std::distance(tabContainers.begin(), it));
 				const auto& ctrls_in_tab = hCtrlsByTab[tabIdx];
 
 				for (HWND hCtrl : ctrls_in_tab)
@@ -138,6 +138,18 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 	case WM_CTLCOLORSTATIC:
 		{
 			HDC hdcStatic = (HDC)wParam;
+			HWND hCtrl = (HWND)lParam;
+
+			// 判断是不是复选框，如果是设置为白底
+			wchar_t className[32];
+			GetClassNameW(hCtrl, className, 32);
+			if (wcscmp(className, L"Button") == 0) {
+				// 设置白底
+				SetBkMode(hdcStatic, TRANSPARENT);
+				SetBkColor(hdcStatic, RGB(255, 255, 255));
+				static HBRUSH hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
+				return (INT_PTR)hBrushWhite;
+			}
 			SetBkMode(hdcStatic, TRANSPARENT);
 			return (INT_PTR)GetStockObject(NULL_BRUSH);
 		}
@@ -145,18 +157,17 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 		{
 			// --- 2. 處理來自複選框的特定點擊事件 ---
 			int ctrlId = LOWORD(wParam);
-			if (HIWORD(wParam) == BN_CLICKED && ctrlId >= 3000 && ctrlId < 3000 + settings2.size())
+			if (HIWORD(wParam) == BN_CLICKED && ctrlId >= 3000 && ctrlId < 3000 + g_settings2.size())
 			{
 				// 從ID計算出在 settings2 中的索引
-				int settingIndex = ctrlId - 3000;
-				const auto& setting = settings2[settingIndex];
+				const auto& setting = g_settings2[ctrlId - 3000];
 				if (setting.type == "bool")
 				{
 					HWND hCheckbox = (HWND)lParam; // 獲取複選框的句柄
-					LRESULT checkState = SendMessage(hCheckbox, BM_GETCHECK, 0, 0);
+					bool checkState = GetSwitchState(hCheckbox);
 					if (setting.key == "pref_auto_start")
 					{
-						if (checkState == BST_CHECKED)
+						if (checkState)
 						{
 							MessageBoxW(nullptr, L"您啟用了「特殊功能」！", L"提示", MB_OK);
 						}
@@ -177,6 +188,9 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 							OutputDebugStringW(L"隱藏高級選項\n");
 						}
 					}
+				}
+				else if (setting.type == "button") {
+					handleButtonAction(hwnd, setting.key);
 				}
 			}
 
@@ -205,9 +219,9 @@ static ATOM MyScrollViewRegisterClass()
 {
 	WNDCLASSEXW wcex{};
 	wcex.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
-	// wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); // 用系统白背景更稳
-	// wcex.hbrBackground = CreateSolidBrush(RGB(255, 255, 255)); // 例如纯白色
-	wcex.hbrBackground = CreateSolidBrush(RGB(240, 240, 240));
+	 wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); // 用系统白背景更稳
+//	 wcex.hbrBackground = CreateSolidBrush(RGB(255, 255, 255)); // 例如纯白色
+//	wcex.hbrBackground = CreateSolidBrush(RGB(240, 240, 240));
 
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.cbWndExtra = 0;

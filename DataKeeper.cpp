@@ -2,18 +2,26 @@
 
 // 全局常驻变量
 HWND g_settingsHwnd = nullptr;
-HWND s_mainHwnd = nullptr;
+// 搜索主窗口
+HWND g_mainHwnd = nullptr;
+HWND g_editHwnd = nullptr;
+HWND g_listViewHwnd = nullptr;
+
 HKL g_hklIme = nullptr;
 UINT_PTR TimerIDSetFocusEdit = 0;
 
 HotkeyMap g_hotkeyMap = {};
-std::vector<SettingItem> settings2 = {};
-std::unordered_map<std::string, SettingItem> settingsMap = {};
+std::vector<SettingItem> g_settings2 = {};
+std::unordered_map<std::string, SettingItem> g_settings_map = {};
 std::wstring EXE_FOLDER_PATH = GetExecutableFolder();
+std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
 std::string pref_hotkey_toggle_main_panel;
 
 bool pref_show_window_and_release_modifier_key = false;
+bool pref_ctrl_number_launch_item = false;
+bool pref_alt_number_launch_item = true;
+bool pref_switch_list_right_click_with_shift_right_click = false;
 bool pref_run_item_as_admin = false;
 bool pref_hide_in_fullscreen = false;
 bool pref_hide_in_topmost_fullscreen = false;
@@ -25,7 +33,7 @@ bool pref_last_search_term_selected = true;
 bool pref_close_after_open_item = true;
 
 
-int pref_max_search_results = 0;
+int64_t pref_max_search_results = 0;
 int last_open_window_position_x = 0;
 int last_open_window_position_y = 0;
 int unknown_file_icon_index = 0;
@@ -36,16 +44,16 @@ float window_position_offset_y = 0.5f;
 
 int lastWindowCenterX = -1;
 int lastWindowCenterY = -1;
-int pref_fuzzy_match_score_threshold = 60;
+int64_t pref_fuzzy_match_score_threshold = 60;
 
 
 // 皮肤
 nlohmann::json g_skinJson = nullptr;
-Gdiplus::Image* g_BgImage = nullptr;
-Gdiplus::Image* g_editBgImage = nullptr;
-Gdiplus::Image* g_listViewBgImage = nullptr;
-Gdiplus::Image* g_listItemBgImage = nullptr;
-Gdiplus::Image* g_listItemBgImageSelected = nullptr;
+Gdiplus::Image *g_BgImage = nullptr;
+Gdiplus::Image *g_editBgImage = nullptr;
+Gdiplus::Image *g_listViewBgImage = nullptr;
+Gdiplus::Image *g_listItemBgImage = nullptr;
+Gdiplus::Image *g_listItemBgImageSelected = nullptr;
 
 std::unique_ptr<Gdiplus::SolidBrush> g_listItemBgColorBrush = nullptr;
 std::unique_ptr<Gdiplus::SolidBrush> g_listItemBgColorBrushSelected = nullptr;

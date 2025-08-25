@@ -11,9 +11,10 @@
 	"editbox_x":30,
 	"editbox_y":30,
 	"editbox_font_size":25.0,
-	"editbox_font_family":"微软雅黑",
+	"editbox_font_family":"Microsoft YaHei UI",
 	"editbox_font_color":"#008800",
 	"editbox_bg_color":"#e9e9ff",
+	"editbox_hint_color":"#999999",
 	"editbox_bg_picture":"",
 	
 	"listview_width":437,
