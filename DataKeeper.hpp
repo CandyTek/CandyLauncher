@@ -41,12 +41,14 @@ extern HWND g_editHwnd;
 extern HWND g_listViewHwnd;
 extern HKL g_hklIme;
 extern UINT_PTR TimerIDSetFocusEdit;
+extern HINSTANCE g_hInst;
 
 extern HotkeyMap g_hotkeyMap;
 extern std::vector<SettingItem> g_settings2;
 extern std::unordered_map<std::string, SettingItem> g_settings_map;
 
 extern std::wstring EXE_FOLDER_PATH;
+extern std::wstring RUNNER_CONFIG_PATH;
 extern std::wstring EDIT_HINT_TEXT;
 extern std::string pref_force_ime_mode;
 extern std::string pref_hotkey_toggle_main_panel;
@@ -121,6 +123,7 @@ extern std::unique_ptr<Gdiplus::Font> g_listItemFont1;
 extern std::unique_ptr<Gdiplus::Font> g_listItemFont2;
 extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1;
 extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2;
+extern std::wstring g_currectSkinFilePath;
 
 extern  int g_lastWindowOpacity;
 
@@ -148,6 +151,9 @@ extern double g_item_font_size_selected_2;
 
 extern int MAIN_WINDOW_WIDTH ;
 extern int MAIN_WINDOW_HEIGHT ;
+
+extern int g_listItemWidth ;
+extern int g_listItemHeight ;
 
 constexpr int DEFAULT_MAIN_WINDOW_WIDTH = 620;
 constexpr int DEFAULT_MAIN_WINDOW_HEIGHT = 480;

@@ -17,45 +17,40 @@
 namespace fs = std::filesystem;
 
 
-
+template<typename Callback>
 static void TraverseFiles(
-		const std::wstring& folderPath,
-		const TraverseOptions& options,
-		std::vector<std::shared_ptr<RunCommandAction>>& outActions
-)
-{
+		const std::wstring &folderPath,
+		const TraverseOptions &options,
+		Callback &&callback
+) {
 	if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 
-	auto extMatch = [&](const std::wstring& ext) -> bool
-	{
+	auto extMatch = [&](const std::wstring &ext) -> bool {
 		if (options.extensions.empty()) return true;
 		return std::any_of(options.extensions.begin(), options.extensions.end(),
-						   [&](const std::wstring& ex) { return _wcsicmp(ext.c_str(), ex.c_str()) == 0; });
+						   [&](const std::wstring &ex) { return _wcsicmp(ext.c_str(), ex.c_str()) == 0; });
 	};
 
-	auto addFile = [&](const fs::path& path)
-	{
+	auto addFile = [&](const fs::path &path) {
 		std::wstring filename = path.stem().wstring(); // without extension
 
-		if (shouldExclude(options,filename)) return;
+		if (shouldExclude(options, filename)) return;
 
 		// 重命名映射
-		if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
-		{
+		if (const auto it = options.renameMap.find(filename); it != options.renameMap.end()) {
 			filename = it->second;
 		}
 
-		const auto action = std::make_shared<RunCommandAction>(
-				filename, path.wstring(), false, true, path.parent_path().wstring()
+		callback(
+				filename,                     // 逻辑名（被 rename 过）
+				path.wstring(),               // 完整路径
+				path.parent_path().wstring(), // 父目录
+				path.extension().wstring()    // 扩展名
 		);
-
-		outActions.push_back(action);
 	};
 
-	if (options.recursive)
-	{
-		for (const auto& entry : fs::recursive_directory_iterator(folderPath))
-		{
+	if (options.recursive) {
+		for (const auto &entry: fs::recursive_directory_iterator(folderPath)) {
 			if (!entry.is_regular_file()) continue;
 
 			const auto ext = entry.path().extension().wstring();
@@ -63,11 +58,8 @@ static void TraverseFiles(
 			std::cout << entry.path() << std::endl;
 			addFile(entry.path());
 		}
-	}
-	else
-	{
-		for (const auto& entry : fs::directory_iterator(folderPath))
-		{
+	} else {
+		for (const auto &entry: fs::directory_iterator(folderPath)) {
 			if (!entry.is_regular_file()) continue;
 
 			const auto ext = entry.path().extension().wstring();
@@ -78,23 +70,34 @@ static void TraverseFiles(
 	}
 }
 
+static void TraverseFiles(
+		const std::wstring &folderPath,
+		const TraverseOptions &options,
+		std::vector<std::shared_ptr<RunCommandAction>> &outActions
+) {
+	TraverseFiles(folderPath, options, [&](const std::wstring &name, const std::wstring &fullPath,
+										   const std::wstring &parent, const std::wstring &ext) {
+		const auto action = std::make_shared<RunCommandAction>(
+				name, fullPath, false, true, parent
+		);
+		outActions.push_back(action);
+	});
+}
+
 static void TraverseFilesForEverything(
-		const std::wstring& folderPath,
-		const TraverseOptions& options,
-		std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
+		const std::wstring &folderPath,
+		const TraverseOptions &options,
+		std::vector<std::shared_ptr<RunCommandAction>> &outActions) {
 	if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 
 	// addFile lambda 保持不变，可以完美复用
-	auto addFile = [&](const fs::path& path)
-	{
+	auto addFile = [&](const fs::path &path) {
 		std::wstring filename = path.stem().wstring(); // without extension
 
 		if (shouldExclude(options, filename)) return;
 
 		// 重命名映射
-		if (const auto it = options.renameMap.find(filename); it != options.renameMap.end())
-		{
+		if (const auto it = options.renameMap.find(filename); it != options.renameMap.end()) {
 			filename = it->second;
 		}
 
@@ -114,21 +117,18 @@ static void TraverseFilesForEverything(
 	command << L"-p \"" << folderPath << L"\" ";
 
 	// 从扩展名列表动态生成正则表达式
-	if (!options.extensions.empty())
-	{
+	if (!options.extensions.empty()) {
 		std::wstringstream regex_stream;
 		regex_stream << L"\"("; // 正则表达式部分用引号括起来
 
-		for (size_t i = 0; i < options.extensions.size(); ++i)
-		{
+		for (size_t i = 0; i < options.extensions.size(); ++i) {
 			std::wstring ext = options.extensions[i];
 
 			// 为正则表达式转义特殊字符，尤其是 '.'
 			std::wstring escaped_ext;
-			for (wchar_t c : ext)
-			{
-				if (c == L'.' || c == L'\\' || c == L'?' || c == L'*' || c == L'+' || c == L'(' || c == L')' || c == L'[' || c == L']' || c == L'{' || c == L'}' || c == L'^' || c == L'$')
-				{
+			for (wchar_t c: ext) {
+				if (c == L'.' || c == L'\\' || c == L'?' || c == L'*' || c == L'+' || c == L'(' || c == L')' ||
+					c == L'[' || c == L']' || c == L'{' || c == L'}' || c == L'^' || c == L'$') {
 					escaped_ext += L'\\';
 				}
 				escaped_ext += c;
@@ -142,11 +142,10 @@ static void TraverseFilesForEverything(
 		command << L"-r " << regex_stream.str();
 	}
 
-	try
-	{
+	try {
 		// 2. 执行命令并获取纯文本输出
 		std::string commandOutput = ExecuteCommandAndGetOutput(command.str());
-//        std::cout << commandOutput << std::endl;
+		//        std::cout << commandOutput << std::endl;
 
 		if (commandOutput.empty()) return;
 
@@ -155,35 +154,31 @@ static void TraverseFilesForEverything(
 		std::string line;
 		fs::path searchFolderPath(folderPath); // 预先创建path对象用于比较
 
-		while (std::getline(ss, line))
-		{
+		while (std::getline(ss, line)) {
 			if (line.empty()) continue;
 			line.erase(line.find_last_not_of("\r\n") + 1);
 			// es.exe 的输出是UTF-8编码，使用u8path可以正确处理包含非英文字符的路径
-//            fs::path filePath = fs::u8path(line);
+			//            fs::path filePath = fs::u8path(line);
 			std::wstring wide_path_str = MultiByteToWide(line, CP_ACP); // CP_ACP 表示系统的当前活动代码页
 			// 直接用 wstring 构造 path 对象，这是在Windows上最可靠的方式
-//            std::cout << WStringToUtf8(wide_path_str) << std::endl;
+			//            std::cout << WStringToUtf8(wide_path_str) << std::endl;
 
 			fs::path filePath(wide_path_str);
-//            std::cout << WStringToUtf8(filePath.wstring()) << std::endl;
+			//            std::cout << WStringToUtf8(filePath.wstring()) << std::endl;
 
 			// 4. 如果是非递归搜索，需要额外判断父目录是否匹配
-			if (!options.recursive)
-			{
-				if (filePath.parent_path() != searchFolderPath)
-				{
+			if (!options.recursive) {
+				if (filePath.parent_path() != searchFolderPath) {
 					continue; // 如果父目录不匹配，则跳过此文件
 				}
 			}
 
 			// 复用 addFile 逻辑
-//            std::cout << filePath << std::endl;
+			//            std::cout << filePath << std::endl;
 			addFile(filePath);
 		}
 	}
-	catch (const std::exception& e)
-	{
+	catch (const std::exception &e) {
 		// 错误处理，可以考虑回退到原始的文件系统遍历方法
 		// e.g., LogError("Failed to search with Everything: " + std::string(e.what()));
 		std::cout << ("Failed to search with Everything: " + std::string(e.what())) << std::endl;
@@ -191,16 +186,14 @@ static void TraverseFilesForEverything(
 	}
 }
 
-template <typename Callback>
+template<typename Callback>
 static void TraverseFilesForEverythingSDK(
-		const std::wstring& folderPath,
-		const TraverseOptions& options,
-		Callback&& callback)
-{
-	if (!fs::exists(folderPath) || !fs::is_directory(folderPath) || options.extensions.empty()) return;
+		const std::wstring &folderPath,
+		const TraverseOptions &options,
+		Callback &&callback) {
+	if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 
-	auto addFile = [&](const fs::path& path)
-	{
+	auto addFile = [&](const fs::path &path) {
 		std::wstring filename = path.stem().wstring();
 		if (shouldExclude(options, filename)) return;
 
@@ -220,26 +213,24 @@ static void TraverseFilesForEverythingSDK(
 	// 构造更高效的搜索查询
 	// 例如: parent:"C:\ProgramData\Microsoft\Windows\Start Menu\Programs" ext:exe;lnk
 	std::wstringstream search_query;
-	if (options.recursive)
-	{
+	if (options.recursive) {
 		// 如果是递归搜索，则使用原始的路径搜索
 		search_query << L"\"" << folderPath << L"\" ";
-	}
-	else
-	{
+	} else {
 		// 如果不递归，使用 parent: 函数更精确、更高效
 		search_query << L"parent:\"" << folderPath << L"\" ";
 	}
 
 	// 使用 ext: 过滤器，比正则表达式更简单快速
-	search_query << L"ext:";
-	for (size_t i = 0; i < options.extensions.size(); ++i)
-	{
-		std::wstring ext = options.extensions[i];
-		// 去掉可能存在的点
-		if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
-		search_query << ext;
-		if (i < options.extensions.size() - 1) search_query << L";";
+	if (!options.extensions.empty()) {
+		search_query << L"ext:";
+		for (size_t i = 0; i < options.extensions.size(); ++i) {
+			std::wstring ext = options.extensions[i];
+			// 去掉可能存在的点
+			if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
+			search_query << ext;
+			if (i < options.extensions.size() - 1) search_query << L";";
+		}
 	}
 
 	std::wcout << L"Executing optimized Everything search: " << search_query.str() << std::endl;
@@ -250,13 +241,10 @@ static void TraverseFilesForEverythingSDK(
 
 	DWORD numResults = Everything_GetNumResults();
 
-	for (DWORD i = 0; i < numResults; i++)
-	{
+	for (DWORD i = 0; i < numResults; i++) {
 		wchar_t fullPath[MAX_PATH];
 		Everything_GetResultFullPathNameW(i, fullPath, MAX_PATH);
-
 		// 因为查询已经精确过滤，不再需要手动判断父目录了
-		// if (!options.recursive) { ... } 这段逻辑可以移除
 		addFile(fs::path(fullPath));
 	}
 }
@@ -294,26 +282,27 @@ static std::vector<std::wstring> GetShortcutsInFolder(const std::wstring &folder
 	return GetShortcutsInFolder(wide_to_utf8(folderPath));
 }
 
-// 从注册表获取已安装的应用程序
+// 从注册表获取已安装的应用程序，TODO: 这个功能未完善，索引出来的应用很多都是卸载exe
+template<typename Callback>
 static void TraverseRegistryApps(
-		const TraverseOptions& options,
-		std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
+		Callback &&callback, const TraverseOptions &options) {
 	// 需要检查的注册表路径
 	std::vector<std::pair<HKEY, std::wstring>> registryPaths = {
-		{HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"},
-		{HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"},
-		{HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"}
+			{HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"},
+			{HKEY_CURRENT_USER,  L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"},
+			{HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"}
 	};
 
-	auto addApp = [&](const std::wstring& displayName, const std::wstring& executablePath, const std::wstring& iconPath = L"") {
+	auto addApp = [&](const std::wstring &displayName, const std::wstring &executablePath,
+					  const std::wstring &iconPath = L"") {
+		if (true) return;
 		if (displayName.empty() || executablePath.empty()) return;
-		
+
 		std::wstring appName = displayName;
-		
+
 		// 检查排除规则
 		if (shouldExclude(options, appName)) return;
-		
+
 		// 应用重命名映射
 		if (const auto it = options.renameMap.find(appName); it != options.renameMap.end()) {
 			appName = it->second;
@@ -326,14 +315,14 @@ static void TraverseRegistryApps(
 			workingDir = workingDir.substr(0, pos);
 		}
 
-		const auto action = std::make_shared<RunCommandAction>(
-			appName, executablePath, false, true, workingDir
+		callback(
+				appName,                     // 逻辑名（被 rename 过）
+				executablePath,               // 完整路径
+				workingDir
 		);
-
-		outActions.push_back(action);
 	};
 
-	for (const auto& [hkey, subKey] : registryPaths) {
+	for (const auto &[hkey, subKey]: registryPaths) {
 		HKEY hUninstall;
 		if (RegOpenKeyExW(hkey, subKey.c_str(), 0, KEY_READ, &hUninstall) != ERROR_SUCCESS) {
 			continue;
@@ -344,7 +333,8 @@ static void TraverseRegistryApps(
 		DWORD keyNameSize = sizeof(keyName) / sizeof(wchar_t);
 
 		// 枚举所有子键
-		while (RegEnumKeyExW(hUninstall, index, keyName, &keyNameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
+		while (RegEnumKeyExW(hUninstall, index, keyName, &keyNameSize, nullptr, nullptr, nullptr, nullptr) ==
+			   ERROR_SUCCESS) {
 			HKEY hApp;
 			if (RegOpenKeyExW(hUninstall, keyName, 0, KEY_READ, &hApp) == ERROR_SUCCESS) {
 				wchar_t displayName[512] = {0};
@@ -357,7 +347,8 @@ static void TraverseRegistryApps(
 				DWORD systemComponentSize = sizeof(systemComponent);
 
 				// 检查是否为系统组件，如果是则跳过
-				RegQueryValueExW(hApp, L"SystemComponent", nullptr, nullptr, (LPBYTE)&systemComponent, &systemComponentSize);
+				RegQueryValueExW(hApp, L"SystemComponent", nullptr, nullptr, (LPBYTE) &systemComponent,
+								 &systemComponentSize);
 				if (systemComponent == 1) {
 					RegCloseKey(hApp);
 					keyNameSize = sizeof(keyName) / sizeof(wchar_t);
@@ -366,9 +357,11 @@ static void TraverseRegistryApps(
 				}
 
 				// 获取显示名称
-				if (RegQueryValueExW(hApp, L"DisplayName", nullptr, nullptr, (LPBYTE)displayName, &displayNameSize) == ERROR_SUCCESS) {
+				if (RegQueryValueExW(hApp, L"DisplayName", nullptr, nullptr, (LPBYTE) displayName, &displayNameSize) ==
+					ERROR_SUCCESS) {
 					// 尝试获取可执行文件路径，按优先级顺序
-					if (RegQueryValueExW(hApp, L"DisplayIcon", nullptr, nullptr, (LPBYTE)executablePath, &executablePathSize) == ERROR_SUCCESS) {
+					if (RegQueryValueExW(hApp, L"DisplayIcon", nullptr, nullptr, (LPBYTE) executablePath,
+										 &executablePathSize) == ERROR_SUCCESS) {
 						// DisplayIcon 可能包含图标索引，需要清理
 						std::wstring iconStr(executablePath);
 						size_t commaPos = iconStr.find(L",");
@@ -378,11 +371,12 @@ static void TraverseRegistryApps(
 						wcscpy_s(executablePath, iconStr.c_str());
 					} else {
 						executablePathSize = sizeof(executablePath);
-						if (RegQueryValueExW(hApp, L"UninstallString", nullptr, nullptr, (LPBYTE)executablePath, &executablePathSize) == ERROR_SUCCESS) {
+						if (RegQueryValueExW(hApp, L"UninstallString", nullptr, nullptr, (LPBYTE) executablePath,
+											 &executablePathSize) == ERROR_SUCCESS) {
 							// UninstallString 通常包含卸载程序路径，可能不是我们想要的主程序
 							// 但有时候没有其他选择
 							std::wstring uninstallStr(executablePath);
-							
+
 							// 尝试从卸载字符串中提取可执行文件路径
 							if (uninstallStr.find(L"MsiExec.exe") != std::wstring::npos) {
 								// MSI安装的程序，跳过
@@ -407,7 +401,7 @@ static void TraverseRegistryApps(
 							// 检查是否为可执行文件
 							std::wstring ext = cleanPath.substr(cleanPath.find_last_of(L"."));
 							std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-							
+
 							if (ext == L".exe" || ext == L".com" || ext == L".bat" || ext == L".cmd") {
 								addApp(displayName, cleanPath, iconPath);
 							}
@@ -426,43 +420,56 @@ static void TraverseRegistryApps(
 	}
 }
 
-// 索引Windows应用商店应用（UWP应用）
+static void TraverseRegistryApps(
+		std::vector<std::shared_ptr<RunCommandAction>> &outActions, const TraverseOptions &options) {
+	TraverseRegistryApps([&](const std::wstring &name,
+							 const std::wstring &fullPath,
+							 const std::wstring &workingdir) {
+		const auto action = std::make_shared<RunCommandAction>(
+				name, fullPath, false, true, workingdir
+		);
+		outActions.push_back(action);
+	}, options);
+
+}
+
+// 索引Windows应用商店应用（UWP应用），废弃的，不生效
+
+template<typename Callback>
 static void TraverseUWPApps(
-		const TraverseOptions& options,
-		std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
+		const TraverseOptions &options,
+		Callback &&callback) {
 	// UWP应用的包信息存储在注册表中
 	HKEY hPackages;
 	const std::wstring packagesKey = L"SOFTWARE\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages";
-	
+
 	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, packagesKey.c_str(), 0, KEY_READ, &hPackages) != ERROR_SUCCESS) {
 		return;
 	}
 
-	auto addUWPApp = [&](const std::wstring& displayName, const std::wstring& packageFamilyName, const std::wstring& appId = L"") {
+	auto addUWPApp = [&](const std::wstring &displayName, const std::wstring &packageFamilyName,
+						 const std::wstring &appId = L"") {
 		if (displayName.empty() || packageFamilyName.empty()) return;
-		
+
 		std::wstring appName = displayName;
-		
+
 		// 检查排除规则
 		if (shouldExclude(options, appName)) return;
-		
+
 		// 应用重命名映射
 		if (const auto it = options.renameMap.find(appName); it != options.renameMap.end()) {
 			appName = it->second;
 		}
 
 		// UWP应用的启动命令格式
-		std::wstring command = L"shell:AppsFolder\\" + packageFamilyName;
+		std::wstring uwpCommand = L"shell:AppsFolder\\" + packageFamilyName;
 		if (!appId.empty()) {
-			command += L"!" + appId;
+			uwpCommand += L"!" + appId;
 		}
-
-		const auto action = std::make_shared<RunCommandAction>(
-			appName, command, false, true, L""
+		callback(
+				appName,                     // 逻辑名（被 rename 过）
+				uwpCommand
 		);
-
-		outActions.push_back(action);
 	};
 
 	DWORD index = 0;
@@ -470,7 +477,8 @@ static void TraverseUWPApps(
 	DWORD packageNameSize = sizeof(packageName) / sizeof(wchar_t);
 
 	// 枚举所有UWP包
-	while (RegEnumKeyExW(hPackages, index, packageName, &packageNameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
+	while (RegEnumKeyExW(hPackages, index, packageName, &packageNameSize, nullptr, nullptr, nullptr, nullptr) ==
+		   ERROR_SUCCESS) {
 		HKEY hPackage;
 		if (RegOpenKeyExW(hPackages, packageName, 0, KEY_READ, &hPackage) == ERROR_SUCCESS) {
 			wchar_t displayName[512] = {0};
@@ -479,16 +487,18 @@ static void TraverseUWPApps(
 			DWORD packageFamilyNameSize = sizeof(packageFamilyName);
 
 			// 获取显示名称和包族名称
-			if (RegQueryValueExW(hPackage, L"DisplayName", nullptr, nullptr, (LPBYTE)displayName, &displayNameSize) == ERROR_SUCCESS &&
-				RegQueryValueExW(hPackage, L"PackageFamilyName", nullptr, nullptr, (LPBYTE)packageFamilyName, &packageFamilyNameSize) == ERROR_SUCCESS) {
-				
+			if (RegQueryValueExW(hPackage, L"DisplayName", nullptr, nullptr, (LPBYTE) displayName, &displayNameSize) ==
+				ERROR_SUCCESS &&
+				RegQueryValueExW(hPackage, L"PackageFamilyName", nullptr, nullptr, (LPBYTE) packageFamilyName,
+								 &packageFamilyNameSize) == ERROR_SUCCESS) {
+
 				// 过滤掉系统应用和框架应用
 				std::wstring packageStr(packageName);
 				if (packageStr.find(L"Microsoft.Windows") == std::wstring::npos &&
 					packageStr.find(L"Microsoft.VCLibs") == std::wstring::npos &&
 					packageStr.find(L"Microsoft.NET") == std::wstring::npos &&
 					packageStr.find(L"Microsoft.UI") == std::wstring::npos) {
-					
+
 					addUWPApp(displayName, packageFamilyName);
 				}
 			}
@@ -503,83 +513,287 @@ static void TraverseUWPApps(
 	RegCloseKey(hPackages);
 }
 
-// 综合索引方法：同时索引传统应用和UWP应用
-static void TraverseInstalledApps(
-		const TraverseOptions& options,
-		std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
-	// 索引注册表中的传统应用
-	TraverseRegistryApps(options, outActions);
-	
-	// 索引UWP应用
-	TraverseUWPApps(options, outActions);
+// 废弃的，不生效
+static void TraverseUWPApps(
+		const TraverseOptions &options,
+		std::vector<std::shared_ptr<RunCommandAction>> &outActions) {
+	TraverseUWPApps(options, [&](const std::wstring &name,
+								 const std::wstring &fullPath) {
+		const auto action = std::make_shared<RunCommandAction>(
+				name, fullPath, false, true, L""
+		);
+		outActions.push_back(action);
+	});
 }
 
-// 索引PATH环境变量中的所有可执行文件
-template <typename Callback>
-static void TraversePATHExecutables(Callback&& callback)
-{
+
+/// <summary>
+/// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
+/// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
+/// </summary>
+/// <param name="actions">The list of actions to add UWP apps to.</param>
+template<typename Callback>
+static void LoadUwpApps(Callback &&callback, const TraverseOptions &options) {
+	if (FAILED(CoInitialize(NULL))) {
+		return;
+	}
+
+	IKnownFolderManager *pKnownFolderManager = nullptr;
+	if (FAILED(
+			CoCreateInstance(CLSID_KnownFolderManager, NULL, CLSCTX_INPROC_SERVER,
+							 IID_PPV_ARGS(&pKnownFolderManager)))) {
+		CoUninitialize();
+		return;
+	}
+
+	IShellItem *pAppsFolderItem = nullptr;
+	if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_AppsFolder, KF_FLAG_DEFAULT, NULL, IID_PPV_ARGS(&pAppsFolderItem)))) {
+		IShellFolder *pDesktopFolder = nullptr;
+		if (SUCCEEDED(SHGetDesktopFolder(&pDesktopFolder))) {
+			LPITEMIDLIST pidl = nullptr;
+			if (SUCCEEDED(SHGetIDListFromObject(pAppsFolderItem, &pidl))) {
+				IShellFolder *pAppsFolderShellFolder = nullptr;
+				if (SUCCEEDED(pDesktopFolder->BindToObject(pidl, NULL, IID_PPV_ARGS(&pAppsFolderShellFolder)))) {
+					IEnumIDList *pEnumIDList = nullptr;
+					if (SUCCEEDED(
+							pAppsFolderShellFolder->EnumObjects(NULL, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS,
+																&pEnumIDList))) {
+						LPITEMIDLIST pidlItem = nullptr;
+						ULONG fetched = 0;
+						while (pEnumIDList->Next(1, &pidlItem, &fetched) == S_OK) {
+							IShellItem *pShellItem = nullptr;
+							if (SUCCEEDED(
+									SHCreateItemWithParent(pidl, pAppsFolderShellFolder, pidlItem,
+														   IID_PPV_ARGS(&pShellItem)
+									))) {
+								// 处理每个 ShellItem
+								LPWSTR pwszParsingName = nullptr;
+								if (FAILED(
+										pShellItem->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &pwszParsingName))) {
+									pShellItem->Release();
+									continue;
+								}
+
+								// UWP应用程序通常具有“！”以他们的解析名称。
+								if (wcschr(pwszParsingName, L'!') == nullptr) {
+									CoTaskMemFree(pwszParsingName);
+									pShellItem->Release();
+									continue;
+								}
+
+								LPWSTR pwszDisplayName = nullptr;
+								if (FAILED(pShellItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pwszDisplayName))) {
+									CoTaskMemFree(pwszParsingName);
+									pShellItem->Release();
+									continue;
+								}
+								// 进行UWP列表项的筛选，排除，重命名
+								std::wstring uwpAppName = pwszDisplayName;
+								if (shouldExclude(options, uwpAppName)) {
+									CoTaskMemFree(pwszParsingName);
+									pShellItem->Release();
+									continue;
+								}
+								if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end()) {
+									uwpAppName = it->second;
+								}
+
+								HBITMAP hBitmap = nullptr;
+								IShellItemImageFactory *pImageFactory = nullptr;
+								// 大小可以调整。 256x256是一个很好的高质量尺寸。
+								SIZE size = {LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE};
+								if (SUCCEEDED(pShellItem->QueryInterface(IID_PPV_ARGS(&pImageFactory)))) {
+									// SIIGBF_RESIZETOFIT 即使没有确切的尺寸，也可以确保我们获得图像。
+									// SIIGBF_ICONONLY 防止获得文档的缩略图预览。
+									pImageFactory->GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_ICONONLY, &hBitmap);
+									pImageFactory->Release();
+								}
+
+								// 构造命令字符串以启动UWP应用程序
+								std::wstring uwpCommand = L"shell:AppsFolder\\";
+								uwpCommand += pwszParsingName;
+
+								std::wstring uwpCommandS = L"";
+								uwpCommandS += pwszParsingName;
+
+								// 为UWP应用程序创建一个新的RunCommandaction。
+								if (hBitmap != nullptr) {
+									// TODO: 使用HBITMAP并管理其生命周期
+									callback(
+											uwpAppName,                     // 逻辑名（被 rename 过）
+											uwpCommand,
+											uwpCommandS,
+											hBitmap
+									);
+
+								} else {
+									// 无法加载图标的后备
+									callback(
+											uwpAppName,                     // 逻辑名（被 rename 过）
+											uwpCommand,
+											uwpCommandS,
+											nullptr
+									);
+								}
+
+								CoTaskMemFree(pwszDisplayName);
+								CoTaskMemFree(pwszParsingName);
+								pShellItem->Release();
+							}
+							CoTaskMemFree(pidlItem);
+						}
+						pEnumIDList->Release();
+					}
+					pAppsFolderShellFolder->Release();
+				}
+				CoTaskMemFree(pidl);
+			}
+			pDesktopFolder->Release();
+		}
+		pAppsFolderItem->Release();
+	}
+	CoUninitialize();
+}
+
+static void LoadUwpApps(
+		std::vector<std::shared_ptr<RunCommandAction>> &outActions,
+		const TraverseOptions &options) {
+	LoadUwpApps([&](const std::wstring &name,
+					const std::wstring &fullPath,
+					const std::wstring uwpCommandS,
+					const HBITMAP hBitmap) {
+		const auto action = std::make_shared<RunCommandAction>(
+				name, fullPath, uwpCommandS, hBitmap
+		);
+		outActions.push_back(action);
+	}, options);
+}
+
+// 获取环境变量PATH中的所有路径
+inline std::vector<std::wstring> GetPATHDirectories() {
+	std::vector<std::wstring> paths;
+
+	// 获取PATH环境变量的大小
+	DWORD size = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+	if (size == 0) {
+		return paths;
+	}
+
+	// 分配缓冲区并获取PATH内容
+	std::vector<wchar_t> buffer(size);
+	if (GetEnvironmentVariableW(L"PATH", buffer.data(), size) == 0) {
+		return paths;
+	}
+
+	// 将PATH字符串按分号分割
+	std::wstring pathStr(buffer.data());
+	std::wstringstream ss(pathStr);
+	std::wstring item;
+
+	while (std::getline(ss, item, L';')) {
+		// 去除前后空格
+		item.erase(0, item.find_first_not_of(L" \t"));
+		item.erase(item.find_last_not_of(L" \t") + 1);
+
+		if (!item.empty()) {
+			// 去除可能的引号
+			if (item.front() == L'"' && item.back() == L'"' && item.length() > 1) {
+				item = item.substr(1, item.length() - 2);
+			}
+
+			// 检查路径是否存在
+			DWORD attrib = GetFileAttributesW(item.c_str());
+			if (attrib != INVALID_FILE_ATTRIBUTES && (attrib & FILE_ATTRIBUTE_DIRECTORY)) {
+				paths.push_back(item);
+			}
+		}
+	}
+
+	return paths;
+}
+
+// 索引PATH环境变量中的所有可执行文件，该方法很慢，sdk调用需要时间
+template<typename Callback>
+static void TraversePATHExecutables(Callback &&callback, TraverseOptions &options) {
 	// 获取PATH中的所有目录
 	std::vector<std::wstring> pathDirs = GetPATHDirectories();
-	
-	// 创建默认的可执行文件索引选项
-	TraverseOptions options = CreateExecutableTraverseOptions();
-	
+
+	// 默认的可执行文件索引选项
+	if (options.extensions == std::vector<std::wstring>{L".exe", L".lnk"}) {
+		options.extensions = {L".exe", L".bat", L".cmd", L".lnk"};
+	}
+
+	options.recursive = false; // PATH目录通常不需要递归搜索
+
 	// 遍历每个PATH目录
-	for (const auto& pathDir : pathDirs) {
+	for (const auto &pathDir: pathDirs) {
 		try {
-			// 使用TraverseFilesForEverythingSDK索引该目录
+			// 使用TraverseFilesForEverythingSDK索引该目录，比一般的索引要更慢，可能是本来调用sdk就会有一些开销
 			TraverseFilesForEverythingSDK(pathDir, options, callback);
 		}
-		catch (const std::exception& e) {
+		catch (const std::exception &e) {
 			// 记录错误但继续处理其他目录
-			std::wcout << L"Error indexing PATH directory " << pathDir 
-			          << L": " << utf8_to_wide(e.what()) << std::endl;
+			std::wcout << L"Error indexing PATH directory " << pathDir
+					   << L": " << utf8_to_wide(e.what()) << std::endl;
 		}
 	}
 }
 
 // 索引PATH环境变量中的所有可执行文件
-static void TraversePATHExecutables2(std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
+template<typename Callback>
+static void TraversePATHExecutables2(Callback &&callback, TraverseOptions &options) {
 	// 获取PATH中的所有目录
 	std::vector<std::wstring> pathDirs = GetPATHDirectories();
-	
-	// 创建默认的可执行文件索引选项
-	TraverseOptions options = CreateExecutableTraverseOptions();
-	
+
+	// 默认的可执行文件索引选项
+	if (options.extensions == std::vector<std::wstring>{L".exe", L".lnk"}) {
+		options.extensions = {L".exe", L".bat", L".cmd", L".lnk"};
+	}
+
+	options.recursive = false; // PATH目录通常不需要递归搜索
+
+
 	// 遍历每个PATH目录
-	for (const auto& pathDir : pathDirs) {
-		try{
-			
-			TraverseFiles(pathDir, options, outActions);
+	for (const auto &pathDir: pathDirs) {
+		try {
+			TraverseFiles(pathDir, options, callback);
 		} catch (...) {
 			continue;
 		}
 	}
 }
 
-// 重载版本：返回RunCommandAction向量
-static void TraversePATHExecutables(std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
-	TraversePATHExecutables([&](const std::wstring& name, const std::wstring& fullPath,
-	                           const std::wstring& parent, const std::wstring& ext) {
+// 索引PATH环境变量中的所有可执行文件
+static void
+TraversePATHExecutables2(std::vector<std::shared_ptr<RunCommandAction>> &outActions, TraverseOptions &options) {
+	TraversePATHExecutables2([&](const std::wstring &name,
+								 const std::wstring &fullPath,
+								 const std::wstring &parent,
+								 const std::wstring &ext) {
 		const auto action = std::make_shared<RunCommandAction>(
-			name, fullPath, false, true, parent
+				name, fullPath, false, true, parent
 		);
 		outActions.push_back(action);
-	});
+	}, options);
 }
 
-// 全面索引方法：索引已安装应用 + PATH可执行文件
-static void TraverseAllExecutables(std::vector<std::shared_ptr<RunCommandAction>>& outActions)
-{
-	// 创建默认选项用于已安装应用索引
-	TraverseOptions options = CreateExecutableTraverseOptions();
-	
-	// 1. 索引已安装的应用程序（注册表 + UWP）
-	TraverseInstalledApps(options, outActions);
-	
-	// 2. 索引PATH环境变量中的可执行文件
-	TraversePATHExecutables(outActions);
+// 重载版本：返回RunCommandAction向量
+static void TraversePATHExecutables(std::vector<std::shared_ptr<RunCommandAction>> &outActions, TraverseOptions &
+options) {
+	TraversePATHExecutables([&](const std::wstring &name, const std::wstring &fullPath,
+								const std::wstring &parent, const std::wstring &ext) {
+		const auto action = std::make_shared<RunCommandAction>(
+				name, fullPath, false, true, parent
+		);
+		outActions.push_back(action);
+	}, options);
+}
+
+
+// 创建默认的可执行文件索引选项
+inline TraverseOptions CreateDefaultPathTraverseOptions() {
+	TraverseOptions options;
+	options.extensions = {L".exe", L".bat", L".cmd", L".lnk"};
+	options.recursive = false; // PATH目录通常不需要递归搜索
+	return options;
 }

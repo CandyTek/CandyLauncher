@@ -54,18 +54,18 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT l
 	return TRUE;
 }
 
-static void HideWindow(HWND hWnd, HWND hEdit, HWND hListView) {
+static void HideWindow() {
 	// 不需要设置什么线程延时去关闭什么的，归根结底是alt键触发了控件的一些东西，屏蔽就好
 	if (!pref_preserve_last_search_term) {
-		SetWindowText(hEdit, L"");
+		SetWindowText(g_editHwnd, L"");
 		// 强制更新 UI
-		UpdateWindow(hEdit);
-		UpdateWindow(hListView);
+		UpdateWindow(g_editHwnd);
+		UpdateWindow(g_listViewHwnd);
 	} else if (pref_last_search_term_selected) {
-		PostMessageW(hEdit, EM_SETSEL, 0, -1);
+		PostMessageW(g_editHwnd, EM_SETSEL, 0, -1);
 	}
 	RECT saveRect;
-	if (!GetWindowRect(hWnd, &saveRect)) {
+	if (!GetWindowRect(g_mainHwnd, &saveRect)) {
 		lastWindowCenterX = -1;
 		lastWindowCenterY = -1;
 	} else {
@@ -73,7 +73,7 @@ static void HideWindow(HWND hWnd, HWND hEdit, HWND hListView) {
 		lastWindowCenterY = saveRect.top;
 	}
 
-	ShowWindow(hWnd, SW_HIDE);
+	ShowWindow(g_mainHwnd, SW_HIDE);
 
 	//ListView_DeleteAllItems(hListView);
 	//UpdateWindow(hListView);
@@ -153,7 +153,7 @@ static void showMainWindowInIndexScreen(HWND hWnd, int index) {
 					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	}
 
-	if (monitors.size() > index) {
+	if (monitors.size() > static_cast<size_t>(index)) {
 		mi = monitors[index].mi;
 	} else {
 		mi = monitors[0].mi;
@@ -348,13 +348,13 @@ static void MyMoveWindow(HWND hWnd) {
 	}
 }
 
-static void ShowMainWindowSimple(HWND hWnd, HWND hEdit) {
-	RestoreWindowIfMinimized(hWnd);
-	SetFocus(hEdit);
-	MyMoveWindow(hWnd);
-	SetForegroundWindow(hWnd);
+static void ShowMainWindowSimple() {
+	RestoreWindowIfMinimized(g_mainHwnd);
+	SetFocus(g_editHwnd);
+	MyMoveWindow(g_mainHwnd);
+	SetForegroundWindow(g_mainHwnd);
 	if (g_hklIme != nullptr)
-		PostMessageW(hEdit, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM) g_hklIme);
+		PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM) g_hklIme);
 }
 
 // static const std::shared_ptr<RunCommandAction>& GetListViewSelectedAction(HWND hListView,std::vector<std::shared_ptr<RunCommandAction>>& filteredActions)
@@ -703,19 +703,50 @@ static HBITMAP IconToBitmap(HICON hIcon, int cx, int cy) {
 	return hBmp;
 }
 
-static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd,bool isForceReturn = false) {
-	std::wstring folderPath = Utf8ToWString(cmd["folder"].get<std::string>());
-	folderPath = ExpandEnvironmentVariables(folderPath, EXE_FOLDER_PATH);
+static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd) {
 	TraverseOptions traverseOptions;
-	if (!FolderExists(folderPath) && !isForceReturn) {
-		std::wcerr << L"指定的文件夹不存在：" << folderPath << std::endl;
+	if (!cmd.is_object()) {
+		std::wcerr << L"配置项不是一个对象，返回。" << std::endl;
 		return traverseOptions;
 	}
-	traverseOptions.command = Utf8ToWString(cmd["command"].get<std::string>());
-	traverseOptions.folder = Utf8ToWString(cmd["folder"].get<std::string>());
-	traverseOptions.extensions = {L".exe", L".lnk"};
-	traverseOptions.recursive = true;
 
+	if (cmd.contains("folder") && cmd["folder"].is_string())
+	{
+		std::wstring folderPath = Utf8ToWString(cmd["folder"].get<std::string>());
+		folderPath = ExpandEnvironmentVariables(folderPath, EXE_FOLDER_PATH);
+		traverseOptions.folder = folderPath;
+	}
+	if (cmd.contains("command") && cmd["command"].is_string())
+	{
+		traverseOptions.command = Utf8ToWString(cmd["command"].get<std::string>());
+	}
+	if (cmd.contains("type") && cmd["type"].is_string())
+	{
+		traverseOptions.type = Utf8ToWString(cmd["type"].get<std::string>());
+	}
+	if (cmd.contains("is_contain_subfolder") && cmd["is_contain_subfolder"].is_boolean())
+	{
+		traverseOptions.recursive = cmd["is_contain_subfolder"].get<bool>();
+	}else{
+		traverseOptions.recursive = true;
+	}
+	
+	
+
+	if (cmd.contains("exts") && cmd["exts"].is_array()) {
+		for (const auto &name: cmd["exts"]) {
+			if (name.is_string()) {
+				std::string ext = MyTrim(name.get<std::string>());
+				if (!ext.empty() && ext[0] != '.') {
+					ext.insert(ext.begin(), '.');
+				}
+				traverseOptions.extensions.push_back(Utf8ToWString(ext));
+			}
+		}
+	}else{
+		traverseOptions.extensions = {L".exe", L".lnk"};
+	}
+	
 	if (cmd.contains("excludes") && cmd["excludes"].is_array()) {
 		for (const auto &name: cmd["excludes"]) {
 			if (name.is_string()) {
@@ -727,7 +758,7 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd,bool
 	if (cmd.contains("exclude_words") && cmd["exclude_words"].is_array()) {
 		for (const auto &word: cmd["exclude_words"]) {
 			if (word.is_string()) {
-				traverseOptions.excludeWords.push_back(Utf8ToWString(word.get<std::string>()));
+				traverseOptions.excludeWords.push_back(Utf8ToWString(MyToLower(word.get<std::string>())));
 			}
 		}
 	}
@@ -751,15 +782,15 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd,bool
 	return traverseOptions;
 }
 
-static auto shouldExclude = [](const TraverseOptions &options, const std::wstring &name) -> bool {
-	std::wstring nameLower = name;
-	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
+// 需匹配大小写
+static auto shouldExclude = [](const TraverseOptions& options, const std::wstring &name) -> bool {
 	if (std::find(options.excludeNames.begin(),
 				  options.excludeNames.end(),
-				  nameLower) != options.excludeNames.end()) {
+				  name) != options.excludeNames.end()) {
 		return true;
 	}
-
+	std::wstring nameLower = name;
+	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
 	for (const auto &word: options.excludeWords) {
 		if (nameLower.find(word) != std::wstring::npos) return true;
 	}
@@ -882,7 +913,7 @@ static void SaveConfigToFile(std::vector<TraverseOptions>& runnerConfigs) {
 			j.push_back(item);
 		}
 
-		std::ofstream file("runner.json");
+		std::ofstream file(RUNNER_CONFIG_PATH);
 		file << j.dump(1, '\t');
 		file.close();
 	}
@@ -895,28 +926,27 @@ static void SaveConfigToFile(std::vector<TraverseOptions>& runnerConfigs) {
 // 解析 runner.json 文件
 static std::vector<TraverseOptions> ParseRunnerConfig() {
 	std::vector<TraverseOptions> configs;
-	std::string filename = "runner.json";
-	std::string jsonText = ReadUtf8File(filename);
+	std::string jsonText = ReadUtf8File(RUNNER_CONFIG_PATH);
 	nlohmann::json runnerConfig;
 
 	try {
 		runnerConfig = nlohmann::json::parse(jsonText);
 	}
 	catch (const nlohmann::json::parse_error &e) {
-		std::string error_msg = "Config file load error in '" + filename +
+		std::string error_msg = "Config file load error in '" + wide_to_utf8(RUNNER_CONFIG_PATH) +
 								"'. Using default settings.\n\nError: " + e.what();
 	}
 
-	try {
+	//try {
 		for (const nlohmann::basic_json<> &item: runnerConfig) {
-			TraverseOptions config = getTraverseOptions(item,true);
+			TraverseOptions config = getTraverseOptions(item);
 			configs.push_back(config);
 		}
-	}
-	catch (const std::exception &e) {
-		MessageBoxA(nullptr, ("Failed to parse runner.json: " + std::string(e.what())).c_str(),
-					"Error", MB_OK | MB_ICONERROR);
-	}
+	//}
+	//catch (const std::exception &e) {
+	//	MessageBoxA(nullptr, ("Failed to parse runner.json: " + std::string(e.what())).c_str(),
+	//				"Error", MB_OK | MB_ICONERROR);
+	//}
 
 	return configs;
 }

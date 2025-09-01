@@ -37,284 +37,105 @@
 
 static std::unordered_map<std::string, std::function<void()>> callbackFunctions;
 
-ListedRunnerPlugin::ListedRunnerPlugin()
-{
+ListedRunnerPlugin::ListedRunnerPlugin() {
 }
 
-ListedRunnerPlugin::ListedRunnerPlugin(const std::unordered_map<std::string, std::function<void()>>& callbackFunction1)
-{
+ListedRunnerPlugin::ListedRunnerPlugin(
+		const std::unordered_map<std::string, std::function<void()>> &callbackFunction1) {
 	callbackFunctions = callbackFunction1;
-	configPath = EXE_FOLDER_PATH + L"\\runner.json";
 	LoadConfiguration();
 }
 
-const std::vector<std::shared_ptr<RunCommandAction>>& ListedRunnerPlugin::GetActions() const
-{
+const std::vector<std::shared_ptr<RunCommandAction>> &ListedRunnerPlugin::GetActions() const {
 	return actions;
 }
 
 
+void ListedRunnerPlugin::LoadConfiguration() {
+	MethodTimerStart();
+	bool isUwpAdded = false;
+	bool isPathAdded = false;
+	bool isRegeditAdded = false;
 
-/// <summary>
-/// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
-/// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
-/// </summary>
-/// <param name="actions">The list of actions to add UWP apps to.</param>
-static void LoadUwpApps(const TraverseOptions& options,std::vector<std::shared_ptr<RunCommandAction>>& actions)
-{
-	if (FAILED(CoInitialize(NULL)))
-	{
-		return;
-	}
-
-	IKnownFolderManager* pKnownFolderManager = nullptr;
-	if (FAILED(
-		CoCreateInstance(CLSID_KnownFolderManager, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pKnownFolderManager))))
-	{
-		CoUninitialize();
-		return;
-	}
-
-	IShellItem* pAppsFolderItem = nullptr;
-	if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_AppsFolder, KF_FLAG_DEFAULT, NULL, IID_PPV_ARGS(&pAppsFolderItem))))
-	{
-		IShellFolder* pDesktopFolder = nullptr;
-		if (SUCCEEDED(SHGetDesktopFolder(&pDesktopFolder)))
-		{
-			LPITEMIDLIST pidl = nullptr;
-			if (SUCCEEDED(SHGetIDListFromObject(pAppsFolderItem, &pidl)))
-			{
-				IShellFolder* pAppsFolderShellFolder = nullptr;
-				if (SUCCEEDED(pDesktopFolder->BindToObject(pidl, NULL, IID_PPV_ARGS(&pAppsFolderShellFolder))))
-				{
-					IEnumIDList* pEnumIDList = nullptr;
-					if (SUCCEEDED(
-						pAppsFolderShellFolder->EnumObjects(NULL, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS, &pEnumIDList)))
-					{
-						LPITEMIDLIST pidlItem = nullptr;
-						ULONG fetched = 0;
-						while (pEnumIDList->Next(1, &pidlItem, &fetched) == S_OK)
-						{
-							IShellItem* pShellItem = nullptr;
-							if (SUCCEEDED(
-								SHCreateItemWithParent(pidl, pAppsFolderShellFolder, pidlItem, IID_PPV_ARGS(&pShellItem)
-								)))
-							{
-								// 处理每个 ShellItem
-								LPWSTR pwszParsingName = nullptr;
-								if (FAILED(pShellItem->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &pwszParsingName)))
-								{
-									pShellItem->Release();
-									continue;
-								}
-
-								// UWP应用程序通常具有“！”以他们的解析名称。
-								if (wcschr(pwszParsingName, L'!') == nullptr)
-								{
-									CoTaskMemFree(pwszParsingName);
-									pShellItem->Release();
-									continue;
-								}
-
-								LPWSTR pwszDisplayName = nullptr;
-								if (FAILED(pShellItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pwszDisplayName)))
-								{
-									CoTaskMemFree(pwszParsingName);
-									pShellItem->Release();
-									continue;
-								}
-								// 进行UWP列表项的筛选，排除，重命名
-								std::wstring uwpAppName = pwszDisplayName;
-								if (shouldExclude(options,uwpAppName)) {
-									CoTaskMemFree(pwszParsingName);
-									pShellItem->Release();
-									continue;
-								}
-								if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end())
-								{
-									uwpAppName = it->second;
-								}
-								
-								HBITMAP hBitmap = nullptr;
-								IShellItemImageFactory* pImageFactory = nullptr;
-								// 大小可以调整。 256x256是一个很好的高质量尺寸。
-								SIZE size = {LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE};
-								if (SUCCEEDED(pShellItem->QueryInterface(IID_PPV_ARGS(&pImageFactory))))
-								{
-									// SIIGBF_RESIZETOFIT 即使没有确切的尺寸，也可以确保我们获得图像。
-									// SIIGBF_ICONONLY 防止获得文档的缩略图预览。
-									pImageFactory->GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_ICONONLY, &hBitmap);
-									pImageFactory->Release();
-								}
-
-								// 构造命令字符串以启动UWP应用程序
-								std::wstring uwpCommand = L"shell:AppsFolder\\";
-								uwpCommand += pwszParsingName;
-
-								std::wstring uwpCommandS = L"";
-								uwpCommandS += pwszParsingName;
-
-								// 为UWP应用程序创建一个新的RunCommandaction。
-								if (hBitmap != nullptr)
-								{
-									// TODO: 使用HBITMAP并管理其生命周期
-									actions.push_back(
-										std::make_shared<RunCommandAction>(
-											uwpAppName, uwpCommand, uwpCommandS, hBitmap));
-								}
-								else
-								{
-									// 无法加载图标的后备
-									actions.push_back(
-										std::make_shared<RunCommandAction>(
-											uwpAppName, uwpCommand, uwpCommandS, nullptr));
-								}
-
-								CoTaskMemFree(pwszDisplayName);
-								CoTaskMemFree(pwszParsingName);
-								pShellItem->Release();
-							}
-							CoTaskMemFree(pidlItem);
-						}
-						pEnumIDList->Release();
-					}
-					pAppsFolderShellFolder->Release();
-				}
-				CoTaskMemFree(pidl);
-			}
-			pDesktopFolder->Release();
-		}
-		pAppsFolderItem->Release();
-	}
-	CoUninitialize();
-}
-
-
-
-void ListedRunnerPlugin::LoadConfiguration()
-{
-    MethodTimerStart();
 	actions.clear();
-	// std::shared_ptr<ActionNormal> refreshAction = ;
-	// actions.push_back(refreshAction);
 	actions.push_back(std::make_shared<ActionNormal>(L"刷新列表", L"刷新运行配置", EXE_FOLDER_PATH + L"\\refresh.ico",
-													callbackFunctions["refreshList"]));
+													 callbackFunctions["refreshList"]));
 	actions.push_back(std::make_shared<ActionNormal>(L"退出软件", L"退出软件", EXE_FOLDER_PATH + L"\\refresh.ico",
-													callbackFunctions["quit"]));
+													 callbackFunctions["quit"]));
 	actions.push_back(std::make_shared<ActionNormal>(L"重启软件", L"重启软件", EXE_FOLDER_PATH + L"\\refresh.ico",
-													callbackFunctions["restart"]));
-	actions.push_back(std::make_shared<ActionNormal>(L"软件设置", L"打开本软件设置界面", EXE_FOLDER_PATH + L"\\refresh.ico",
-													callbackFunctions["settings"]));
-	std::string utf8json = ReadUtf8File(configPath);
-	
-	// 解析 JSON
-	nlohmann::json configJson;
-	try
-	{
-		configJson = nlohmann::json::parse(utf8json); // 解析 UTF-8 的 std::string
-	}
-	catch (const nlohmann::json::parse_error& e)
-	{
-		std::wcerr << L"JSON 解析错误：" << Utf8ToWString(e.what()) << std::endl;
-		return;
-	}
-
-	for (const nlohmann::basic_json<>& cmd : configJson)
-	{
-		try
-		{
-			if (!cmd.is_object())
-			{
-				std::wcerr << L"配置项不是一个对象，跳过。" << std::endl;
-				continue;
-			}
-
-			if (!cmd.contains("command") || !cmd["command"].is_string())
-			{
-				std::wcerr << L"JSON 配置缺失或类型错误：'command' 字段，跳过该项。" << std::endl;
-				continue;
-			}
-
-			std::wstring title = Utf8ToWString(cmd["command"].get<std::string>());
-
-			if (cmd.contains("exePath"))
-			{
-				if (!cmd["exePath"].is_string())
-				{
-					std::wcerr << L"'exePath' 字段类型错误，跳过该项。" << std::endl;
-					continue;
-				}
-
-				std::wstring path = Utf8ToWString(cmd["exePath"].get<std::string>());
-				auto action = std::make_shared<RunCommandAction>(title, path);
-				actions.push_back(action);
-			}
-			else if (cmd.contains("folder"))
-			{
-				
-				TraverseOptions traverseOptions = getTraverseOptions(cmd);
-				if (!traverseOptions.command.empty()) continue;
-
-				if (cmd.contains("special_uwp"))
-				{
-					TraverseUwpApps(traverseOptions,actions);
-				}
-				else
-				{
-//					TraverseFiles(folderPath, traverseOptions, actions);
-//                    TraverseFilesForEverything(folderPath, traverseOptions, actions);
-					::TraverseFilesForEverythingSDK(traverseOptions.folder, traverseOptions, [&](const std::wstring& name,
-																					 const std::wstring& fullPath,
-																					 const std::wstring& parent,
-																					 const std::wstring& ext)
-					{
-						const auto action = std::make_shared<RunCommandAction>(
-								name, fullPath, false, true, parent
-						);
-						actions.push_back(action);
-					});
-				}
+													 callbackFunctions["restart"]));
+	actions.push_back(
+			std::make_shared<ActionNormal>(L"软件设置", L"打开本软件设置界面", EXE_FOLDER_PATH + L"\\refresh.ico",
+										   callbackFunctions["settings"]));
+	std::vector<TraverseOptions> runnerConfigs = ParseRunnerConfig();
+	for (TraverseOptions traverseOptions1: runnerConfigs) {
+		if (traverseOptions1.type.empty()) {
+			if (g_settings_map["pref_use_everything_sdk_index"].boolValue) {
+				::TraverseFilesForEverythingSDK(traverseOptions1.folder, traverseOptions1, [&](const std::wstring &name,
+																							   const std::wstring &fullPath,
+																							   const std::wstring &parent,
+																							   const std::wstring &ext) {
+					const auto action = std::make_shared<RunCommandAction>(
+							name, fullPath, false, true, parent
+					);
+					actions.push_back(action);
+				});
+			} else {
+				::TraverseFiles(traverseOptions1.folder, traverseOptions1, [&](const std::wstring &name,
+																			   const std::wstring &fullPath,
+																			   const std::wstring &parent,
+																			   const std::wstring &ext) {
+					const auto action = std::make_shared<RunCommandAction>(
+							name, fullPath, false, true, parent
+					);
+					actions.push_back(action);
+				});
 
 			}
-			else
-			{
-				std::wcerr << L"配置项缺少 'exePath' 或 'folder' 字段，跳过。" << std::endl;
-			}
+		} else if (traverseOptions1.type == L"uwp" && !isUwpAdded &&
+				   g_settings_map["pref_indexed_uwp_apps_enable"].boolValue) {
+			TraverseUwpApps(actions, traverseOptions1);
+			isUwpAdded = true;
+		} else if (traverseOptions1.type == L"path" && !isPathAdded &&
+				   g_settings_map["pref_indexed_envpath_apps"].boolValue) {
+			TraversePATHExecutables2(actions, traverseOptions1);
+			isPathAdded = true;
+		} else if (traverseOptions1.type == L"regedit" && !isRegeditAdded &&
+				   g_settings_map["pref_indexed_regedit_apps"].boolValue) {
+			TraverseRegistryApps(actions, traverseOptions1);
+			isRegeditAdded = true;
 		}
-		catch (const std::exception& e)
-		{
-			std::wcerr << L"处理 JSON 配置时出现异常：" << Utf8ToWString(e.what()) << std::endl;
-			continue;
-		}
+
 	}
-	//TraverseOptions noOptions;
-	//TraverseRegistryApps(noOptions,actions);
-	//TraversePATHExecutables(actions);
-	// TODO: 解决这个崩溃问题
-	TraversePATHExecutables2(actions);
+
+	TraverseOptions emptyTraverseOptions;
+	TraverseOptions defaultOptions = CreateDefaultPathTraverseOptions();
+	if (!isUwpAdded && g_settings_map["pref_indexed_uwp_apps_enable"].boolValue) {
+		TraverseUwpApps(actions, emptyTraverseOptions);
+	} else if (!isPathAdded && g_settings_map["pref_indexed_envpath_apps"].boolValue) {
+		// TODO: 解决这个崩溃问题
+		TraversePATHExecutables2(actions, defaultOptions);
+	} else if (!isRegeditAdded && g_settings_map["pref_indexed_regedit_apps"].boolValue) {
+		TraverseRegistryApps(actions, emptyTraverseOptions);
+	}
 
 	MethodTimerEnd(L"loadlist");
 }
 
 
-std::vector<std::shared_ptr<RunCommandAction>> ListedRunnerPlugin::Search(const std::wstring& query) const
-{
+std::vector<std::shared_ptr<RunCommandAction>> ListedRunnerPlugin::Search(const std::wstring &query) const {
 	std::vector<std::shared_ptr<RunCommandAction>> results;
 	const std::vector<std::wstring> words = SplitWords(query);
 
-	for (const std::shared_ptr<RunCommandAction>& action : actions)
-	{
+	for (const std::shared_ptr<RunCommandAction> &action: actions) {
 		bool match = true;
-		for (const auto& word : words)
-		{
-			if (action->GetTitle().find(word) == std::wstring::npos)
-			{
+		for (const auto &word: words) {
+			if (action->GetTitle().find(word) == std::wstring::npos) {
 				match = false;
 				break;
 			}
 		}
-		if (match)
-		{
+		if (match) {
 			results.push_back(action);
 			if (results.size() >= 7) break;
 		}
@@ -323,12 +144,10 @@ std::vector<std::shared_ptr<RunCommandAction>> ListedRunnerPlugin::Search(const 
 	return results;
 }
 
-std::vector<std::wstring> ListedRunnerPlugin::SplitWords(const std::wstring& input)
-{
+std::vector<std::wstring> ListedRunnerPlugin::SplitWords(const std::wstring &input) {
 	std::vector<std::wstring> result;
 	size_t start = 0, end = 0;
-	while ((end = input.find(L' ', start)) != std::wstring::npos)
-	{
+	while ((end = input.find(L' ', start)) != std::wstring::npos) {
 		if (end > start)
 			result.push_back(input.substr(start, end - start));
 		start = end + 1;
@@ -338,8 +157,7 @@ std::vector<std::wstring> ListedRunnerPlugin::SplitWords(const std::wstring& inp
 	return result;
 }
 
-HICON ListedRunnerPlugin::GetFileIcon(const std::wstring& filePath, const bool largeIcon)
-{
+HICON ListedRunnerPlugin::GetFileIcon(const std::wstring &filePath, const bool largeIcon) {
 	SHFILEINFOW sfi = {0};;
 	UINT flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
 	flags |= largeIcon ? SHGFI_LARGEICON : SHGFI_SMALLICON;
@@ -348,8 +166,7 @@ HICON ListedRunnerPlugin::GetFileIcon(const std::wstring& filePath, const bool l
 	return sfi.hIcon;
 }
 
-static HBITMAP IconToBitmap(HICON hIcon)
-{
+static HBITMAP IconToBitmap(HICON hIcon) {
 	if (!hIcon) return nullptr;
 
 	ICONINFO iconInfo;
@@ -358,12 +175,10 @@ static HBITMAP IconToBitmap(HICON hIcon)
 	return iconInfo.hbmColor;
 }
 
-HBITMAP ListedRunnerPlugin::GetIconFromPath(const std::wstring& path)
-{
+HBITMAP ListedRunnerPlugin::GetIconFromPath(const std::wstring &path) {
 	std::wstring actualPath = path;
 
-	if (MyEndsWith(path, L".lnk"))
-	{
+	if (MyEndsWith(path, L".lnk")) {
 		actualPath = GetShortcutTarget(path);
 	}
 
@@ -373,17 +188,16 @@ HBITMAP ListedRunnerPlugin::GetIconFromPath(const std::wstring& path)
 	return hBitmap;
 }
 
-void ListedRunnerPlugin::WriteDefaultConfig(const std::wstring& path)
-{
+void ListedRunnerPlugin::WriteDefaultConfig(const std::wstring &path) {
 	using json = nlohmann::json;
 
 	json jArray = json::array();
 	jArray.push_back({
-		{"Command", "ProgramData开始菜单"},
-		{"FolderPath", R"(C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs)"},
-		{"IsSearchSubFolder", true},
-		{"ExcludeNameWordArr", {"uninstall", "帮助", "help"}}
-	});
+							 {"Command",            "ProgramData开始菜单"},
+							 {"FolderPath",         R"(C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs)"},
+							 {"IsSearchSubFolder",  true},
+							 {"ExcludeNameWordArr", {"uninstall", "帮助", "help"}}
+					 });
 
 	// std::ofstream out(path);
 
@@ -395,21 +209,18 @@ void ListedRunnerPlugin::WriteDefaultConfig(const std::wstring& path)
 }
 
 // Helper: 获取 PNG 编码器 CLSID
-static int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
-{
+static int GetEncoderClsid(const WCHAR *format, CLSID *pClsid) {
 	UINT num = 0, size = 0;
 	Gdiplus::GetImageEncodersSize(&num, &size);
 	if (size == 0) return -1;
 
-	Gdiplus::ImageCodecInfo* pImageCodecInfo = static_cast<Gdiplus::ImageCodecInfo*>(malloc(size));
+	Gdiplus::ImageCodecInfo *pImageCodecInfo = static_cast<Gdiplus::ImageCodecInfo *>(malloc(size));
 	if (!pImageCodecInfo) return -1;
 
 	Gdiplus::GetImageEncoders(num, size, pImageCodecInfo);
 
-	for (UINT i = 0; i < num; ++i)
-	{
-		if (wcscmp(pImageCodecInfo[i].MimeType, format) == 0)
-		{
+	for (UINT i = 0; i < num; ++i) {
+		if (wcscmp(pImageCodecInfo[i].MimeType, format) == 0) {
 			*pClsid = pImageCodecInfo[i].Clsid;
 			free(pImageCodecInfo);
 			return i;
@@ -420,8 +231,7 @@ static int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 	return -1;
 }
 
-static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
-{
+static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap) {
 	std::vector<BYTE> buffer;
 	if (!hBitmap) return buffer;
 
@@ -429,7 +239,7 @@ static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
 	CLSID pngClsid;
 	GetEncoderClsid(L"image/png", &pngClsid);
 
-	IStream* pStream = nullptr;
+	IStream *pStream = nullptr;
 	CreateStreamOnHGlobal(nullptr, TRUE, &pStream);
 
 	bmp.Save(pStream, &pngClsid, nullptr);
@@ -450,22 +260,16 @@ static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
 
 
 void ListedRunnerPlugin::TraverseUwpApps(
-	const TraverseOptions& options,
-	std::vector<std::shared_ptr<RunCommandAction>>& outActions
-)
-{
+		std::vector<std::shared_ptr<RunCommandAction>> &outActions, const TraverseOptions &options
+) {
 	// *** UWP应用程序加载逻辑 ***
-	if (g_settings_map["pref_indexed_uwp_apps_enable"].boolValue)
-	{
-		if (IsWindows8OrGreater())
-			try
-			{
-				LoadUwpApps(options,outActions);
-			}
-		catch (const std::exception& e)
-		{
+	if (IsWindows8OrGreater())
+		try {
+			LoadUwpApps(outActions, options);
+		}
+		catch (const std::exception &e) {
 			std::wcerr << L"Failed to load UWP apps: " << Utf8ToWString(e.what()) << std::endl;
 		}
-	}
+
 }
 

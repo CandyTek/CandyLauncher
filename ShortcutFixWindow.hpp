@@ -18,7 +18,9 @@
 static HWND g_shortcutFixHwnd = nullptr;
 static HWND g_invalidListView = nullptr;
 static HWND g_candidateListView = nullptr;
+static HWND g_refreshButton = nullptr;
 static std::vector<FileInfo> g_invalidShortcuts;
+static std::vector<FileInfo> g_sourceShortcuts;
 static std::vector<std::wstring> g_candidatePaths;
 
 static std::vector<FileInfo> g_candidates;
@@ -100,8 +102,33 @@ static bool FixShortcut(const std::wstring &shortcutPath, const std::wstring &ne
 
 
 static void RefreshInvalidListView() {
+	// 遍历当前文件集合，检测.lnk文件
+	g_invalidShortcuts.clear();
+	for (const auto &fileInfo: g_sourceShortcuts) {
+		std::wstring filePath = fileInfo.file_path;
+
+		// 检查是否是快捷方式文件
+		if (filePath.size() > 4 &&
+			_wcsicmp(filePath.substr(filePath.size() - 4).c_str(), L".lnk") == 0) {
+			// 调用MainTools.hpp中的IsShortcutInvalid方法
+			if (IsShortcutInvalid(filePath)) {
+				FileInfo fileInfo1;
+				fileInfo1.file_path = filePath;
+
+				std::wstring fileName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\") + 1);
+				if (fileName.size() > 4 && fileName.substr(fileName.size() - 4) == L".lnk") {
+					fileName = fileName.substr(0, fileName.size() - 4);
+				}
+
+				fileInfo1.label = fileName;
+				g_invalidShortcuts.push_back(fileInfo1);
+			}
+		}
+	}
+
 	SendMessage(g_invalidListView, WM_SETREDRAW, FALSE, 0); // 暂停重绘
 	ListView_DeleteAllItems(g_invalidListView);
+	ListView_DeleteAllItems(g_candidateListView);
 	// 填充左侧列表
 	for (size_t i = 0; i < g_invalidShortcuts.size(); ++i) {
 		LVITEMW item = {};
@@ -128,10 +155,15 @@ static void RefreshInvalidListView() {
 static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_CREATE: {
+			// 创建刷新按钮
+			g_refreshButton = CreateWindowExW(0, L"BUTTON", L"刷新",
+									WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+									10, 10, 80, 30, hwnd, (HMENU)1001, GetModuleHandle(nullptr), nullptr);
+
 			// 创建左侧无效快捷方式列表
 			g_invalidListView = CreateWindowExW(0, WC_LISTVIEW, L"",
 												WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
-												10, 10, 300, 400, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+												10, 45, 300, 365, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			ListView_SetExtendedListViewStyle(g_invalidListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 
 			// 设置左侧列表的列
@@ -292,6 +324,14 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 			break;
 		}
 
+		case WM_COMMAND: {
+			if (LOWORD(wParam) == 1001 && HIWORD(wParam) == BN_CLICKED) {
+				// 刷新按钮被点击
+				RefreshInvalidListView();
+			}
+			break;
+		}
+
 		case WM_SIZE: {
 			RECT rect;
 			GetClientRect(hwnd, &rect);
@@ -299,7 +339,8 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 			int height = rect.bottom - rect.top;
 
 			// 调整控件大小
-			SetWindowPos(g_invalidListView, nullptr, 10, 10, width / 2 - 15, height - 20, SWP_NOZORDER);
+			SetWindowPos(g_refreshButton, nullptr, 10, 10, 80, 30, SWP_NOZORDER);
+			SetWindowPos(g_invalidListView, nullptr, 10, 45, width / 2 - 15, height - 55, SWP_NOZORDER);
 			SetWindowPos(g_candidateListView, nullptr, width / 2 + 5, 10, width / 2 - 15, height - 20, SWP_NOZORDER);
 			break;
 		}
@@ -313,7 +354,9 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 			g_shortcutFixHwnd = nullptr;
 			g_invalidListView = nullptr;
 			g_candidateListView = nullptr;
+			g_refreshButton = nullptr;
 			g_invalidShortcuts.clear();
+			g_sourceShortcuts.clear();
 			g_candidates.clear();
 			break;
 		}
@@ -343,14 +386,14 @@ static void RegisterShortcutFixClass() {
 }
 
 // 显示快捷方式修复窗口
-static void ShowShortcutFixWindow(HWND hwnd, std::vector<FileInfo>& invalidShortcuts) {
+static void ShowShortcutFixWindow(HWND hwnd,std::vector<FileInfo>& list) {
 	if (g_shortcutFixHwnd != nullptr) {
 		ShowWindow(g_shortcutFixHwnd, SW_SHOW);
 		SetForegroundWindow(g_shortcutFixHwnd);
 		return;
 	}
 
-	g_invalidShortcuts = invalidShortcuts;
+	g_sourceShortcuts = list;
 
 	RegisterShortcutFixClass();
 
@@ -393,23 +436,11 @@ static void CheckShortcutValidity(HWND hwnd, std::vector<FileInfo> &g_fileItems)
 			_wcsicmp(filePath.substr(filePath.size() - 4).c_str(), L".lnk") == 0) {
 			// 调用MainTools.hpp中的IsShortcutInvalid方法
 			if (IsShortcutInvalid(filePath)) {
-				FileInfo fileInfo1;
-				fileInfo1.file_path = filePath;
-				
-				std::wstring fileName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\") + 1);
-				if (fileName.size() > 4 && fileName.substr(fileName.size() - 4) == L".lnk") {
-					fileName = fileName.substr(0, fileName.size() - 4);
-				}
-
-				fileInfo1.label = fileName;
-				invalidShortcuts.push_back(fileInfo1);
+				ShowShortcutFixWindow(hwnd,g_fileItems);
+				return;
 			}
 		}
 	}
-
-	if (invalidShortcuts.empty()) {
-		MessageBoxW(hwnd, L"所有快捷方式均有效！", L"检测结果", MB_OK | MB_ICONINFORMATION);
-	} else {
-		ShowShortcutFixWindow(hwnd, invalidShortcuts);
-	}
+	MessageBoxW(hwnd, L"所有快捷方式均有效！", L"检测结果", MB_OK | MB_ICONINFORMATION);
 }
+

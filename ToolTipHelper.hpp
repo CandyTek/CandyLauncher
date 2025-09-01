@@ -119,6 +119,20 @@ inline void ShowWarnTooltipAtCursor(HWND owner,
 	ShowWarnTooltip(owner, text, pt.x, pt.y, durationMs);
 }
 
+inline void ShowWarnTooltipAtRect(HWND pHwnd, const wchar_t *string, RECT rc) {
+	// 意味着 rc 获取失败
+	if(rc.left == LVIR_BOUNDS){
+		ShowWarnTooltipAtCursor(pHwnd, string);
+		return;
+	}
+	POINT pt;
+	pt.x = (rc.left + rc.right) / 2;
+	pt.y = (rc.top + rc.bottom) / 2;
+	ClientToScreen(pHwnd, &pt);
+	ShowWarnTooltip(pHwnd, string,pt.x, pt.y);
+}
+
+
 // 可选：手动隐藏（如果需要在某些场景立即收起）
 inline void HideWarnTooltip(HWND owner)
 {

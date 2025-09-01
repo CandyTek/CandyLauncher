@@ -8,6 +8,33 @@
 #include <gdiplus.h>
 #include <atomic>
 
+
+static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey,int width,int height)
+{
+	const std::string picturePath = g_skinJson.value(skinKey, "");
+	if (image)
+	{
+		// 删除旧的图片对象
+		delete image;
+		image = nullptr;
+	}
+	if (!picturePath.empty())
+	{
+		if(MyEndsWith(utf8_to_wide(picturePath),L".9.png")){
+			image =RenderNinePatchToSize(utf8_to_wide(picturePath).c_str(),width,height);
+			//image =CreateNinePatchBitmap(utf8_to_wide(picturePath).c_str(),MAIN_WINDOW_WIDTH,MAIN_WINDOW_HEIGHT);
+		}else{
+			image = new Gdiplus::Image(utf8_to_wide(picturePath).c_str());
+		}
+		if (image->GetLastStatus() != Gdiplus::Ok)
+		{
+			delete image;
+			image = nullptr;
+			ShowErrorMsgBox(L"加载背景图片失败");
+		}
+	}
+}
+
 static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey)
 {
 	const std::string picturePath = g_skinJson.value(skinKey, "");
@@ -29,10 +56,18 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 	}
 }
 
-
-static void refreshSkin(HWND listViewHwnd)
+static void refreshSkin(std::wstring skinPath)
 {
-	std::wstring skinPath = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
+	if (skinPath == L"default") {
+		skinPath = DEFAULT_SKIN_PATH;
+	}else if (skinPath == L"night_mode") {
+		skinPath = NIGHT_SKIN_PATH;
+	}
+
+	if(false){
+		ShowWindow(g_editHwnd,SW_HIDE);
+		ShowWindow(g_listViewHwnd,SW_HIDE);
+	}
 	std::ifstream in((skinPath.data()));
 	if (!in)
 	{
@@ -70,19 +105,19 @@ static void refreshSkin(HWND listViewHwnd)
 		SetLayeredWindowAttributes(g_mainHwnd, 0, static_cast<BYTE>(windowOpacity), LWA_ALPHA);
 	}
 
-	// 处理背景图片
-	getSkinPictureFile(g_BgImage, "window_bg_picture");
-	getSkinPictureFile(g_editBgImage, "editbox_bg_picture");
-	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture");
-	getSkinPictureFile(g_listItemBgImage, "item_font_bg_picture");
-	getSkinPictureFile(g_listItemBgImageSelected, "item_font_bg_picture_selected");
-
 	// --- 2. 更新编辑框 (hEdit) ---
 	int editX = g_skinJson.value("editbox_x", 10);
 	int editY = g_skinJson.value("editbox_y", 10);
 	int editWidth = g_skinJson.value("editbox_width", 580);
 	int editHeight = g_skinJson.value("editbox_height", 35);
-	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
+	g_listItemWidth = g_skinJson.value("item_width", 580);
+	g_listItemHeight = g_skinJson.value("item_height", 35);
+	if(g_listItemWidth <= 0){
+		g_listItemHeight=580;
+	}
+	if(g_listItemHeight <= 0){
+		g_listItemHeight=60;
+	}
 
 	// 更新编辑框字体
 	std::wstring editFontFamily = utf8_to_wide(g_skinJson.value("editbox_font_family", "宋体"));
@@ -95,11 +130,6 @@ static void refreshSkin(HWND listViewHwnd)
 			DEFAULT_PITCH | FF_DONTCARE, editFontFamily.c_str()
 	);
 	ReleaseDC(g_editHwnd, hdc);
-	if (hEditFont)
-	{
-		SendMessage(g_editHwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
-	}
-	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 
 	// 初始化GDI+图形对象
 
@@ -121,10 +151,25 @@ static void refreshSkin(HWND listViewHwnd)
 	int listY = g_skinJson.value("listview_y", 45);
 	g_itemListWidth = g_skinJson.value("listview_width", 580);
 	g_itemListHeight = g_skinJson.value("listview_height", 380);
-	SetWindowPos(listViewHwnd, nullptr, listX, listY, g_itemListWidth, g_itemListHeight, SWP_NOZORDER);
-	int thumbWidth = GetWindowVScrollBarThumbWidth(listViewHwnd, true);
-	ListView_SetColumnWidth(listViewHwnd, 0, g_itemListWidth-thumbWidth-6);
-	//	listViewManager.InitializeGraphicsResources(); // 确保字体和画刷已初始化
+
+	// 处理背景图片
+	getSkinPictureFile(g_BgImage, "window_bg_picture",MAIN_WINDOW_WIDTH,MAIN_WINDOW_HEIGHT);
+	//RenderNinePatchToSize
+	getSkinPictureFile(g_editBgImage, "editbox_bg_picture",editWidth,editHeight);
+	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture",g_itemListWidth,g_itemListHeight);
+	getSkinPictureFile(g_listItemBgImage, "item_bg_picture",g_listItemWidth,g_listItemHeight);
+	getSkinPictureFile(g_listItemBgImageSelected, "item_bg_picture_selected",g_listItemWidth,g_listItemHeight);
+
+	if (hEditFont)
+	{
+		SendMessage(g_editHwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
+	}
+	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
+	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_itemListWidth, g_itemListHeight, SWP_NOZORDER);
+	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
+	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
+	ListView_SetColumnWidth(g_listViewHwnd, 0, g_itemListWidth-thumbWidth-6);
+	SendMessage(g_listViewHwnd,WM_LISTVIEW_REFRESH_RESOURCE,0,0);
 
 	// 更新列表视图颜色
 	// COLORREF listBgColor = HexToCOLORREF(g_skinJson.value("listview_bg_color", "#FFFFFF"));
@@ -151,4 +196,29 @@ static void refreshSkin(HWND listViewHwnd)
 				 SWP_NOZORDER);
 	ShowWindow(g_mainHwnd,SW_FORCEMINIMIZE);
 	SetTimer(g_mainHwnd, TIMER_SHOW_WINDOW, 50, nullptr);
+}
+
+static void RefreshSkinFile() {
+	auto prefSkin = std::find_if(g_settings2.rbegin(), g_settings2.rend(),
+								 [](const SettingItem &item) { return item.key == "pref_skin"; });
+	if (prefSkin == g_settings2.rend()) {
+		return;
+	}
+	g_prefSkinIndex = std::distance(prefSkin, g_settings2.rend()) - 1;
+	g_skinFilePaths = FindSkinFiles();
+
+	prefSkin->entries.clear();
+	prefSkin->entryValues.clear();
+
+	prefSkin->entryValues.emplace_back("default");
+	prefSkin->entries.emplace_back("默认");
+	prefSkin->entryValues.emplace_back("night_mode");
+	prefSkin->entries.emplace_back("黑夜模式");
+
+	for (const auto &path: g_skinFilePaths) {
+		std::filesystem::path p(path);
+		std::wstring fileName = p.stem().wstring();
+		prefSkin->entryValues.emplace_back(wide_to_utf8(path));
+		prefSkin->entries.emplace_back(wide_to_utf8(fileName));
+	}
 }

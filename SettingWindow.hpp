@@ -19,6 +19,9 @@
 #include "DataKeeper.hpp"
 #include "CustomButtonHelper.hpp"
 #include "HotkeyEditView.h"
+#include "CustomBgcolorView.hpp"
+#include "SkinHelper.h"
+#include <filesystem>
 
 // static std::vector<std::vector<HWND>> hCtrlsByTab; // tab下所有控件句柄
 // static std::vector<HWND> tabContainers;
@@ -26,15 +29,19 @@
 inline std::vector<std::wstring> subPages; // 所有tab
 inline std::vector<HWND> hTabButtons; // tab按钮句柄
 inline int currentSubPageIndex = 0;
+static int tabBtnWidth = 120;
+static HWND blankBelowTabBelow = nullptr;
+inline std::wstring originalSkinPath;
 
 
 static std::map<std::wstring, std::wstring> tabNameMap = {
-		{L"normal",  L"常规"},
+		{L"normal", L"常规"},
 		{L"feature", L"功能"},
-		{L"other",   L"其他"},
-		{L"hotkey",  L"快捷键"},
-		{L"index",   L"索引"},
-		{L"about",   L"关于"}
+		{L"skin", L"皮肤"},
+		{L"other", L"其他"},
+		{L"hotkey", L"快捷键"},
+		{L"index", L"索引"},
+		{L"about", L"关于"}
 };
 
 inline HFONT pref_edit_hfont = nullptr;
@@ -43,29 +50,31 @@ inline HFONT pref_edit_hfont = nullptr;
 static void InitializeSettingWindowResources() {
 	if (!pref_edit_hfont) {
 		pref_edit_hfont = CreateFontW(
-			-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
+				-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+				DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+				CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
 	}
 }
 
 
 static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent) {
 	if (g_settingsHwnd != nullptr) {
+		RestoreWindowIfMinimized(g_settingsHwnd);
 		ShowWindow(g_settingsHwnd, SW_SHOW);
+		SetForegroundWindow(g_settingsHwnd);
 		return;
 	}
-	
+
 	// 清理静态变量，防止重复创建控件
 	subPages.clear();
 	hTabButtons.clear();
 	tabContainers.clear();
 	hCtrlsByTab.clear();
 	currentSubPageIndex = 0;
-	
+
 	// 初始化绘图资源
 	InitializeSettingWindowResources();
-	
+
 	// 获取屏幕宽度和高度
 	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
 	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -94,7 +103,10 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent) {
 
 static void CleanupSettingWindowResources() {
 	// 清理字体
-	if (pref_edit_hfont) { DeleteObject(pref_edit_hfont); pref_edit_hfont = nullptr; }
+	if (pref_edit_hfont) {
+		DeleteObject(pref_edit_hfont);
+		pref_edit_hfont = nullptr;
+	}
 }
 
 static int FindTabIndexByName(const std::wstring &name) {
@@ -120,14 +132,18 @@ static void SwitchToTab(const std::wstring &tabName) {
 		// 模拟用户点击按钮，发送 WM_COMMAND
 		SendMessage(hParent, WM_COMMAND,
 					MAKEWPARAM(GetDlgCtrlID(hBtn), BN_CLICKED),
-					(LPARAM)hBtn);
+					(LPARAM) hBtn);
 	}
 }
+
+
 
 
 static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_CREATE: {
+			RefreshSkinFile();
+			originalSkinPath = g_currectSkinFilePath;
 			MyScrollViewRegisterClass();
 			// --------- 1. 收集所有subPage名 ---------
 			std::set<std::wstring> tabSet;
@@ -140,19 +156,21 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			}
 
 			// --------- 2. 创建Tab按钮（左侧） ---------
-			int tabY = 10;
+			int tabY = 0;
 			for (size_t i = 0; i < subPages.size(); ++i) {
 				std::wstring label = tabNameMap.count(subPages[i]) ? tabNameMap[subPages[i]] : subPages[i];
-
-//				HWND hTabBtn = CreateWindowW(L"BUTTON", label.c_str(),
-//											 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-//											 0, tabY, 120, 46, hwnd, (HMENU) (2000 + i), nullptr, nullptr);
-				HWND hTabBtn = CreateEnhancedButton(hwnd, (2000 + i), label, 0, tabY, 120, 46,
-													(HMENU) (2000 + i), BTN_NORMAL);
-
+				HICON myIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_SMALL));
+				HWND hTabBtn = CreateEnhancedButton(hwnd, (2000 + i), label, 0, tabY, tabBtnWidth, 48,
+													(HMENU) (2000 + i), BTN_NORMAL, myIcon, TEXT_LEFT);
 				hTabButtons.push_back(hTabBtn);
 				tabY += 48;
 			}
+			blankBelowTabBelow = CreateWindowW(L"STATIC", L"",
+											   WS_CHILD | WS_VISIBLE,
+											   0, tabY, tabBtnWidth, SETTINGS_WINDOW_HEIGHT, hwnd, nullptr, nullptr,
+											   nullptr);
+			// 给控件设置浅灰背景
+			SetWindowSubclass(blankBelowTabBelow, CustomBgcolorControlClassProc, 1, (DWORD_PTR) RGB(230, 230, 230));
 
 			// 3. 创建每个Tab容器
 			tabContainers.resize(subPages.size());
@@ -161,9 +179,10 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 						WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
 						L"SCROLLVIEW", nullptr,
 						WS_CHILD | WS_VISIBLE | WS_VSCROLL,
-						124, 0, 600, 380, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+						tabBtnWidth + 4, 0, (SETTINGS_WINDOW_WIDTH - tabBtnWidth - 16 - 4), 380, hwnd, nullptr,
+						GetModuleHandle(nullptr), nullptr);
 				// 设置为白色
-//				SetClassLongPtr(hContainer, GCLP_HBRBACKGROUND, (LONG_PTR)(HBRUSH)(COLOR_WINDOW+1));
+				//				SetClassLongPtr(hContainer, GCLP_HBRBACKGROUND, (LONG_PTR)(HBRUSH)(COLOR_WINDOW+1));
 				tabContainers[tabIdx] = hContainer;
 			}
 
@@ -175,6 +194,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 				int contorlX = 224;
 				std::vector<HWND> ctrls;
 				HWND hParent = tabContainers[tabIdx];
+
 
 				for (size_t i = 0; i < g_settings2.size(); ++i) {
 					const auto &item = g_settings2[i];
@@ -210,15 +230,15 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 
 					HWND hCtrl = nullptr;
 					if (item.type == "bool") {
-						hCtrl = CreateSwitchControl(hParent, (3000 + i), contorlX, y, 50, 25, 
-												   (HMENU) (3000 + i), item.boolValue);
+						hCtrl = CreateSwitchControl(hParent, (3000 + i), contorlX, y, 50, 25,
+													(HMENU) (3000 + i), item.boolValue);
 					} else if (item.type == "string") {
 						hCtrl = CreateWindowW(L"EDIT",
 											  utf8_to_wide(item.stringValue).c_str(),
 											  WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
 											  contorlX, y, 200, 25, hParent, (HMENU) (3000 + i), nullptr,
 											  nullptr);
-						SendMessageW(hCtrl, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
+						SendMessageW(hCtrl, WM_SETFONT, (WPARAM) pref_edit_hfont, TRUE);
 					} else if (item.type == "stringArr") {
 						std::wstring defVal;
 						for (auto &s: item.defValue)
@@ -281,13 +301,12 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 						} else if (item.key == "pref_restore_settings") {
 							btnStyle = BTN_DANGER;
 						}
-
 						hCtrl = CreateEnhancedButton(hParent, (3000 + i), utf8_to_wide(item.title),
 													 contorlX, y, 150, 30, (HMENU) (3000 + i), btnStyle);
 
-//						hCtrl = CreateWindowW(L"BUTTON", utf8_to_wide(item.title).c_str(),
-//											 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-//											 contorlX, y, 150, 30, hParent, (HMENU) (3000 + i), nullptr, nullptr);
+						//						hCtrl = CreateWindowW(L"BUTTON", utf8_to_wide(item.title).c_str(),
+						//											 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+						//											 contorlX, y, 150, 30, hParent, (HMENU) (3000 + i), nullptr, nullptr);
 					}
 
 					ctrls.push_back(hCtrl);
@@ -312,23 +331,24 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			UpdateTabButtonSelection(hTabButtons, 0);
 
 			// --------- 6. 保存按钮 ---------
-			CreateEnhancedButton(hwnd, 1, L"保存", SETTINGS_WINDOW_WIDTH - 200, SETTINGS_WINDOW_HEIGHT - 80, 80, 35, (HMENU) 9999, BTN_PRIMARY);
+			CreateEnhancedButton(hwnd, 1, L"保存", SETTINGS_WINDOW_WIDTH - 200, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
+								 (HMENU) 9999, BTN_PRIMARY);
 
 			// --------- 7. 取消按钮 ---------
-			CreateEnhancedButton(hwnd, 1, L"取消", SETTINGS_WINDOW_WIDTH - 110, SETTINGS_WINDOW_HEIGHT - 80, 80, 35, (HMENU) 9995, BTN_NORMAL);
-			
-//			CreateWindowW(...); // Reset button - removed
+			CreateEnhancedButton(hwnd, 1, L"取消", SETTINGS_WINDOW_WIDTH - 110, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
+								 (HMENU) 9995, BTN_NORMAL);
+
+			//			CreateWindowW(...); // Reset button - removed
 			// --------- 8. 应用按钮 ---------
-//			CreateWindowW(...); // Apply button - removed
+			//			CreateWindowW(...); // Apply button - removed
 			break;
 		}
 		case WM_MOUSEWHEEL:
 			SendMessage(tabContainers[currentSubPageIndex], WM_MOUSEWHEEL, wParam, lParam);
 			break;
-		case WM_CTLCOLORBTN:
-		{
-			HDC hdc = (HDC)wParam;
-			HWND hButton = (HWND)lParam;
+		case WM_CTLCOLORBTN: {
+			HDC hdc = (HDC) wParam;
+			HWND hButton = (HWND) lParam;
 
 			// 设置文字背景透明
 			SetBkMode(hdc, TRANSPARENT);
@@ -336,7 +356,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			SetBkColor(hdc, RGB(255, 255, 255));
 
 			static HBRUSH hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
-			return (INT_PTR)hBrushWhite;
+			return (INT_PTR) hBrushWhite;
 		}
 
 		case WM_CTLCOLORSTATIC: {
@@ -363,10 +383,13 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 				// --- 保存 ---
 			else if (LOWORD(wParam) == 9999) {
 				saveConfig(hwnd, subPages, g_settings2, hCtrlsByTab);
+				DestroyWindow(hwnd);
 				break;
 			}
 				// --- 取消 ---
 			else if (LOWORD(wParam) == 9995) {
+				g_currectSkinFilePath = originalSkinPath;
+				SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 				DestroyWindow(hwnd);
 				return 0;
 			}
@@ -385,7 +408,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 				break;
 			}
 			// 处理设置功能按钮，在ScrollViewHelper ScrollContainerProc里面处理
-			
+
 		case WM_DESTROY:
 			CleanupSettingWindowResources();
 			// 清理静态变量
@@ -395,11 +418,28 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			hCtrlsByTab.clear();
 			currentSubPageIndex = 0;
 			g_settingsHwnd = nullptr;
+			blankBelowTabBelow = nullptr;
 			break;
 		case WM_CLOSE: {
+			g_currectSkinFilePath = originalSkinPath;
+			SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 			DestroyWindow(hwnd);
 			return 0;
 		}
+		case WM_APP_HOTKEY_COMMIT: {
+			std::unique_ptr<std::wstring> key((std::wstring *) wParam);
+			std::unique_ptr<std::wstring> value((std::wstring *) lParam);
+
+			// 统一用 UTF-8 存储
+			std::string utf8 = wide_to_utf8(*value);
+
+
+			// 注册全局热键（顺序上也更合理）
+			RegisterHotkeyFromString(g_mainHwnd, utf8, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+
+			return 0;
+		}
+
 		default:
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 	}

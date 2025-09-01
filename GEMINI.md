@@ -1,23 +1,25 @@
-# CLAUDE.md
+# GEMINI.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to gemini (google.com/Gemini) when working with code in this repository.
 
 ## Build Commands
 
+> No reading required @CMakePresets.json
+
 ### Generate, CMake with Ninja + MSVC
-```
-cmd.exe /c run_cmake_generate.cmd
+```bash
+"E:\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" && cmake -S . -B cmake-build-debug-ninja-vs -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 ```
 
 ### Build
 
-```
-cmd.exe /c run_build.cmd
+```bash
+"E:\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" && cmake --build cmake-build-debug-ninja-vs --config Debug --target WindowsProject1  -j 18
 ```
 
 ### Test Commands
-```
-cmd.exe /c run_debug_test.cmd
+```bash
+"E:\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" && ctest -C Debug --test-dir cmake-build-debug-ninja-vs
 ```
 
 ## Architecture Overview

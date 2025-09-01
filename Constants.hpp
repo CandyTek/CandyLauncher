@@ -10,6 +10,8 @@
 #define WM_CONFIG_SAVED (WM_USER + 104)
 #define WM_FOCUS_EDIT (WM_USER + 105)
 #define WM_NOTIFY_HEDIT_REFRESH_SKIN (WM_USER + 106)
+#define WM_LISTVIEW_REFRESH_RESOURCE (WM_USER + 107)
+#define WM_REFRESH_SKIN (WM_USER + 108)
 
 #define TIMER_SETFOCUS_EDIT  109
 #define TIMER_SET_GLOBAL_HOTKEY  110
@@ -17,7 +19,6 @@
 
 
 #define HOTKEY_ID_TOGGLE_MAIN_PANEL (100)
-#define HOTKEY_ID_REFRESH_SKIN (101)
 
 #define HOTKEY_ID_RUN_ITEM (110)
 #define HOTKEY_ID_RUN_ITEM_AS_ADMIN (111)
@@ -25,6 +26,8 @@
 #define HOTKEY_ID_OPEN_FILE_LOCATION (101)
 #define HOTKEY_ID_OPEN_TARGET_LOCATION (102)
 #define HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS (103)
+#define HOTKEY_ID_REFRESH_SKIN (104)
+#define HOTKEY_ID_SHOW_SETTING_WINDOW (105)
 
 // Hotkey IDs for Ctrl+numeric keys (1-9)
 #define HOTKEY_ID_INVOKE_ITEM_1 (120)
@@ -66,6 +69,8 @@ constexpr int SETTINGS_WINDOW_HEIGHT = 470;
 constexpr const char* SETTINGS_PREF_TYPE_STRING = "string";
 //constexpr int settings_pref_type_ = 2;
 
+constexpr const wchar_t* DEFAULT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
+constexpr const wchar_t* NIGHT_SKIN_PATH =  LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_night.json)";
 
 const std::unordered_set<std::wstring> systemProcesses = {
 		L"explorer.exe",
@@ -85,12 +90,3 @@ const std::unordered_set<std::wstring> systemProcesses = {
 		L"system", // SYSTEM 内核进程
 };
 
-struct SwitchInfo {
-	HWND hwnd;
-	bool isOn;
-	bool isHovered;
-	bool isPressed;
-	bool isAnimating;
-	float animationProgress; // 0.0f to 1.0f
-	DWORD animationStartTime;
-};

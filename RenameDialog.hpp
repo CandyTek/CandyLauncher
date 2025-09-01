@@ -100,7 +100,7 @@ static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std:
 
 	if (!hDlg) return false;
 
-// 设置原名 & 选中
+	// 设置原名 & 选中
 	HWND hEdit = GetDlgItem(hDlg, 100);
 	if (hEdit) {
 		SetWindowTextW(hEdit, originalName.c_str());
@@ -110,7 +110,7 @@ static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std:
 	ShowWindow(hDlg, SW_SHOW);
 	EnableWindow(parent, FALSE);
 
-// Enter/ESC 加速键（非对话框不会自动触发）
+	// Enter/ESC 加速键（非对话框不会自动触发）
 	ACCEL acc[2] = {
 			{FVIRTKEY, VK_RETURN, IDOK},
 			{FVIRTKEY, VK_ESCAPE, IDCANCEL}

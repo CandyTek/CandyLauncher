@@ -1,8 +1,6 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Build Commands
+
+> No reading required @CMakePresets.json
 
 ### Generate, CMake with Ninja + MSVC
 ```

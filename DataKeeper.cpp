@@ -6,6 +6,7 @@ HWND g_settingsHwnd = nullptr;
 HWND g_mainHwnd = nullptr;
 HWND g_editHwnd = nullptr;
 HWND g_listViewHwnd = nullptr;
+HINSTANCE g_hInst = nullptr;
 
 HKL g_hklIme = nullptr;
 UINT_PTR TimerIDSetFocusEdit = 0;
@@ -14,6 +15,7 @@ HotkeyMap g_hotkeyMap = {};
 std::vector<SettingItem> g_settings2 = {};
 std::unordered_map<std::string, SettingItem> g_settings_map = {};
 std::wstring EXE_FOLDER_PATH = GetExecutableFolder();
+std::wstring RUNNER_CONFIG_PATH = EXE_FOLDER_PATH + L"\\runner.json";
 std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
 std::string pref_hotkey_toggle_main_panel;
@@ -67,6 +69,7 @@ std::unique_ptr<Gdiplus::Font> g_listItemFont1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFont2 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2 = nullptr;
+std::wstring g_currectSkinFilePath = DEFAULT_SKIN_PATH;
 
 int g_lastWindowOpacity = 255;
 
@@ -94,3 +97,6 @@ double g_item_font_size_selected_2 = 12.0;
 
 int MAIN_WINDOW_WIDTH = 620;
 int MAIN_WINDOW_HEIGHT = 480;
+
+int g_listItemWidth = 580;
+int g_listItemHeight = 35;

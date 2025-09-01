@@ -58,6 +58,9 @@ add_executable(WindowsProject1 WIN32
         ShortcutFixWindow.hpp
         FileInfo.hpp
         ToolTipHelper.hpp
+        SwitchInfo.hpp
+        CustomBgcolorView.hpp
+        NinePatchImage.hpp
 )
 
 target_precompile_headers(WindowsProject1

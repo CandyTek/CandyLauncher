@@ -5,8 +5,6 @@
 
 #include "SettingWindow.hpp"
 
-HINSTANCE hInstance2;
-
 HMENU           g_hTrayMenu = nullptr;
 HMENU           g_hMoreSub  = nullptr;
 NOTIFYICONDATAW g_nid = [] {
@@ -103,7 +101,7 @@ void TrayMenuManager::TrayMenuClick(const int position, HWND hWnd, HWND hEdit)
 	{
 	case TRAY_MENU_ID_ABOUT: // 
 		{
-			ShowSettingsWindow(hInstance2, nullptr);
+			ShowSettingsWindow(g_hInst, nullptr);
 			RestoreWindowIfMinimized(g_settingsHwnd);
 			SetForegroundWindow(g_settingsHwnd);
 			SwitchToTab(L"about");
@@ -112,7 +110,7 @@ void TrayMenuManager::TrayMenuClick(const int position, HWND hWnd, HWND hEdit)
 		break;
 	case TRAY_MENU_ID_SHOW_WINDOW: // 打开主窗口
 		{
-			ShowMainWindowSimple(hWnd, hEdit);
+			ShowMainWindowSimple();
 		}
 		break;
 	case TRAY_MENU_ID_OPEN_FOLDER: // 打开程序目录
@@ -126,15 +124,13 @@ void TrayMenuManager::TrayMenuClick(const int position, HWND hWnd, HWND hEdit)
 	case TRAY_MENU_ID_EDIT_CONFIG: // 编辑 JSON 配置文件
 		{
 			wchar_t path[MAX_PATH];
-			GetModuleFileName(nullptr, path, MAX_PATH);
-			PathRemoveFileSpec(path);
-			wcscat_s(path, L"\\runner.json");
+			wcsncpy_s(path, RUNNER_CONFIG_PATH.c_str(), MAX_PATH - 1);
 			ShellExecute(nullptr, L"open", L"notepad.exe", path, nullptr, SW_SHOW);
 		}
 		break;
 	case TRAY_MENU_ID_SETTINGS: // 前往设置
 		{
-			ShowSettingsWindow(hInstance2, nullptr);
+			ShowSettingsWindow(g_hInst, nullptr);
 		}
 		break;
 	case TRAY_MENU_ID_HELP: // 打开 Github wiki 页面
@@ -193,6 +189,7 @@ void TrayMenuManager::ShowTrayIcon()
 {
 	
 	g_nid.hWnd = g_mainHwnd;
+	g_nid.hIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_WINDOWSPROJECT1));
 	
 	if (!Shell_NotifyIconW(NIM_MODIFY, &g_nid))
 	{

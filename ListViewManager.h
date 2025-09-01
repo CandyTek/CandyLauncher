@@ -23,6 +23,7 @@ public:
 	static HIMAGELIST GetImageList() { return hImageList; }
 	static void OnGetDispInfo(NMLVDISPINFOW* pdi);
 	static void InitializeGraphicsResources();
+	static void CleanupGraphicsResources();
 	static void Cleanup();
 	static void setUnknownFileIcon(HDC hdc, RECT rc);
 	static void DrawItem(const DRAWITEMSTRUCT* lpDrawItem);

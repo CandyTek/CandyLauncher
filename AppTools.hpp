@@ -98,6 +98,11 @@ static bool AddHotkey(const std::wstring &hotkeyStr, UINT64 action) {
 	return true;
 }
 
+static bool AddHotkey(const std::string &hotkeyStr, UINT64 action) {
+	return AddHotkey(utf8_to_wide(hotkeyStr),action);
+}
+
+
 // 已弃用 Win7以前有效
 static BOOL IsDwmExclusiveFullscreen(HWND hwnd) {
 	BOOL isCloaked = FALSE;
@@ -202,6 +207,7 @@ static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager) {
 		if (!IsRunAsAdmin()) {
 			if (RelaunchAsAdmin()) {
 				ExitProcess(0);
+				return;
 			}
 		}
 	}
@@ -235,6 +241,8 @@ static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager) {
 		AddHotkey(pref_hotkey_open_with_clipboard_params, HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS);
 	if (!pref_hotkey_run_item_as_admin.empty())
 		AddHotkey(pref_hotkey_run_item_as_admin, HOTKEY_ID_RUN_ITEM_AS_ADMIN);
+	if (!(g_settings_map["pref_hotkey_show_setting"].stringValue).empty())
+		AddHotkey(g_settings_map["pref_hotkey_show_setting"].stringValue, HOTKEY_ID_SHOW_SETTING_WINDOW);
 
 
 	if (pref_force_ime_mode == "null") {
@@ -390,7 +398,7 @@ static void watchSkinFile() {
 
 				if (changedFile == fileName) {
 					std::wcout << L"检测到文件修改：" << changedFile << std::endl;
-					PostMessage(g_mainHwnd, WM_HOTKEY, HOTKEY_ID_REFRESH_SKIN, 0);
+					PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 				}
 
 				// 移动到下一个通知记录

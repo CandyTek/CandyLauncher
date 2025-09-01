@@ -24,6 +24,7 @@ static HWND g_indexManagerHwnd = nullptr;
 static HWND g_folderListView = nullptr;
 static HWND g_fileListView = nullptr;
 
+
 // 右键菜单相关定义
 #define IDM_EXCLUDE_ITEM 2001
 #define IDM_RENAME_ITEM 2002
@@ -34,6 +35,7 @@ static HMENU g_contextMenu = nullptr;
 static HMENU g_folderContextMenu = nullptr;
 
 // 配置编辑控件
+static HWND g_typeComboBox = nullptr;
 static HWND g_commandEdit = nullptr;
 static HWND g_folderEdit = nullptr;
 static HWND g_excludeWordsEdit = nullptr;
@@ -53,52 +55,62 @@ static int centerPanelLabelHeight = 20;
 
 static int sizeChangePosY = 0;
 
-
 static std::vector<TraverseOptions> g_runnerConfigs;
 static std::vector<FileInfo> g_fileItems;
+// 有一个类成员变量来存储所有文本
+static std::vector<std::wstring> g_folderItemTexts;
 static int index_last_selected = -1;
 static CEditScrollSync g_editSync;
 static int g_rightClickedItem = -1;
 static int g_rightClickedConfigItem = -1;
 
 
-static void TipEditEmpty();
-
-// 检查编辑框是否为空
-static bool IsConfigEditEmpty() {
-	wchar_t buffer[4096];
-
-	// 检查命令编辑框
-	GetWindowTextW(g_commandEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
-	if (wcslen(buffer) == 0) {
-		return true;
-	}
-
-	// 检查文件夹路径编辑框
-	GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
-	if (wcslen(buffer) == 0) {
-		return true;
-	}
-
-	return false;
+static void TipEditEmpty() {
+	RECT rc;
+	ListView_GetItemRect(g_folderListView, index_last_selected, &rc, LVIR_BOUNDS);
+	ShowWarnTooltipAtRect(g_folderListView, L"请先填写名称和路径再切换配置项！", rc);
 }
 
 // 更新配置显示区域
 static void UpdateConfigDisplayText(int selectedIndex) {
 	if (selectedIndex < 0 || selectedIndex >= static_cast<int>(g_runnerConfigs.size())) {
+		SendMessage(g_typeComboBox, CB_SETCURSEL, 0, 0);
 		SetWindowTextW(g_commandEdit, L"");
 		SetWindowTextW(g_folderEdit, L"");
 		SetWindowTextW(g_excludeWordsEdit, L"");
 		SetWindowTextW(g_excludesEdit, L"");
 		SetWindowTextW(g_renameSourcesEdit, L"");
 		SetWindowTextW(g_renameTargetsEdit, L"");
+		// 默认启用所有控件
+		EnableWindow(g_folderEdit, TRUE);
 		return;
 	}
 
 	const TraverseOptions &config = g_runnerConfigs[selectedIndex];
 
-	SetWindowTextW(g_commandEdit, config.command.c_str());
-	SetWindowTextW(g_folderEdit, config.folder.c_str());
+	// 设置类型下拉框
+	int typeIndex = 0;
+	if (config.type == L"uwp") typeIndex = 1;
+	else if (config.type == L"regedit") typeIndex = 2;
+	else if (config.type == L"path") typeIndex = 3;
+	SendMessage(g_typeComboBox, CB_SETCURSEL, typeIndex, 0);
+
+
+	// 根据类型设置folder编辑框的状态和内容
+	if (config.type == L"folder" || config.type.empty()) {
+		// folder类型：启用编辑框，显示实际路径
+		EnableWindow(g_folderEdit, TRUE);
+		SetWindowTextW(g_folderEdit, config.folder.c_str());
+		EnableWindow(g_commandEdit, TRUE);
+		SetWindowTextW(g_commandEdit, config.command.c_str());
+	} else {
+		// uwp/regedit/path类型：禁用编辑框，显示"default"
+		EnableWindow(g_folderEdit, FALSE);
+		SetWindowTextW(g_folderEdit, L"default");
+		EnableWindow(g_commandEdit, FALSE);
+		SetWindowTextW(g_commandEdit, L"default");
+	}
+
 	SetWindowTextW(g_excludeWordsEdit, VectorToString(config.excludeWords).c_str());
 	SetWindowTextW(g_excludesEdit, VectorToString(config.excludeNames).c_str());
 	SetWindowTextW(g_renameSourcesEdit, VectorToString(config.renameSources).c_str());
@@ -113,14 +125,39 @@ static void SaveCurrentConfigItem(int selectedIndex) {
 
 	wchar_t buffer[4096];
 
+	// 保存类型
+	int typeIndex = static_cast<int>(SendMessage(g_typeComboBox, CB_GETCURSEL, 0, 0));
+	switch (typeIndex) {
+		case 0:
+			g_runnerConfigs[selectedIndex].type = L"";
+			break;
+		case 1:
+			g_runnerConfigs[selectedIndex].type = L"uwp";
+			break;
+		case 2:
+			g_runnerConfigs[selectedIndex].type = L"regedit";
+			break;
+		case 3:
+			g_runnerConfigs[selectedIndex].type = L"path";
+			break;
+		default:
+			g_runnerConfigs[selectedIndex].type = L"";
+			break;
+	}
+
 	GetWindowTextW(g_commandEdit, buffer, sizeof(buffer));
 	g_runnerConfigs[selectedIndex].command = buffer;
 
+	// 保存folder字段，如果是非folder类型且显示"default"，则保存为空字符串
 	GetWindowTextW(g_folderEdit, buffer, sizeof(buffer));
-	g_runnerConfigs[selectedIndex].folder = buffer;
+	if (typeIndex != 0 && wcscmp(buffer, L"default") == 0) {
+		g_runnerConfigs[selectedIndex].folder = L"";
+	} else {
+		g_runnerConfigs[selectedIndex].folder = buffer;
+	}
 
 	GetWindowTextW(g_excludeWordsEdit, buffer, sizeof(buffer));
-	g_runnerConfigs[selectedIndex].excludeWords = StringToVector(buffer);
+	g_runnerConfigs[selectedIndex].excludeWords = StringToVectorAndLower(buffer);
 
 	GetWindowTextW(g_excludesEdit, buffer, sizeof(buffer));
 	g_runnerConfigs[selectedIndex].excludeNames = StringToVector(buffer);
@@ -130,6 +167,16 @@ static void SaveCurrentConfigItem(int selectedIndex) {
 
 	GetWindowTextW(g_renameTargetsEdit, buffer, sizeof(buffer));
 	g_runnerConfigs[selectedIndex].renameTargets = StringToVector(buffer);
+
+	g_runnerConfigs[selectedIndex].renameMap.clear();
+	const auto &sources = g_runnerConfigs[selectedIndex].renameSources;
+	const auto &targets = g_runnerConfigs[selectedIndex].renameTargets;
+	size_t count = std::min(sources.size(), targets.size());
+	for (size_t i = 0; i < count; ++i) {
+		if (!sources[i].empty() && !targets[i].empty()) {
+			g_runnerConfigs[selectedIndex].renameMap[sources[i]] = targets[i];
+		}
+	}
 }
 
 
@@ -141,15 +188,61 @@ static void UpdateIndexFileList(int selectedIndex) {
 		return;
 	}
 
-	const TraverseOptions &config = g_runnerConfigs[selectedIndex];
-	TraverseFilesForEverythingSDK(config.folder, config,
-								  [&](const std::wstring &name, const std::wstring &fullPath,
-									  const std::wstring &parent, const std::wstring &ext) {
-									  FileInfo fileInfo;
-									  fileInfo.file_path = fullPath;
-									  fileInfo.label = name;
-									  g_fileItems.push_back(fileInfo);
-								  });
+	TraverseOptions &config = g_runnerConfigs[selectedIndex];
+	if (config.type == L"folder" || config.type.empty()) {
+		if (g_settings_map["pref_use_everything_sdk_index"].boolValue) {
+			TraverseFilesForEverythingSDK(config.folder, config,
+										  [&](const std::wstring &name, const std::wstring &fullPath,
+											  const std::wstring &parent, const std::wstring &ext) {
+											  FileInfo fileInfo;
+											  fileInfo.file_path = fullPath;
+											  fileInfo.label = name;
+											  g_fileItems.push_back(fileInfo);
+										  });
+		} else {
+			TraverseFiles(config.folder, config,
+						  [&](const std::wstring &name, const std::wstring &fullPath,
+							  const std::wstring &parent, const std::wstring &ext) {
+							  FileInfo fileInfo;
+							  fileInfo.file_path = fullPath;
+							  fileInfo.label = name;
+							  g_fileItems.push_back(fileInfo);
+						  });
+
+		}
+	} else if (config.type == L"uwp") {
+		LoadUwpApps([&](const std::wstring &name,
+						const std::wstring &fullPath,
+						const std::wstring uwpCommandS,
+						const HBITMAP hBitmap
+		) {
+			FileInfo fileInfo;
+			fileInfo.file_path = fullPath;
+			fileInfo.label = name;
+			g_fileItems.push_back(fileInfo);
+		}, config);
+
+	} else if (config.type == L"regedit") {
+		TraverseRegistryApps([&](const std::wstring &name,
+								 const std::wstring &fullPath,
+								 const std::wstring &parent) {
+			FileInfo fileInfo;
+			fileInfo.file_path = fullPath;
+			fileInfo.label = name;
+			g_fileItems.push_back(fileInfo);
+		}, config);
+
+	} else if (config.type == L"path") {
+		TraversePATHExecutables2([&](const std::wstring &name,
+									 const std::wstring &fullPath,
+									 const std::wstring &parent,
+									 const std::wstring &ext) {
+			FileInfo fileInfo;
+			fileInfo.file_path = fullPath;
+			fileInfo.label = name;
+			g_fileItems.push_back(fileInfo);
+		}, config);
+	}
 
 	ListView_SetItemCountEx(g_fileListView, (int) g_fileItems.size(), LVSICF_NOINVALIDATEALL);
 	// 调整列宽
@@ -212,14 +305,21 @@ static void RenameFileItem(int itemIndex) {
 	if (itemIndex < 0 || itemIndex >= static_cast<int>(g_fileItems.size())) {
 		return;
 	}
+	if (index_last_selected < 0 || index_last_selected >= static_cast<int>(g_runnerConfigs.size())) {
+		return;
+	}
 
 	const FileInfo &fileInfo = g_fileItems[itemIndex];
-	std::wstring originalName = fileInfo.label;
-
-	// 移除文件扩展名
-	size_t dotPos = originalName.find_last_of(L'.');
-	if (dotPos != std::wstring::npos) {
-		originalName = originalName.substr(0, dotPos);
+	std::wstring originalName;
+	if (g_runnerConfigs[index_last_selected].type == L"uwp") {
+		originalName = fileInfo.label;
+	} else {
+		originalName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\") + 1);
+		// 移除文件扩展名
+		size_t dotPos = originalName.find_last_of(L'.');
+		if (dotPos != std::wstring::npos) {
+			originalName = originalName.substr(0, dotPos);
+		}
 	}
 
 	std::wstring newName;
@@ -302,11 +402,6 @@ static void NewConfigItem() {
 	// 创建新的配置项
 	TraverseOptions newConfig;
 	newConfig.command = L"new";
-	newConfig.folder = L"";
-	newConfig.excludeWords.clear();
-	newConfig.excludeNames.clear();
-	newConfig.renameSources.clear();
-	newConfig.renameTargets.clear();
 
 	// 添加到配置集合
 	g_runnerConfigs.push_back(newConfig);
@@ -410,6 +505,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			col.pszText = const_cast<LPWSTR>(L"索引配置");
 			col.cx = 180;
 			ListView_InsertColumn(g_folderListView, 0, &col);
+			g_folderItemTexts.clear();
 
 			// 添加文件夹到列表
 			for (size_t i = 0; i < g_runnerConfigs.size(); ++i) {
@@ -418,7 +514,13 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				item.iItem = static_cast<int>(i);
 				item.iSubItem = 0;
 				std::wstring command = g_runnerConfigs[i].command;
-				item.pszText = const_cast<LPWSTR>(command.c_str());
+				if (g_runnerConfigs[i].type == L"folder" || g_runnerConfigs[i].type.empty()) {
+					g_folderItemTexts.push_back(g_runnerConfigs[i].command);
+				} else {
+					g_folderItemTexts.push_back(L"( " + MyToUpper(g_runnerConfigs[i].type) + L" )");
+				}
+				item.pszText = const_cast<LPWSTR>(g_folderItemTexts[i].c_str());
+
 				ListView_InsertItem(g_folderListView, &item);
 			}
 
@@ -427,6 +529,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			int editWidth = 300;
 			int labelWidth = 120;
 			int spacing = 35;
+
 
 			// Command 标签和编辑框
 			CreateWindowExW(0, L"STATIC", L"名称:",
@@ -438,6 +541,24 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 											WS_CHILD | WS_VISIBLE | WS_BORDER,
 											centerPanelX, editY, editWidth - 85, centerPanelEditHeight, hwnd, nullptr,
 											GetModuleHandle(nullptr), nullptr);
+			editY += centerPanelEditHeight + 2;
+			// Type 标签和下拉框
+			CreateWindowExW(0, L"STATIC", L"类型:",
+							WS_CHILD | WS_VISIBLE,
+							centerPanelX, editY, labelWidth, centerPanelLabelHeight, hwnd, nullptr,
+							GetModuleHandle(nullptr), nullptr);
+			editY += centerPanelLabelHeight;
+			g_typeComboBox = CreateWindowExW(0, L"COMBOBOX", L"",
+											 WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+											 centerPanelX, editY, editWidth - 85, 100, hwnd, nullptr,
+											 GetModuleHandle(nullptr), nullptr);
+
+			// 添加下拉框选项
+			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM) L"文件夹");
+			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM) L"UWP 应用");
+			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM) L"注册表应用");
+			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM) L"%PATH% 环境变量");
+			SendMessageW(g_typeComboBox, CB_SETCURSEL, 0, 0);
 			editY += centerPanelEditHeight + 2;
 
 			// Folder 标签和编辑框
@@ -533,14 +654,47 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				UpdateConfigDisplayText(0);
 				UpdateIndexFileList(0);
 			}
+			
+			SHAutoComplete(g_commandEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_folderEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_excludeWordsEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_excludesEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_labelExcludesEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_renameSourcesEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_labelRenameSourcesEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_labelRenameTargetsEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+			SHAutoComplete(g_renameTargetsEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
 
 			break;
 		}
 
 		case WM_COMMAND: {
-			if (LOWORD(wParam) == 1001) { // 重新索引按钮
+			if (HIWORD(wParam) == CBN_SELCHANGE && (HWND) lParam == g_typeComboBox) {
+				// 类型下拉框选择变化，根据类型设置folder编辑框状态
+				int typeIndex = static_cast<int>(SendMessage(g_typeComboBox, CB_GETCURSEL, 0, 0));
+				if (typeIndex == 0) { // folder
+					// 启用folder编辑框，恢复之前保存的folder值
+					EnableWindow(g_folderEdit, TRUE);
+					EnableWindow(g_commandEdit, TRUE);
+					if (index_last_selected >= 0) {
+						SetWindowTextW(g_folderEdit, g_runnerConfigs[index_last_selected].folder.c_str());
+						SetWindowTextW(g_commandEdit, g_runnerConfigs[index_last_selected].command.c_str());
+					}
+				} else { // uwp, regedit, path
+					// 禁用folder编辑框，显示"default"
+					EnableWindow(g_folderEdit, FALSE);
+					EnableWindow(g_commandEdit, FALSE);
+					SetWindowTextW(g_folderEdit, L"default");
+					SetWindowTextW(g_commandEdit, L"default");
+				}
+
+				// 保存当前配置项
+				if (index_last_selected >= 0) {
+					SaveCurrentConfigItem(index_last_selected);
+				}
+			} else if (LOWORD(wParam) == 1001) { // 重新索引按钮
 				// 检查编辑框是否为空
-				if (IsConfigEditEmpty()) {
+				if (IsEditControlsEmpty(std::vector<HWND>{g_commandEdit, g_folderEdit})) {
 					TipEditEmpty();
 					break;
 				}
@@ -550,7 +704,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				}
 			} else if (LOWORD(wParam) == 1002) { // 保存按钮
 				// 检查编辑框是否为空
-				if (IsConfigEditEmpty()) {
+				if (IsEditControlsEmpty(std::vector<HWND>{g_commandEdit, g_folderEdit})) {
 					TipEditEmpty();
 					break;
 				}
@@ -595,7 +749,8 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 							const bool goingToDeselect = (p->uOldState & LVIS_SELECTED) != 0 && !goingToSelect;
 
 							// 是否要阻止——当已有选中项且编辑框为空时，不允许切换/清空
-							if (index_last_selected >= 0 && IsConfigEditEmpty()) {
+							if (index_last_selected >= 0 &&
+								IsEditControlsEmpty(std::vector<HWND>{g_commandEdit, g_folderEdit})) {
 								// 1) 准备切到别的项：目标不是当前项 且 goingToSelect
 								if (goingToSelect && p->iItem != index_last_selected) {
 									TipEditEmpty();
@@ -693,6 +848,8 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			int threeRectHeight = ((height - sizeChangePosY - (centerPanelLabelHeight * 2) - 4) / 3);
 			// 重新调整控件大小
 			int centerPanelWidth = static_cast<int>((width - leftPanelWidth) * 0.4) - 5;
+			SetWindowPos(g_typeComboBox, nullptr, -1, -1, centerPanelWidth, centerPanelEditHeight,
+						 SWP_NOZORDER | SWP_NOMOVE);
 			SetWindowPos(g_commandEdit, nullptr, -1, -1, centerPanelWidth, centerPanelEditHeight,
 						 SWP_NOZORDER | SWP_NOMOVE);
 			SetWindowPos(g_folderEdit, nullptr, -1, -1, centerPanelWidth, centerPanelEditHeight,
@@ -750,6 +907,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_indexManagerHwnd = nullptr;
 			g_folderListView = nullptr;
 			g_fileListView = nullptr;
+			g_typeComboBox = nullptr;
 			g_commandEdit = nullptr;
 			g_folderEdit = nullptr;
 			g_excludeWordsEdit = nullptr;
@@ -773,20 +931,6 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
 	return 0;
-}
-
-static void TipEditEmpty() {
-	RECT rc;
-	if (ListView_GetItemRect(g_folderListView, index_last_selected, &rc, LVIR_BOUNDS)) {
-		// rc 里就是该项在 ListView 客户区的矩形
-		POINT pt;
-		pt.x = (rc.left + rc.right) / 2;
-		pt.y = (rc.top + rc.bottom) / 2;
-		ClientToScreen(g_folderListView, &pt);
-		ShowWarnTooltip(g_indexManagerHwnd, L"请先填写名称和路径再切换配置项！",pt.x, pt.y);
-	}else{
-		ShowWarnTooltipAtCursor(g_indexManagerHwnd, L"请先填写名称和路径再切换配置项！");
-	}
 }
 
 // 注册索引管理器窗口类

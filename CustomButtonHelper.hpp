@@ -13,6 +13,13 @@ enum ButtonStyle {
 	BTN_DANGER = 3
 };
 
+// Text alignment enumeration
+enum TextAlignment {
+	TEXT_CENTER = 0,
+	TEXT_LEFT = 1,
+	TEXT_RIGHT = 2
+};
+
 // Button information structure
 struct ButtonInfo {
 	HWND hwnd{};
@@ -21,6 +28,8 @@ struct ButtonInfo {
 	bool isPressed{};
 	bool isSelected{};
 	std::wstring text;
+	HICON hIcon{};  // Icon handle for left-side icon display
+	TextAlignment textAlign;  // Text alignment
 };
 
 // Global button list
@@ -54,7 +63,7 @@ static void InitializeButtonResources() {
 	
 	if (!hFontButton) {
 		hFontButton = CreateFontW(
-			18, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+			20, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
 			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
 	}
@@ -163,7 +172,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			// If it's a selected normal button (tab button), draw blue left border
 			if (btnInfo && btnInfo->style == BTN_NORMAL && btnInfo->isSelected) {
 				HBRUSH hBlueBrush = CreateSolidBrush(RGB(0, 120, 215));
-				RECT blueRect = {0, 0, 3, rect.bottom}; // 3px wide blue border
+				RECT blueRect = {0, 0, 4, rect.bottom}; // 3px wide blue border
 				FillRect(memDC, &blueRect, hBlueBrush);
 				DeleteObject(hBlueBrush);
 			}
@@ -177,9 +186,76 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 				SetTextColor(memDC, RGB(0, 0, 0));
 			}
 
+			// Calculate icon and text positions
+			int iconSize = 16; // Standard icon size
+			int iconMargin = 8; // Margin between icon and text
+			int totalContentWidth = 0;
+			int iconX = 0, textX = 0;
+
+			if (btnInfo && btnInfo->hIcon) {
+				totalContentWidth = iconSize + iconMargin;
+				if (!btnInfo->text.empty()) {
+					SIZE textSize;
+					GetTextExtentPoint32W(memDC, btnInfo->text.c_str(), static_cast<int>(btnInfo->text.length()), &textSize);
+					totalContentWidth += textSize.cx;
+				}
+				
+				// Position based on text alignment
+				if (btnInfo->textAlign == TEXT_LEFT) {
+					// Left align: start from left margin
+					iconX = 8;
+					textX = iconX + iconSize + iconMargin;
+				} else if (btnInfo->textAlign == TEXT_RIGHT) {
+					// Right align: work backwards from right
+					iconX = rect.right - totalContentWidth - 8;
+					textX = iconX + iconSize + iconMargin;
+				} else {
+					// Center align: center the total content
+					int startX = (rect.right - totalContentWidth) / 2;
+					iconX = startX;
+					textX = startX + iconSize + iconMargin;
+				}
+				
+				// Draw icon
+				int iconY = (rect.bottom - iconSize) / 2;
+				DrawIconEx(memDC, iconX, iconY, btnInfo->hIcon, iconSize, iconSize, 0, NULL, DI_NORMAL);
+			}
+
 			if (btnInfo && !btnInfo->text.empty()) {
-				DrawTextW(memDC, btnInfo->text.c_str(), -1, &rect,
-						  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				DWORD alignFlag = DT_CENTER; // Default center alignment
+				RECT textRect = rect;
+				
+				// Determine alignment flag and text rectangle
+				switch (btnInfo->textAlign) {
+					case TEXT_LEFT:
+						alignFlag = DT_LEFT;
+						if (btnInfo->hIcon) {
+							textRect = {textX, rect.top, rect.right - 8, rect.bottom};
+						} else {
+							textRect = {8, rect.top, rect.right - 8, rect.bottom}; // 8px left margin
+						}
+						break;
+					case TEXT_RIGHT:
+						alignFlag = DT_RIGHT;
+						if (btnInfo->hIcon) {
+							textRect = {textX, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
+						} else {
+							textRect = {rect.left, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
+						}
+						break;
+					case TEXT_CENTER:
+					default:
+						alignFlag = DT_CENTER;
+						if (btnInfo->hIcon) {
+							textRect = {textX, rect.top, rect.right, rect.bottom};
+						} else {
+							textRect = rect; // Full button width for centering
+						}
+						break;
+				}
+				
+				DrawTextW(memDC, btnInfo->text.c_str(), -1, &textRect,
+						  alignFlag | DT_VCENTER | DT_SINGLELINE);
 			}
 
 			// Copy to screen in one operation
@@ -209,7 +285,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 
 // Create enhanced button
 static HWND CreateEnhancedButton(HWND hParent,size_t uid,const std::wstring &text, int x, int y,
-								int width, int height, HMENU hMenu, ButtonStyle style = BTN_NORMAL) {
+								int width, int height, HMENU hMenu, ButtonStyle style = BTN_NORMAL, HICON hIcon = nullptr, TextAlignment textAlign = TEXT_CENTER) {
 	HWND hButton = CreateWindowW(L"BUTTON", text.c_str(),
 								WS_CHILD | WS_VISIBLE,
 								x, y, width, height, hParent, hMenu, nullptr, nullptr);
@@ -222,6 +298,8 @@ static HWND CreateEnhancedButton(HWND hParent,size_t uid,const std::wstring &tex
 		pBtnInfo->isPressed = false;
 		pBtnInfo->isSelected = false;
 		pBtnInfo->text = text;
+		pBtnInfo->hIcon = hIcon;
+		pBtnInfo->textAlign = textAlign;
 
 //		ButtonInfo btnInfo;
 //		btnInfo.hwnd = hButton;

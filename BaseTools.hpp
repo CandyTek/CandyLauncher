@@ -17,6 +17,8 @@
 #include <iostream>
 #include <filesystem>
 #include "TraverseOptions.h"
+#include "NinePatchImage.hpp"
+#include <array>
 
 // 标准打印输出方法
 static void Println(const std::wstring &msg) {
@@ -84,12 +86,40 @@ static std::wstring MyToLower(const std::wstring &str) {
 	return lower;
 }
 
+static std::wstring MyToUpper(const std::wstring &str) {
+	std::wstring upper = str;
+	for (auto &ch: upper) ch = towupper(ch);
+	return upper;
+}
+
+static std::string MyToLower(const std::string &str) {
+	std::string lower = str;
+	for (auto &ch: lower)
+		ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+	return lower;
+}
+
+static std::string MyToUpper(const std::string &str) {
+	std::string upper = str;
+	for (auto &ch: upper)
+		ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+	return upper;
+}
+
 static std::wstring MyTrim(const std::wstring &str) {
 	const size_t first = str.find_first_not_of(L" \t\n\r");
 	if (first == std::wstring::npos) return L"";
 	const size_t last = str.find_last_not_of(L" \t\n\r");
 	return str.substr(first, last - first + 1);
 }
+
+static std::string MyTrim(const std::string &str) {
+	const size_t first = str.find_first_not_of(" \t\n\r");
+	if (first == std::string::npos) return "";
+	const size_t last = str.find_last_not_of(" \t\n\r");
+	return str.substr(first, last - first + 1);
+}
+
 
 template<typename T>
 T MyMax(const T &a, const T &b) {
@@ -281,6 +311,32 @@ inline bool MyEndsWith(const std::wstring &str,
 	}
 	return false;
 }
+// 大小写不敏感的 wstring 前缀判断
+inline bool MyStartsWith(const std::wstring &str, const std::wstring &prefix) {
+	if (str.size() < prefix.size())
+		return false;
+
+	auto itStr = str.begin();
+	auto itPrefix = prefix.begin();
+
+	while (itPrefix != prefix.end()) {
+		if (towlower(*itStr) != towlower(*itPrefix))
+			return false;
+		++itStr;
+		++itPrefix;
+	}
+	return true;
+}
+
+// 多个后缀匹配
+inline bool MyStartsWith(const std::wstring &str,
+					   std::initializer_list<std::wstring> suffixes) {
+	for (const auto &suffix: suffixes) {
+		if (MyEndsWith(str, suffix))
+			return true;
+	}
+	return false;
+}
 
 inline std::wstring GetShortcutTarget(const std::wstring &lnkPath) {
 	CoInitialize(nullptr);
@@ -426,8 +482,9 @@ inline std::string ReadUtf8FileBinary(std::wstring& path) {
 	return data;
 }
 
-inline std::string ReadUtf8FileBinary(std::string& path) {
-	return ReadUtf8FileBinary(utf8_to_wide(path));
+inline std::string ReadUtf8FileBinary( std::string& path) {
+	std::wstring temp=utf8_to_wide(path);
+	return ReadUtf8FileBinary(temp);
 }
 
 // 辅助函数：执行命令行并获取其标准输出
@@ -636,3 +693,33 @@ static std::vector<std::wstring> StringToVector(const std::wstring &str) {
 	return result;
 }
 
+// 将换行分隔的字符串转换为字符串向量
+static std::vector<std::wstring> StringToVectorAndLower(const std::wstring &str) {
+	std::vector<std::wstring> result;
+	std::wstringstream ss(str);
+	std::wstring line;
+	while (std::getline(ss, line)) {
+		if (line.back() == '\r') {
+			line.pop_back();
+		}
+		if (!line.empty()) {
+			result.push_back(MyToLower(line));
+		}
+	}
+	return result;
+}
+
+// 检查编辑框是否为空
+static bool IsEditControlsEmpty(const std::vector<HWND>& edits) {
+	wchar_t buffer[4096];
+
+	for (HWND hEdit : edits) {
+		if (!hEdit) continue; // 防止传入空句柄
+		GetWindowTextW(hEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+		if (wcslen(buffer) == 0) {
+			return true;
+		}
+	}
+
+	return false;
+}

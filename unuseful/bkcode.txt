@@ -1,33 +1,81 @@
 ﻿todo:
 
-左侧栏提高一些，然后铺满，项目使用图标，左对齐
 
-索引查看器:
-快捷方式修复器，添加，一键检查某些快捷方式是否失效，以及使用everything来找回文件的位置，并可以编辑快捷方式
+
+做一个标准夜间模式
+pref_night_mode
+
+skin
+做一些好看的皮肤
+
+主题提供提示文本
+覆盖主题的hint 提示文本
+
+当主题变更，变更监听的文件
+
 
 
 主面板：
-把listview edit 主窗口的编辑框按键监听统一
+
+皮肤：
+E:\Github\WPFNinePatch\NinePatchTest\Examples\heartsframe.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\settings_header_raw.9.png
+E:\Program Files\JetBrains\IntelliJ IDEA 2023.2.5\plugins\android\resources\device-art-resources\tablet\tablet_back_simple.9.png
+I:\AndroidSdk\platforms\android-28\data\res\drawable-xxxhdpi\btn_switch_to_on_mtrl_00004.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\btn_dropdown_selected.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\btn_dropdown_pressed.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\transportcontrol_bg.9.png
+E:\Program Files\JetBrains\IntelliJ IDEA 2023.2.5\plugins\android\resources\device-art-resources\phone\phone_back_simple_land.9.png
+E:\Program Files\JetBrains\IntelliJ IDEA 2023.2.5\plugins\android\resources\device-art-resources\phone\phone_back_simple_port.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\btn_zoom_down_pressed.9.png
+E:\RcProject\RcInteractiveClass\question\src\main\res\drawable-hdpi\ic_practice_test_explaindetail.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\btn_dropdown_disabled_focused.9.png
+E:\Github\AD_Client\app\src\main\res\drawable-mdpi\epg_bg.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-hdpi\jog_tab_bar_left_end_pressed.9.png
+E:\RcProject\ApkToolHua\app\src\main\res\drawable-xxhdpi\bottom_bar_night.9.png
+I:\AndroidSdk\platforms\android-3\data\res\drawable\panel_picture_frame_bg_focus_blue.9.png
+E:\Github\airplay\SmartLife-webrtc\SLPubLib\src\main\res\drawable-xhdpi\bg_toast.9.png
+E:\Github\SoftWareTest\app\src\main\res\drawable\dialog_bubble_moji.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\popup_inline_error_above_am.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\dialog_full_holo_light.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\spinner_select.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\dialog_full_holo_dark.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\gallery_selected_focused.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\keyboard_key_feedback_background.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-hdpi\textfield_search_empty_pressed.9.png
+I:\AndroidSdk\platforms\android-36\data\res\drawable-xhdpi\popup_inline_error_above_am.9.png
+E:\Github\WPFNinePatch\NinePatchTest\Examples\dots.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\btn_keyboard_key_fulltrans_pressed_on.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\keyboard_popup_panel_trans_background.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\panel_picture_frame_bg_pressed_blue.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\icon_highlight_square.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\popup_inline_error_above_holo_dark_am.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\popup_inline_error_above_holo_light_am.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\btn_keyboard_key_fulltrans_normal.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\zoom_plate.9.png
+I:\AndroidSdk\platforms\android-36\data\res\drawable-xxhdpi\dialog_full_holo_light.9.png
+I:\AndroidSdk\platforms\android-30\data\res\drawable-xhdpi\editbox_background_focus_yellow.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\btn_default_pressed_holo_dark.9.png
+I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\btn_default_pressed_holo_light.9.png
 
 
 
-当不使用透明图片背景时，使用传统的gdi 来渲染窗口内容
-pref_night_mode
-skin
-
-
-设置项，包括已在注册表中注册的应用
-设置项，在 %PATH% 上的任何位置包含exe bat lnkw
-设置项，使用everything 来建立索引
 
 
 
+
+
+
+////////////////////////////////////////////////////////////
 后期：
+完善item图标
+
+双Ctrl启动
+鼠标侧键中键启动
 小细节，编辑框 paint重绘，再次显示界面时 选中词语背景有点问题
-小细节，统一窗口，列表，编辑框的一些共同按键事件
 完善预设runner.json 也在桌面找应用
 暴力测试各种设置项
-添加，语言国际化
+添加，语言国际化e
 allow_drag_file
 
 
@@ -36,6 +84,10 @@ pref_check_version_update
 
 索引查看器:
 添加查看排除了哪些项
+两个列表前面添加小图标
+
+皮肤：
+当不使用透明图片背景时，使用传统的gdi 来渲染窗口内容
 
 
 
@@ -1470,3 +1522,166 @@ static void UpdateShortcutList2(int selectedIndex) {
 					//g_editSync.SynchronizeScroll(editHwnd);
 				}
 			}
+
+		////					TraverseFiles(folderPath, traverseOptions, actions);
+		////                    TraverseFilesForEverything(folderPath, traverseOptions, actions);
+
+		//}
+		//catch (const std::exception& e)
+		//{
+		//	std::wcerr << L"处理 JSON 配置时出现异常：" << Utf8ToWString(e.what()) << std::endl;
+		//	continue;
+		//}
+		
+	//TraverseOptions noOptions;
+
+
+			wchar_t path[MAX_PATH];
+			GetModuleFileName(nullptr, path, MAX_PATH);
+			PathRemoveFileSpec(path);
+			wcscat_s(path, L"\\runner.json");
+			ShellExecute(nullptr, L"open", L"notepad.exe", path, nullptr, SW_SHOW);
+
+    // 这里安全地更新你的配置数据（无悬空指针风险）
+    // 例如：settings[*key] = utf8; 或 DataKeeper::Set(*key, utf8);
+    // UpdateSettingByKey(*key, utf8); // <- 用你的实际函数替代
+
+
+#if defined(USE_VS_TOOLCHAIN)
+
+
+#elif defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
+		if (lplvcd->dwItemType != 2) {
+			return CDRF_NOTIFYITEMDRAW;
+		}
+#endif
+
+
+// 1. 获取当前按下的虚拟键码
+			UINT vk = static_cast<UINT>(wParam);
+			// 2. 获取当前的修饰符状态
+			UINT currentModifiers = 0;
+
+			if (GetKeyState(VK_MENU) < 0) currentModifiers |= MOD_ALT_KEY;
+			if (GetKeyState(VK_CONTROL) < 0) currentModifiers |= MOD_CTRL_KEY;
+			if (GetKeyState(VK_SHIFT) < 0) currentModifiers |= MOD_SHIFT_KEY;
+			if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) currentModifiers |= MOD_WIN_KEY;
+
+			// 未组合修饰键
+			if (currentModifiers == 0) {
+				if (vk == VK_ESCAPE) {
+					Println(L"Key Esc");
+					HideWindow();
+					return 0;
+				}
+			}
+				// Ctrl + 数字键 (1-9) 快速启动列表项
+			else if (currentModifiers == MOD_CTRL_KEY) {
+				if (vk >= '1' && vk <= '9') {
+					int index = vk - '1'; // Convert '1'-'9' to 0-8
+					if (index < static_cast<int>(ListViewManager::filteredActions.size())) {
+						const std::shared_ptr<RunCommandAction> action = ListViewManager::filteredActions[index];
+						if (action) {
+							if (pref_close_after_open_item)
+								HideWindow();
+							action->Invoke();
+						}
+					}
+					return 0;
+				}
+			}
+
+			// 3. 生成要查找的键
+			UINT64 key = MAKE_HOTKEY_KEY(currentModifiers, vk);
+
+			// 4. 在哈希表中查找 (高性能!)
+			auto it = g_hotkeyMap.find(key);
+			if (it != g_hotkeyMap.end()) {
+				// 找到了！执行对应的动作
+				ShowErrorMsgBox("打开文件位置");
+				switch (it->second) {
+					case HOTKEY_ID_OPEN_FILE_LOCATION: {
+					}
+						break;
+					default:
+						break;
+				}
+				// it->second();
+
+				return 0; // 消息已处理，不再传递
+			}
+		}
+
+
+    // Save skin setting
+    if (g_hSkinComboBox) {
+        int selIdx = (int) SendMessage(g_hSkinComboBox, CB_GETCURSEL, 0, 0);
+        if (selIdx == 0) { // "Default"
+            newConfig["pref_skin"] = "default";
+        } else if (selIdx == 1){
+            newConfig["pref_skin"] = "night_mode";
+		} else if (selIdx > 0 && (size_t) (selIdx - 2) < g_skinFilePaths.size()) {
+			newConfig["pref_skin"] = wide_to_utf8(g_skinFilePaths[selIdx - 2]);
+        }
+    }
+
+
+
+
+				if (subPages[tabIdx] == L"skin") {
+					y = 20;
+					HWND hLabel = CreateWindowW(L"STATIC", L"选择皮肤",
+												WS_CHILD | WS_VISIBLE,
+												10, y, 220, 20, hParent, nullptr, nullptr, nullptr);
+					SendMessageW(hLabel, WM_SETFONT, (WPARAM)hFontDefault, TRUE);
+					ctrls.push_back(hLabel);
+
+					g_hSkinComboBox = CreateWindowW(L"COMBOBOX", L"",
+													WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+													contorlX, y, 200, 300, hParent, (HMENU)4001, nullptr, nullptr);
+
+					g_skinFilePaths = FindSkinFiles();
+					
+					SendMessageW(g_hSkinComboBox, CB_ADDSTRING, 0, (LPARAM)L"默认");
+					SendMessageW(g_hSkinComboBox, CB_ADDSTRING, 0, (LPARAM)L"黑夜模式");
+					for (const auto &path: g_skinFilePaths) {
+						std::filesystem::path p(path);
+						std::wstring fileName = p.stem().wstring();
+						SendMessageW(g_hSkinComboBox, CB_ADDSTRING, 0, (LPARAM)fileName.c_str());
+					}
+
+					ShowErrorMsgBox(g_settings_map["pref_skin"].stringValue);
+
+                    std::string currentSkin = g_settings_map.count("pref_skin") ? g_settings_map["pref_skin"].stringValue : "default";
+                    if (currentSkin == "default") {
+                        SendMessageW(g_hSkinComboBox, CB_SETCURSEL, 0, 0);
+                    } else if (currentSkin == "night_mode") {
+						SendMessageW(g_hSkinComboBox, CB_SETCURSEL, 1, 0);
+                    } else {
+                        auto it = std::find(g_skinFilePaths.begin(), g_skinFilePaths.end(), utf8_to_wide(currentSkin));
+                        if (it != g_skinFilePaths.end()) {
+                            int index = std::distance(g_skinFilePaths.begin(), it) + 2;
+                            SendMessageW(g_hSkinComboBox, CB_SETCURSEL, index, 0);
+                        } else {
+                            SendMessageW(g_hSkinComboBox, CB_SETCURSEL, 0, 0);
+                        }
+                    }
+					ctrls.push_back(g_hSkinComboBox);
+					hCtrlsByTab[tabIdx] = ctrls;
+					continue;
+				}
+
+
+if (userConfig.contains("pref_skin")) {
+std::string skin_path_str = userConfig["pref_skin"].get<std::string>();
+// Map symbolic values to actual paths
+if (skin_path_str == "default") {
+g_currectSkinFilePath = DEFAULT_SKIN_PATH;
+} else if (skin_path_str == "night_mode") {
+g_currectSkinFilePath = NIGHT_SKIN_PATH;
+} else {
+g_currectSkinFilePath = utf8_to_wide(skin_path_str);
+}
+} else {
+g_currectSkinFilePath = DEFAULT_SKIN_PATH;
+}

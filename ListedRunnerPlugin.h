@@ -13,29 +13,33 @@
 #include "TraverseOptions.h"
 
 
-class ListedRunnerPlugin
-{
+class ListedRunnerPlugin {
 public:
 	// ListedRunnerPlugin(CallbackFunction callbackFunction1);
 	ListedRunnerPlugin();
+
 	// ListedRunnerPlugin(const std::unordered_map<std::string, CallbackFunction>& callbackFunction1);
-	ListedRunnerPlugin(const std::unordered_map<std::string, std::function<void()>>& callbackFunction1);
-	[[nodiscard]] const std::vector<std::shared_ptr<RunCommandAction>>& GetActions() const;
+	ListedRunnerPlugin(const std::unordered_map<std::string, std::function<void()>> &callbackFunction1);
+
+	[[nodiscard]] const std::vector<std::shared_ptr<RunCommandAction>> &GetActions() const;
 
 	void LoadConfiguration();
-	static HICON GetFileIcon(const std::wstring& filePath, bool largeIcon = false);
-	
-	static void TraverseUwpApps(const TraverseOptions& options, std::vector<std::shared_ptr<RunCommandAction>>& outActions);
 
-	[[nodiscard]] std::vector<std::shared_ptr<RunCommandAction>> Search(const std::wstring& query) const;
-	static HBITMAP GetIconFromPath(const std::wstring& path);
+	static HICON GetFileIcon(const std::wstring &filePath, bool largeIcon = false);
+
+	static void
+	TraverseUwpApps(std::vector<std::shared_ptr<RunCommandAction>> &outActions, const TraverseOptions &options);
+
+	[[nodiscard]] std::vector<std::shared_ptr<RunCommandAction>> Search(const std::wstring &query) const;
+
+	static HBITMAP GetIconFromPath(const std::wstring &path);
 
 private:
-	std::wstring configPath;
 	std::vector<std::shared_ptr<RunCommandAction>> actions;
 
-	static std::vector<std::wstring> SplitWords(const std::wstring& input);
-	static void WriteDefaultConfig(const std::wstring& path);
+	static std::vector<std::wstring> SplitWords(const std::wstring &input);
+
+	static void WriteDefaultConfig(const std::wstring &path);
 
 };
 

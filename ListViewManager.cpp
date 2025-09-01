@@ -33,23 +33,28 @@ typedef HRESULT (WINAPI *SHGetImageListPtr)(int iImageList, REFIID riid, void **
 
 // 使listview监听esc键
 LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam,
-											 UINT_PTR, const DWORD_PTR dwRefData)
-{
-	switch (message)
-	{
+									  UINT_PTR, const DWORD_PTR dwRefData) {
+	switch (message) {
 		case WM_KEYDOWN:
-			if (wParam == VK_ESCAPE)
-			{
-				HWND hEdit = reinterpret_cast<HWND>(dwRefData);
-				HideWindow(GetParent(hWnd), hEdit, hWnd);
-				return 0;
-			}
 			break;
 		case WM_MBUTTONUP:
 			TimerIDSetFocusEdit = SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
 			break;
-
-		default: break;
+		case WM_LISTVIEW_REFRESH_RESOURCE:
+			ListViewManager::CleanupGraphicsResources();
+			ListViewManager::InitializeGraphicsResources(); // 确保字体和画刷已初始化
+			break;
+		case WM_MOUSEWHEEL:
+		{
+			// 在Shift+滚动上键时，会触发列表的NM_DBLCLK,不知怎么回事，干脆直接屏蔽这个组合
+			const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+			if (shiftDown) {
+				return 0;
+			}
+		}
+			break;
+		default:
+			break;
 	}
 	return DefSubclassProc(hWnd, message, wParam, lParam);
 }
@@ -323,12 +328,12 @@ void ListViewManager::Fuzzymatch_MultiThreaded(const std::wstring &keyword) {
 	if (pref_max_search_results > 0 && scoredActions.size() > static_cast<size_t>(pref_max_search_results)) {
 		// 只对前 pref_max_search_results 个元素进行部分排序
 		std::partial_sort(scoredActions.begin(),
-						  scoredActions.begin() + pref_max_search_results,
+						  scoredActions.begin() + static_cast<std::ptrdiff_t>(pref_max_search_results),
 						  scoredActions.end(),
 						  std::greater<>()); // 依然是降序
 
 		// 调整大小，丢弃后面不需要的元素
-		scoredActions.resize(pref_max_search_results);
+		scoredActions.resize(static_cast<size_t>(pref_max_search_results));
 	} else {
 		// 如果匹配项不多，或者不需要限制数量，则进行全排序
 		std::sort(scoredActions.begin(), scoredActions.end(), std::greater<>());
@@ -460,7 +465,7 @@ void ListViewManager::Filter(const std::wstring &keyword) {
 
 
 void ListViewManager::MeasureItem(MEASUREITEMSTRUCT *lpMeasureItem) {
-	lpMeasureItem->itemHeight = 60;
+	lpMeasureItem->itemHeight = g_listItemHeight;
 }
 
 HBRUSH hNormalBrush = CreateSolidBrush(COLOR_UI_BG);
@@ -579,11 +584,21 @@ void ListViewManager::InitializeGraphicsResources() {
 															  Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 }
 
-static void CleanupGraphicsResources() {
-	// 如果不需要，可以直接让 unique_ptr 自动销毁
-	// whiteBrush.reset();
-	// grayBrush.reset();
-	// blackBrush.reset();
+void ListViewManager::CleanupGraphicsResources() {
+	// 重置所有 unique_ptr 资源
+	g_listItemBgColorBrush.reset();
+	g_listItemBgColorBrushSelected.reset();
+	
+	g_listItemTextColorBrush1.reset();
+	g_listItemTextColorBrush2.reset();
+	g_listItemTextColorBrushSelected1.reset();
+	g_listItemTextColorBrushSelected2.reset();
+	
+	g_listItemFont1.reset();
+	g_listItemFont2.reset();
+	g_listItemFontSelected1.reset();
+	g_listItemFontSelected2.reset();
+	
 	fontsInitialized = false;
 }
 
@@ -659,12 +674,21 @@ void ListViewManager::DrawItem(const DRAWITEMSTRUCT *lpDrawItem) {
 	// 创建 GDI+ 画刷
 	// Gdiplus::SolidBrush bgBrush(listItemBgColor);
 	// 用 GDI+ 的 FillRectangle 填充背景
-	const Gdiplus::Rect rect(rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+	const int itemWidth = g_listItemWidth > 0 ? g_listItemWidth : (rc.right - rc.left);
+	const Gdiplus::Rect rect(rc.left, rc.top, itemWidth, rc.bottom - rc.top);
 	UINT isSelected = lpDrawItem->itemState & ODS_SELECTED;
 	if (isSelected) {
+					if (g_listItemBgImageSelected) {
+				graphics.DrawImage(g_listItemBgImageSelected, rect);
+			} else {
 		graphics.FillRectangle(g_listItemBgColorBrushSelected.get(), rect);
+			}
 	} else {
+					if (g_listItemBgImage) {
+				graphics.DrawImage(g_listItemBgImage, rect);
+			} else {
 		graphics.FillRectangle(g_listItemBgColorBrush.get(), rect);
+			}
 	}
 
 	// 3. 绘制文字 (你的代码已是 GDI+，保持即可)
@@ -672,37 +696,42 @@ void ListViewManager::DrawItem(const DRAWITEMSTRUCT *lpDrawItem) {
 	Gdiplus::RectF subRect;
 	if (isSelected) {
 		const float titleHeight = g_listItemFontSelected1->GetHeight(&graphics);
-		const float subHeight = g_listItemFontSelected2->GetHeight(&graphics) + 30;
+		const float subHeight = g_listItemFontSelected2->GetHeight(&graphics) * 2.2f; // 限制为两行
 		titleRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosSelectedX1),
 								   static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosSelectedY1),
-								   static_cast<Gdiplus::REAL>(rc.right - rc.left - g_itemTextPosSelectedX1),
+								   static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosSelectedX1),
 								   titleHeight);
 		subRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosSelectedX2),
 								 static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosSelectedY2),
-								 static_cast<Gdiplus::REAL>(rc.right - rc.left - g_itemTextPosSelectedX2), subHeight);
+								 static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosSelectedX2), subHeight);
 	} else {
 		const float titleHeight = g_listItemFont1->GetHeight(&graphics);
-		const float subHeight = g_listItemFont2->GetHeight(&graphics) + 30;
+		const float subHeight = g_listItemFont2->GetHeight(&graphics) * 2.2f; // 限制为两行
 		titleRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosX1),
 								   static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosY1),
-								   static_cast<Gdiplus::REAL>(rc.right - rc.left - g_itemTextPosX1), titleHeight);
+								   static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosX1), titleHeight);
 		subRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosX2),
 								 static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosY2),
-								 static_cast<Gdiplus::REAL>(rc.right - rc.left - g_itemTextPosX2), subHeight);
+								 static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosX2), subHeight);
 	}
 	const std::wstring &title = action->GetTitle();
 	const std::wstring &subtitle = action->GetSubtitle();
+
+	// 创建 StringFormat 对象来控制文本换行和省略号
+	Gdiplus::StringFormat stringFormat;
+	stringFormat.SetTrimming(Gdiplus::StringTrimmingEllipsisWord); // 以单词为单位的省略号
+	stringFormat.SetFormatFlags(Gdiplus::StringFormatFlagsLineLimit); // 限制行数
 
 	// 确保你的文字画刷也是不透明的
 	if (isSelected) {
 		graphics.DrawString(title.c_str(), -1, g_listItemFontSelected1.get(), titleRect, nullptr,
 							g_listItemTextColorBrushSelected1.get());
-		graphics.DrawString(subtitle.c_str(), -1, g_listItemFontSelected2.get(), subRect, nullptr,
+		graphics.DrawString(subtitle.c_str(), -1, g_listItemFontSelected2.get(), subRect, &stringFormat,
 							g_listItemTextColorBrushSelected2.get());
 	} else {
 		graphics.DrawString(title.c_str(), -1, g_listItemFont1.get(), titleRect, nullptr,
 							g_listItemTextColorBrush1.get());
-		graphics.DrawString(subtitle.c_str(), -1, g_listItemFont2.get(), subRect, nullptr,
+		graphics.DrawString(subtitle.c_str(), -1, g_listItemFont2.get(), subRect, &stringFormat,
 							g_listItemTextColorBrush2.get());
 	}
 
@@ -761,28 +790,18 @@ void ListViewManager::DrawItem(const DRAWITEMSTRUCT *lpDrawItem) {
 	}
 }
 
-// ListViewManager.cpp
-
 LRESULT ListViewManager::OnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 	// We are only interested in the stage before the whole control is painted.
 	if (lplvcd->nmcd.dwDrawStage == CDDS_PREPAINT) {
-		HDC hdc = lplvcd->nmcd.hdc;
-		HWND hWnd = lplvcd->nmcd.hdr.hwndFrom;
-		RECT rcClient;
-		GetClientRect(hWnd, &rcClient);
 		// 这个判断很重要，用来判断这次是要重绘listview背景，还是重绘item，用来解决item和listview绘制冲突
-		// 在VS2022编译里管用，clion 的 mingw里管用，clion的Vs构建不需要这个判断
-#if defined(USE_VS_TOOLCHAIN)
 		if (lplvcd->dwItemType != 2)
 		{
 			return CDRF_NOTIFYITEMDRAW;
 		}
-
-#elif defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
-		if (lplvcd->dwItemType != 2) {
-			return CDRF_NOTIFYITEMDRAW;
-		}
-#endif
+		HDC hdc = lplvcd->nmcd.hdc;
+		HWND hWnd = lplvcd->nmcd.hdr.hwndFrom;
+		RECT rcClient;
+		GetClientRect(hWnd, &rcClient);
 
 		Gdiplus::Graphics graphics(hdc);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);

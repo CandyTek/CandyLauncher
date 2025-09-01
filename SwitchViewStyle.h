@@ -3,6 +3,7 @@
 #include <fstream> // Required for file operations
 #include <commctrl.h> // For ListView controls
 #include <gdiplus.h> // For anti-aliased drawing
+#include "SwitchInfo.hpp"
 
 #pragma comment(lib, "gdiplus.lib")
 

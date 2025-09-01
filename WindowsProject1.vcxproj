@@ -198,6 +198,7 @@
     <ClInclude Include="AppTools.hpp" />
     <ClInclude Include="DataKeeper.hpp" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="HotkeyEditView.h" />
     <ClInclude Include="ListedRunnerPlugin.h" />
     <ClInclude Include="ListViewManager.h" />
     <ClInclude Include="MainTools.hpp" />

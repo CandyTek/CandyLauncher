@@ -110,6 +110,13 @@
 			"defValue": true
 		},
 		{
+			"key": "pref_hotkey_show_setting",
+			"title": "显示软件设置界面",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
+		},
+		{
 			"key": "pref_run_item_as_admin",
 			"title": "以管理员身份运行项目",
 			"type": "bool",
@@ -166,7 +173,7 @@
 				"null"
 			],
 			"subPage": "feature",
-			"defValue": "allow_drag_file"
+			"defValue": "close_immediate"
 		},
 		{
 			"key": "pref_window_popup_position",
@@ -352,6 +359,13 @@
 			"defValue": true
 		},
 		{
+			"key": "pref_use_everything_sdk_index",
+			"title": "使用第三方 Everything 来建立索引",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": true
+		},
+		{
 			"key": "pref_indexed_uwp_apps_enable",
 			"title": "索引UWP应用",
 			"type": "bool",
@@ -359,7 +373,7 @@
 			"defValue": true
 		},
 		{
-			"key": "pref_indexed_regist_apps",
+			"key": "pref_indexed_regedit_apps",
 			"title": "索引注册表中注册的应用",
 			"type": "bool",
 			"subPage": "index",
@@ -434,6 +448,17 @@
 			"type": "button",
 			"subPage": "other",
 			"defValue": "restore_settings"
+		},
+		{
+			"key": "pref_skin",
+			"title": "选择皮肤",
+			"type": "list",
+			"subPage": "skin",
+			"entries": [
+			],
+			"entryValues": [
+			],
+			"defValue": "normal"
 		}
 	]
 }

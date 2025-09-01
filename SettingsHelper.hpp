@@ -2,6 +2,7 @@
 
 #include <fstream> // Required for file operations
 #include <commctrl.h> // For ListView controls
+#include <filesystem>
 
 #include "BaseTools.hpp"
 #include "Resource.h"
@@ -11,14 +12,35 @@
 #include "IndexedManager.hpp"
 #include "SwitchView.h"
 #include "PinyinHelper.h"
+#include "TraverseFilesHelper.hpp"
+
 
 // Global button list
 
+// Shared variables for skin settings
+inline std::vector<std::wstring> g_skinFilePaths;
+inline size_t g_prefSkinIndex;
 
 
+static std::vector<std::wstring> FindSkinFiles() {
+	std::vector<std::wstring> skinFiles;
+	TraverseOptions options;
+	options.folder = EXE_FOLDER_PATH;
+	options.recursive = true;
+	options.extensions = {L".json"};
+
+	TraverseFiles(EXE_FOLDER_PATH, options, [&](const std::wstring &name, const std::wstring &fullPath,
+												const std::wstring &parent, const std::wstring &ext) {
+		if (MyStartsWith(name, L"skin_")) {
+			skinFiles.push_back(fullPath);
+		}
+	});
+
+	return skinFiles;
+}
 
 
-static bool to_bool(const nlohmann::json& v) {
+static bool to_bool(const nlohmann::json &v) {
 	if (v.is_boolean()) return v.get<bool>();
 	if (v.is_number_integer()) return v.get<int>() != 0;          // 兼容 0/1
 	if (v.is_string()) {
@@ -29,24 +51,24 @@ static bool to_bool(const nlohmann::json& v) {
 	throw std::runtime_error("not a boolean-like value");
 }
 
-inline void setSettingItemValue(SettingItem& item){
+inline void setSettingItemValue(SettingItem &item) {
 	if (item.type == "string" || item.type == "hotkeystring" || item.type == "list") {
 		item.stringValue = item.defValue.get<std::string>();
-	}else if(item.type == "long"){
+	} else if (item.type == "long") {
 		item.intValue = item.defValue.get<int64_t>();
-//		ShowErrorMsgBox(L""+std::to_wstring(std::get<int64_t>(item.value)));
-	}else if(item.type == "bool"){
+		//		ShowErrorMsgBox(L""+std::to_wstring(std::get<int64_t>(item.value)));
+	} else if (item.type == "bool") {
 		item.boolValue = to_bool(item.defValue);
-		
-//		ShowErrorMsgBox(L""+std::to_wstring(item.boolValue));
-	}else if(item.type == "double"){
+
+		//		ShowErrorMsgBox(L""+std::to_wstring(item.boolValue));
+	} else if (item.type == "double") {
 		item.doubleValue = item.defValue.get<double>();
 	}
 }
 
 
-
 inline std::vector<SettingItem> ParseConfig(const std::string &configStr) {
+	// 不用做错误处理，这个基础设置json一定是好的
 	nlohmann::json j = nlohmann::json::parse(configStr);
 	std::vector<SettingItem> settings;
 
@@ -60,14 +82,10 @@ inline std::vector<SettingItem> ParseConfig(const std::string &configStr) {
 		// 如果存在 entries，就解析；否则设为空
 		if (item.contains("entries")) {
 			setting.entries = item["entries"].get<std::vector<std::string>>();
-		} else {
-			setting.entries = {};
 		}
 
 		if (item.contains("entryValues")) {
 			setting.entryValues = item["entryValues"].get<std::vector<std::string>>();
-		} else {
-			setting.entryValues = {};
 		}
 
 		setting.defValue = item["defValue"]; // 保持原始 JSON 类型，灵活性更高
@@ -124,7 +142,7 @@ static std::string GetSettingsJsonText()
  * Returns an empty json object if the file doesn't exist or is invalid.
  */
 static nlohmann::json loadUserConfig(const std::string &filename = "user_settings.json") {
-	std::string f=ReadUtf8File(filename);
+	std::string f = ReadUtf8File(filename);
 	nlohmann::json userConfig;
 	try {
 		// Parse the file content into the JSON object.
@@ -150,8 +168,8 @@ static void LoadSettingsMap() {
 
 
 static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std::vector<SettingItem> &settings2,
-					   const std::vector<std::vector<HWND>> &hCtrlsByTab,
-					   const std::string &filename = "user_settings.json") {
+                       const std::vector<std::vector<HWND>> &hCtrlsByTab,
+                       const std::string &filename = "user_settings.json") {
 	// The final JSON object will be a simple key-value map.
 	nlohmann::json newConfig;
 
@@ -244,7 +262,7 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std
 			ctrlIdx += 2;
 		}
 	}
-
+	
 	// Convert the JSON object to a formatted string
 	std::string newSettingsText = newConfig.dump(4);
 
@@ -298,37 +316,33 @@ static void initGlobalVariable() {
 }
 
 static void LoadSettingList() {
-	const std::string settingsText = GetSettingsJsonText();
-	try {
-		g_settings2 = ParseConfig(settingsText);
+    const std::string settingsText = GetSettingsJsonText();
+    try {
+        g_settings2 = ParseConfig(settingsText);
 	}
 	catch (...) {
-		ShowErrorMsgBox(L"解析基础设置项失败！");
-		ExitProcess(1);
+		ShowErrorMsgBox(L"解析用户配置失败，使用默认的设置运行程序！");
+		g_settings2 = {};
 	}
 	nlohmann::json userConfig = loadUserConfig();
-	// 将用户设置合并到主要设置结构中。此此更新在UI构建之前更新每个项目的“ defvalue”。
-	if (!userConfig.is_null() && !userConfig.empty()) {
-		for (auto &setting: g_settings2) {
-			if (userConfig.contains(setting.key)) {
-				// 该键存在一个保存的值。用用户的值将设置的默认值置换。Nlohmann:: JSON库自动处理类型转换。
-				setting.defValue = userConfig[setting.key];
-				if(setting.defValue.is_boolean()){
-//					ShowErrorMsgBox(L""+std::to_wstring(setting.defValue.get<bool>()));
+	if (!g_settings2.empty()) {
+		// 将用户设置合并到主要设置结构中。此此更新在UI构建之前更新每个项目的“ defvalue”。
+		if (!userConfig.is_null() && !userConfig.empty()) {
+			for (auto &setting: g_settings2) {
+				if (userConfig.contains(setting.key)) {
+					// 该键存在一个保存的值。用用户的值将设置的默认值置换。Nlohmann:: JSON库自动处理类型转换。
+					setting.defValue = userConfig[setting.key];
+					try {
+						setSettingItemValue(setting);
+					} catch (...) {
 
-				}else if(setting.defValue.is_number_integer()) {
-//					ShowErrorMsgBox(L""+std::to_wstring(setting.defValue.get<int>()));
-				}
-				try
-				{
-					setSettingItemValue(setting);
-				} catch (...) {
-
+					}
 				}
 			}
 		}
 	}
 	LoadSettingsMap();
+	
 	initGlobalVariable();
 	const std::string pref_pinyin_mode = g_settings_map["pref_pinyin_mode"].stringValue;
 	PinyinHelper::changePinyinType(pref_pinyin_mode);
@@ -412,7 +426,6 @@ static void applySettings(HWND hwnd, const std::vector<std::wstring> &subPages,
 }
 
 
-
 static void handleButtonAction(HWND hwnd, const std::string &key) {
 	if (key == "pref_open_config_folder") {
 		// Open the configuration folder
@@ -461,3 +474,4 @@ static void handleButtonAction(HWND hwnd, const std::string &key) {
 		}
 	}
 }
+
