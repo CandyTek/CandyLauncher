@@ -17,6 +17,20 @@ skin
 
 主面板：
 
+
+
+网络搜索
+书签搜索
+历史搜索
+代码搜索
+检查已打开的窗口
+
+
+
+
+
+////////////////////////////////////////////////////////////
+
 皮肤：
 E:\Github\WPFNinePatch\NinePatchTest\Examples\heartsframe.9.png
 I:\AndroidSdk\platforms\android-33\data\res\drawable-xhdpi\settings_header_raw.9.png
@@ -75,7 +89,7 @@ I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\btn_default_pressed_
 小细节，编辑框 paint重绘，再次显示界面时 选中词语背景有点问题
 完善预设runner.json 也在桌面找应用
 暴力测试各种设置项
-添加，语言国际化e
+添加，语言国际化
 allow_drag_file
 
 
@@ -1684,4 +1698,341 @@ g_currectSkinFilePath = utf8_to_wide(skin_path_str);
 }
 } else {
 g_currectSkinFilePath = DEFAULT_SKIN_PATH;
+}
+
+
+	RunCommandAction(
+			const std::wstring &justName,
+			const std::wstring &targetFilePath,
+			const std::wstring &subTitle,
+			const bool isUwpItem = false,
+			const bool admin = false,
+			const std::wstring &workingDir = L"",
+			std::wstring args = L"")
+			: IsUwpItem(isUwpItem),
+			  RunCommand(PinyinHelper::GetPinyinLongStr(MyToLower(justName))),
+			  targetFilePath(targetFilePath),
+			  defaultAsAdmin(admin), // 用拼音转换工具时替换
+			  workingDirectory(workingDir.empty() ? GetDirectory(targetFilePath) : workingDir),
+			  arguments(std::move(args)) {
+		SetTitle(justName);
+		SetSubtitle(subTitle);
+		SetExecutable(true);
+	}
+
+
+	//std::wstringstream ss;
+	//if (std::isnan(result)) {
+	//	ss << L"错误: 无法解析表达式";
+	//} else {
+	//	ss << L"结果: " << std::setprecision(std::numeric_limits<double>::digits10) << result;
+	//}
+	//calcResult->SetSubtitle(ss.str());
+
+
+
+
+struct BGRA { BYTE b, g, r, a; };
+
+static bool HasAnyNonZeroAlpha(const BGRA* p, int count) {
+	for (int i = 0; i < count; ++i)
+		if (p[i].a != 0) return true;
+	return false;
+}
+
+inline HBITMAP LoadIconAsBitmapWithAlpha(HINSTANCE hInst, int nResID, int cx, int cy)
+{
+	// 1) 载入图标（按需缩放到 cx, cy）
+	HICON hIcon = (HICON)LoadImageW(
+			hInst,
+			MAKEINTRESOURCEW(nResID),
+			IMAGE_ICON,
+			cx, cy,
+			LR_DEFAULTCOLOR
+	);
+	if (!hIcon) return nullptr;
+
+	ICONINFO ii{};
+	if (!GetIconInfo(hIcon, &ii)) {
+		DestroyIcon(hIcon);
+		return nullptr;
+	}
+
+	// 2) 查询颜色位图/掩码位图信息
+	BITMAP bmColor{}, bmMask{};
+	if (ii.hbmColor) GetObject(ii.hbmColor, sizeof(bmColor), &bmColor);
+	if (ii.hbmMask)  GetObject(ii.hbmMask,  sizeof(bmMask),  &bmMask);
+
+	// 3) 创建目标 32bpp top-down DIB section
+	BITMAPINFO bi{};
+	bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth       = cx;
+	bi.bmiHeader.biHeight      = -cy;            // top-down
+	bi.bmiHeader.biPlanes      = 1;
+	bi.bmiHeader.biBitCount    = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	void* pvBits = nullptr;
+	HDC hDC = GetDC(nullptr);
+	HBITMAP hDst = CreateDIBSection(hDC, &bi, DIB_RGB_COLORS, &pvBits, nullptr, 0);
+	if (!hDst) {
+		ReleaseDC(nullptr, hDC);
+		if (ii.hbmColor) DeleteObject(ii.hbmColor);
+		if (ii.hbmMask)  DeleteObject(ii.hbmMask);
+		DestroyIcon(hIcon);
+		return nullptr;
+	}
+	BGRA* dst = static_cast<BGRA*>(pvBits);
+
+	// 4) 优先从 32bpp 的颜色位图直接拷贝（带真实 alpha）
+	bool composedWithMask = false;
+	if (ii.hbmColor && bmColor.bmBitsPixel == 32) {
+		// 用 GetDIBits 把颜色位图读成 32bpp（保持 top-down）
+		BITMAPINFO biSrc{};
+		biSrc.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+		biSrc.bmiHeader.biWidth       = cx;
+		biSrc.bmiHeader.biHeight      = -cy;      // top-down
+		biSrc.bmiHeader.biPlanes      = 1;
+		biSrc.bmiHeader.biBitCount    = 32;
+		biSrc.bmiHeader.biCompression = BI_RGB;
+
+		// 直接写到目标 DIB 的 buffer
+		if (GetDIBits(hDC, ii.hbmColor, 0, cy, dst, &biSrc, DIB_RGB_COLORS) == cy) {
+			// 有些图标（罕见）alpha 可能全 0，这时尝试用 mask 兜底
+			if (!HasAnyNonZeroAlpha(dst, cx * cy) && ii.hbmMask) {
+				composedWithMask = true;
+			}
+		} else {
+			// 读取失败，走掩码合成路径
+			composedWithMask = true;
+		}
+	} else {
+		// 非 32bpp 颜色位图，走掩码合成路径
+		composedWithMask = true;
+	}
+
+	if (composedWithMask) {
+		// 5) 掩码合成路径：从颜色位图读色，从掩码生成 0/255 alpha，并做预乘
+		// 5.1 先把颜色读出来（若没有颜色位图，退化为先画到临时 32bpp DIB 再读）
+		std::vector<BGRA> color(cx * cy);
+		bool colorOK = false;
+
+		if (ii.hbmColor) {
+			BITMAPINFO biCol{};
+			biCol.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+			biCol.bmiHeader.biWidth       = cx;
+			biCol.bmiHeader.biHeight      = -cy;
+			biCol.bmiHeader.biPlanes      = 1;
+			biCol.bmiHeader.biBitCount    = 32;   // 读成 32 位，便于处理
+			biCol.bmiHeader.biCompression = BI_RGB;
+
+			colorOK = (GetDIBits(hDC, ii.hbmColor, 0, cy, color.data(), &biCol, DIB_RGB_COLORS) == cy);
+		}
+
+		if (!colorOK) {
+			// 没有颜色位图（极老的图标）或读取失败——用 GDI 把图标画到临时 32bpp DIB 再取色
+			void* tmpBits = nullptr;
+			HBITMAP hTmp = CreateDIBSection(hDC, &bi, DIB_RGB_COLORS, &tmpBits, nullptr, 0);
+			if (hTmp) {
+				HDC hMem = CreateCompatibleDC(hDC);
+				HGDIOBJ old = SelectObject(hMem, hTmp);
+				// 先清零背景
+				GdiFlush();
+				RECT rc{0,0,cx,cy};
+				HBRUSH hb = (HBRUSH)GetStockObject(BLACK_BRUSH);
+				FillRect(hMem, &rc, hb);
+				DrawIconEx(hMem, 0, 0, hIcon, cx, cy, 0, nullptr, DI_NORMAL);
+				GdiFlush();
+				// 把像素拷出来
+				memcpy(color.data(), tmpBits, cx * cy * sizeof(BGRA));
+				SelectObject(hMem, old);
+				DeleteDC(hMem);
+				DeleteObject(hTmp);
+				colorOK = true;
+			}
+		}
+
+		// 5.2 读 AND 掩码（1bpp）。注意：当存在 hbmColor 时，mask 高度通常等于图标高度；
+		// 若没有颜色位图，某些历史格式的 mask 高度可能是 2*cy（AND+XOR），此处仅取上半部分。
+		std::vector<BYTE> maskBits(((cx + 31) / 32) * 4 * cy); // 每行按 32 位对齐
+		bool maskOK = false;
+		if (ii.hbmMask) {
+			int maskH = std::min((int)(bmMask.bmHeight), cy); // 只取需要的部分
+			BITMAPINFO biMask{};
+			biMask.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+			biMask.bmiHeader.biWidth       = cx;
+			biMask.bmiHeader.biHeight      = -maskH;   // top-down
+			biMask.bmiHeader.biPlanes      = 1;
+			biMask.bmiHeader.biBitCount    = 1;        // 1bpp
+			biMask.bmiHeader.biCompression = BI_RGB;
+
+			maskOK = (GetDIBits(hDC, ii.hbmMask, 0, maskH, maskBits.data(), &biMask, DIB_RGB_COLORS) == maskH);
+		}
+
+		// 5.3 生成 dst：alpha = (~mask)*255。如果没有 mask，就把非纯黑像素视为不透明（兜底）。
+		const int stride1bpp = ((cx + 31) / 32) * 4; // 1bpp 每行字节数
+		for (int y = 0; y < cy; ++y) {
+			for (int x = 0; x < cx; ++x) {
+				BGRA c = colorOK ? color[y * cx + x] : BGRA{0,0,0,0};
+				BYTE a;
+				if (maskOK) {
+					BYTE bit = (maskBits[y * stride1bpp + (x >> 3)] >> (7 - (x & 7))) & 1;
+					// AND mask: 1 = 透明，0 = 不透明
+					a = bit ? 0 : 255;
+				} else {
+					// 没有 mask：把非黑像素当作不透明（粗略兜底）
+					a = (c.r | c.g | c.b) ? 255 : 0;
+				}
+
+				// 预乘
+				c.r = (BYTE)((c.r * a + 127) / 255);
+				c.g = (BYTE)((c.g * a + 127) / 255);
+				c.b = (BYTE)((c.b * a + 127) / 255);
+				c.a = a;
+				dst[y * cx + x] = c;
+			}
+		}
+	} else {
+		// 6) 我们已经从 32bpp 颜色图直接拿到了 alpha。确保是预乘（多数系统图标本来就是预乘）。
+		// 若你担心来源不是预乘，可遍历一次做预乘，这里通常不必。
+	}
+
+	// 清理 GDI 资源
+	ReleaseDC(nullptr, hDC);
+	if (ii.hbmColor) DeleteObject(ii.hbmColor);
+	if (ii.hbmMask)  DeleteObject(ii.hbmMask);
+	DestroyIcon(hIcon);
+
+	return hDst;
+}
+
+
+#include <windows.h>
+#include <vector>
+#include <algorithm>
+
+// BGRA 结构体定义保持不变
+
+// 新的、简化的实现
+inline HBITMAP LoadIconAsBitmapWithAlpha2(HINSTANCE hInst, int nResID, int cx, int cy)
+{
+	// 1) 载入图标资源，尺寸按需缩放
+	HICON hIcon = (HICON)LoadImageW(
+			hInst,
+			MAKEINTRESOURCEW(nResID),
+			IMAGE_ICON,
+			cx, cy,
+			LR_DEFAULTCOLOR
+	);
+	if (!hIcon) {
+		return nullptr;
+	}
+
+	// 2) 创建一个 32bpp top-down 的 DIB Section 作为目标画布
+	BITMAPINFO bi{};
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = cx;
+	bi.bmiHeader.biHeight = -cy; // top-down 格式，原点在左上角
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	// CreateDIBSection 会将内存区域初始化为 0，这正好代表“预乘alpha下的纯透明黑色”
+	void* pvBits = nullptr;
+	HBITMAP hBitmap = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &pvBits, nullptr, 0);
+
+	if (!hBitmap) {
+		DestroyIcon(hIcon);
+		return nullptr;
+	}
+
+	// 3) 创建一个内存设备上下文（Memory DC），并将我们的 DIB Section 选入其中
+	HDC hMemDC = CreateCompatibleDC(nullptr);
+	if (!hMemDC) {
+		DeleteObject(hBitmap);
+		DestroyIcon(hIcon);
+		return nullptr;
+	}
+	HGDIOBJ hOldBitmap = SelectObject(hMemDC, hBitmap);
+
+	// 4) 直接将图标绘制到我们的 DIB Section 上。
+	// GDI 的 DrawIconEx 函数会自动处理所有透明度细节（Alpha通道或Mask），
+	// 并将结果以 pre-multiplied alpha 格式正确写入到 32-bpp 的目标位图中。
+	if (!DrawIconEx(hMemDC, 0, 0, hIcon, cx, cy, 0, nullptr, DI_NORMAL)) {
+		// 如果绘制失败，清理资源并返回
+		SelectObject(hMemDC, hOldBitmap);
+		DeleteDC(hMemDC);
+		DeleteObject(hBitmap);
+		DestroyIcon(hIcon);
+		return nullptr;
+	}
+
+	// 5) 清理资源
+	SelectObject(hMemDC, hOldBitmap);
+	DeleteDC(hMemDC);
+	DestroyIcon(hIcon); // 图标句柄已不再需要
+
+	// hBitmap 现在就包含了带 Alpha 通道的图标图像
+	return hBitmap;
+}
+
+	// 用于皮肤测试
+	//RegisterHotkeyFromString(g_mainHwnd, "xx(1)(81)", HOTKEY_ID_REFRESH_SKIN);
+
+	// 加载富文本专用
+	// LoadLibrary(L"Msftedit.dll");
+
+	// 启动监听线程 用于皮肤测试
+	// std::thread watcfeherThread(watchSkinFile);
+	//std::thread(watchSkinFile).detach();
+
+//std::unordered_map<std::string, std::function<void(void)>, std::hash<std::string>, std::equal_to<std::string>, std::allocator<std::pair<const std::string, std::function<void(void)>>>> getAppLaunchActionCallBacks(){
+
+
+// 三种透明方法，高斯模糊方法
+	// EnableBlur(hWnd);
+	// EnableBlur2(ListViewManager::hListView);
+	// EnableBlur2(hEdit);
+
+	// MARGINS margins={-1};
+	// DwmExtendFrameIntoClientArea(s_mainHwnd,&margins);
+	// DwmExtendFrameIntoClientArea(ListViewManager::hListView,&margins);
+	// DwmExtendFrameIntoClientArea(hEdit,&margins);
+
+	DWM_BLURBEHIND db{};
+	db.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
+	db.hRgnBlur = CreateRectRgn(0, 0, -1, -1);
+	db.fEnable = TRUE;
+	DwmEnableBlurBehindWindow(g_mainHwnd, &db);
+
+
+					//case HOTKEY_ID_REFRESH_SKIN: {
+					//	refreshSkin(g_listViewHwnd);
+					//}
+					//	return 0;
+
+static std::vector<std::shared_ptr<RunCommandAction>> Search(const std::wstring& query)
+{
+	std::vector<std::shared_ptr<RunCommandAction>> results;
+	const std::vector<std::wstring> words = SplitWords(query);
+
+	for (const std::shared_ptr<RunCommandAction>& action : actionApps)
+	{
+		bool match = true;
+		for (const auto& word : words)
+		{
+			if (action->GetTitle().find(word) == std::wstring::npos)
+			{
+				match = false;
+				break;
+			}
+		}
+		if (match)
+		{
+			results.push_back(action);
+			if (results.size() >= 7) break;
+		}
+	}
+
+	return results;
 }

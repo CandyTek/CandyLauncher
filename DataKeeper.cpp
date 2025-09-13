@@ -1,4 +1,5 @@
 ﻿#include "DataKeeper.hpp"
+#include "Constants.hpp"
 
 // 全局常驻变量
 HWND g_settingsHwnd = nullptr;
@@ -10,12 +11,14 @@ HINSTANCE g_hInst = nullptr;
 
 HKL g_hklIme = nullptr;
 UINT_PTR TimerIDSetFocusEdit = 0;
+ULONGLONG APP_STARTUP_TIME = 0;
 
 HotkeyMap g_hotkeyMap = {};
 std::vector<SettingItem> g_settings2 = {};
 std::unordered_map<std::string, SettingItem> g_settings_map = {};
 std::wstring EXE_FOLDER_PATH = GetExecutableFolder();
 std::wstring RUNNER_CONFIG_PATH = EXE_FOLDER_PATH + L"\\runner.json";
+std::wstring USER_SETTINGS_PATH = EXE_FOLDER_PATH + L"\\user_settings.json";
 std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
 std::string pref_hotkey_toggle_main_panel;

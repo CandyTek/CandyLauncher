@@ -147,7 +147,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(ProjectDir)3rdparty\EverythingSDK\lib\Everything64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(ProjectDir)3rdparty\EverythingSDK\lib\Everything64.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)3rdparty\EverythingSDK\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <Manifest>
@@ -180,7 +180,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(ProjectDir)3rdparty\EverythingSDK\lib\Everything64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(ProjectDir)3rdparty\EverythingSDK\lib\Everything64.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)3rdparty\EverythingSDK\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <Manifest>
@@ -196,6 +196,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AppTools.hpp" />
+    <ClInclude Include="Constants.hpp" />
     <ClInclude Include="DataKeeper.hpp" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="HotkeyEditView.h" />
@@ -213,6 +214,7 @@
     <ClInclude Include="WindowsProject1.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AppTools.cpp" />
     <ClCompile Include="DataKeeper.cpp" />
     <ClCompile Include="ListedRunnerPlugin.cpp" />
     <ClCompile Include="ListViewManager.cpp" />

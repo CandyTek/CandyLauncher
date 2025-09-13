@@ -63,6 +63,9 @@
     <ClInclude Include="HotkeyEditView.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Constants.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="WindowsProject1.cpp">
@@ -81,6 +84,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="PinyinHelper.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="AppTools.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

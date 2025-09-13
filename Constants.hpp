@@ -3,6 +3,11 @@
 #include <string>
 #include <unordered_set>
 
+constexpr bool needOpenDebugCmd = false;
+constexpr bool needOpenShell32IconViewer = false;
+constexpr bool needOpenIndexedManager = false;
+constexpr bool needOpenSettingWindow = false;
+
 #define WM_EDIT_CONTROL_HOTKEY (WM_USER + 100)
 #define WM_EDIT_OPEN_PATH (WM_USER + 101)
 #define WM_EDIT_OPEN_TARGET_PATH (WM_USER + 102)

@@ -1,0 +1,3220 @@
+﻿写一个详细的TODO，任务是设计一个不错的 plugin 系统，我的程序是以c++编写的，别人编写插件的时候应该也使用c++，可以把制作好的dll插件和我的程序放在一起，这样我的程序就能直接加载，我有一个较完善的设置系统，是以 @settings.json 配置的，可以比较方便的实现配置项功能；第三方插件可以复用我的设置系统，我的程序把读取它的json配置，在程序里设置窗口插件子页面里展示。
+插件加载的条目可以设计在几个地方：1,程序启动时统一索引所有插件的条目;2,程序显示主界面时后台更新条目;3,当监听某个文件夹的某文件更改时;4,当用户输入字符时,动态生成;5,程序可以设置一个指定的消息,等待插件随时发起,此时立刻更新索引;6,参考别人的插件系统还会有什么样的方式。或者是以上的情况其实我都没有必要暴露实现,别人已经是dll了，它也有权限有线程可以更改我的 allActions 列表？
+  ⎿ Read settings.json (493 lines)
+
+✻ Thinking…
+
+  用户询问如何设计一个C++ DLL插件系统，用于他们的CandyLauncher项目。让我仔细分析需求：
+
+  1. 用户有一个C++写的程序（CandyLauncher）
+  2. 想要别人能写C++ DLL插件
+  3. 有现成的设置系统基于settings.json
+  4. 想让插件也能利用这个设置系统
+  5. 插件需要能添加可搜索的条目到主列表
+  6. 考虑了多种插件加载时机
+  7. 对于插件直接操作allActions列表有疑问
+
+  从我读取的settings.json文件可以看出，这是一个功能丰富的启动器应用，有完善的配置系统。用户想要设计插件系统来扩展功能。
+
+  我需要创建一个详细的TODO来帮助用户设计这个插件系统。这需要考虑：
+  - 插件接口设计
+  - 安全性
+  - 配置集成
+  - 生命周期管理
+  - 数据交互
+  - 插件发现和加载
+  - 错误处理
+
+  这是一个复杂的任务，需要用TodoWrite工具来规划。
+
+● 我来帮你设计一个详细的C++ DLL插件系统TODO。这是一个相当复杂的架构设计任务，让我先用TodoWrite工具创建一个详细的计划。
+
+✻ Thinking…
+
+  现在我需要将第一个todo标记为in_progress，并开始详细设计插件接口和基础架构。让我先分析用户的需求和现有代码结构，然后提供详细的设计方案。
+
+  从用户的描述和我看到的settings.json文件，可以了解到：
+  1. 这是一个CandyLauncher项目
+  2. 有完善的设置系统基于JSON
+  3. 有allActions列表来管理可搜索的条目
+  4. 用户考虑了多种插件加载时机
+
+  我需要为每个TODO项目提供详细的设计说明。
+
+✻ Thinking…
+
+  现在我正在处理第一个任务：设计插件接口和基础架构。我需要基于用户的需求和现有的CandyLauncher架构来设计一个完整的插件系统。
+
+  从用户的描述中，我了解到：
+  1. 程序有allActions列表来管理可搜索条目
+  2. 有完善的settings.json配置系统
+  3. 希望插件能复用设置系统
+  4. 考虑了多种插件加载时机
+  5. 对插件直接操作allActions列表的安全性有疑问
+
+  我应该设计一个安全、灵活且易于使用的插件接口。让我开始设计：
+
+● 1. 插件接口和基础架构设计
+
+  核心接口定义 (IPlugin.h)
+
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <memory>
+  #include <functional>
+
+  // 插件条目结构
+  struct PluginActionItem {
+      std::string id;           // 唯一标识符
+      std::string title;        // 显示标题
+      std::string subtitle;     // 副标题
+      std::string iconPath;     // 图标路径
+      std::string category;     // 分类
+      int priority = 0;         // 优先级
+      bool enabled = true;      // 是否启用
+      std::string metadata;     // 元数据JSON字符串
+  };
+
+  // 插件回调接口
+  class IPluginHost {
+  public:
+      virtual ~IPluginHost() = default;
+
+      // 条目管理
+      virtual bool AddActionItem(const PluginActionItem& item) = 0;
+      virtual bool RemoveActionItem(const std::string& itemId) = 0;
+      virtual bool UpdateActionItem(const PluginActionItem& item) = 0;
+      virtual void RefreshIndex() = 0;
+
+      // 配置管理
+      virtual std::string GetPluginConfig(const std::string& key) = 0;
+      virtual bool SetPluginConfig(const std::string& key, const std::string& value) = 0;
+      virtual std::string GetMainConfig(const std::string& key) = 0;
+
+      // 消息传递
+      virtual void SendMessage(const std::string& message, const std::string& data = "") = 0;
+
+      // UI交互
+      virtual void ShowNotification(const std::string& title, const std::string& message) = 0;
+      virtual bool ShowDialog(const std::string& title, const std::string& message) = 0;
+  };
+
+  // 插件主接口
+  class IPlugin {
+  public:
+      virtual ~IPlugin() = default;
+
+      // 基础信息
+      virtual std::string GetName() const = 0;
+      virtual std::string GetVersion() const = 0;
+      virtual std::string GetDescription() const = 0;
+      virtual std::string GetAuthor() const = 0;
+
+      // 生命周期
+      virtual bool Initialize(IPluginHost* host) = 0;
+      virtual void Shutdown() = 0;
+
+      // 事件响应
+      virtual void OnUserInput(const std::string& input) {}
+      virtual void OnActionExecute(const std::string& actionId) {}
+      virtual void OnMessage(const std::string& message, const std::string& data) {}
+      virtual void OnConfigChanged(const std::string& key, const std::string& value) {}
+
+      // 索引更新时机
+      virtual void OnStartup() {}           // 程序启动时
+      virtual void OnUIShow() {}            // 主界面显示时
+      virtual void OnFileChanged(const std::string& filePath) {}  // 文件变化时
+      virtual void OnTimerTick() {}         // 定时器触发
+      virtual void OnCustomTrigger(const std::string& trigger) {} // 自定义触发
+  };
+
+  // 导出函数定义
+  #define PLUGIN_EXPORT extern "C" __declspec(dllexport)
+
+  typedef IPlugin* (*CreatePluginFunc)();
+  typedef void (*DestroyPluginFunc)(IPlugin*);
+  typedef const char* (*GetPluginApiVersionFunc)();
+
+  插件管理器设计 (PluginManager.h)
+
+  #pragma once
+  #include "IPlugin.h"
+  #include <map>
+  #include <memory>
+  #include <mutex>
+
+  class PluginManager : public IPluginHost {
+  private:
+      struct PluginInfo {
+          HMODULE handle;
+          std::unique_ptr<IPlugin> plugin;
+          std::string configFile;
+          std::vector<PluginActionItem> items;
+          bool enabled;
+      };
+
+      std::map<std::string, PluginInfo> m_plugins;
+      std::mutex m_mutex;
+
+      // 配置管理
+      std::map<std::string, std::map<std::string, std::string>> m_pluginConfigs;
+
+      // 回调函数
+      std::function<void()> m_refreshCallback;
+
+  public:
+      // 插件生命周期
+      bool LoadPlugin(const std::string& dllPath);
+      bool UnloadPlugin(const std::string& pluginName);
+      void LoadAllPlugins(const std::string& pluginDir);
+      void UnloadAllPlugins();
+
+      // IPluginHost接口实现
+      bool AddActionItem(const PluginActionItem& item) override;
+      bool RemoveActionItem(const std::string& itemId) override;
+      bool UpdateActionItem(const PluginActionItem& item) override;
+      void RefreshIndex() override;
+
+      std::string GetPluginConfig(const std::string& key) override;
+      bool SetPluginConfig(const std::string& key, const std::string& value) override;
+      std::string GetMainConfig(const std::string& key) override;
+
+      void SendMessage(const std::string& message, const std::string& data) override;
+      void ShowNotification(const std::string& title, const std::string& message) override;
+      bool ShowDialog(const std::string& title, const std::string& message) override;
+
+      // 事件分发
+      void DispatchUserInput(const std::string& input);
+      void DispatchActionExecute(const std::string& actionId);
+      void DispatchMessage(const std::string& message, const std::string& data);
+      void DispatchConfigChanged(const std::string& key, const std::string& value);
+
+      // 触发器
+      void TriggerStartup();
+      void TriggerUIShow();
+      void TriggerFileChanged(const std::string& filePath);
+      void TriggerTimer();
+      void TriggerCustom(const std::string& trigger);
+
+      // 配置
+      void SetRefreshCallback(std::function<void()> callback) { m_refreshCallback = callback; }
+
+      // 插件信息
+      std::vector<std::string> GetLoadedPlugins() const;
+      bool IsPluginLoaded(const std::string& name) const;
+      std::vector<PluginActionItem> GetAllPluginItems() const;
+  };
+
+✻ Thinking…
+
+  现在我完成了第一个任务，开始第二个任务：定义插件生命周期管理系统。我需要设计一个完整的插件生命周期管理方案，包括加载、初始化、运行、卸载等各个阶段。
+
+● 2. 插件生命周期管理系统
+
+  生命周期状态定义
+
+  enum class PluginState {
+      Unloaded,       // 未加载
+      Loading,        // 加载中
+      Loaded,         // 已加载DLL
+      Initializing,   // 初始化中
+      Running,        // 运行中
+      Suspended,      // 暂停
+      Shutting_Down,  // 关闭中
+      Error           // 错误状态
+  };
+
+  struct PluginLifecycle {
+      PluginState state = PluginState::Unloaded;
+      std::string errorMessage;
+      std::chrono::steady_clock::time_point loadTime;
+      std::chrono::steady_clock::time_point lastActivity;
+      uint32_t crashCount = 0;
+      bool autoRestart = true;
+      std::thread::id owningThread;
+  };
+
+  生命周期管理器
+
+  class PluginLifecycleManager {
+  private:
+      std::map<std::string, PluginLifecycle> m_lifecycles;
+      std::mutex m_lifecycleMutex;
+      std::atomic<bool> m_shutdownRequested{false};
+      std::thread m_monitorThread;
+
+      // 监控配置
+      std::chrono::seconds m_healthCheckInterval{30};
+      uint32_t m_maxCrashCount = 3;
+      std::chrono::minutes m_maxIdleTime{60};
+
+  public:
+      // 生命周期操作
+      bool LoadPlugin(const std::string& name, const std::string& path);
+      bool InitializePlugin(const std::string& name);
+      bool StartPlugin(const std::string& name);
+      bool SuspendPlugin(const std::string& name);
+      bool ResumePlugin(const std::string& name);
+      bool ShutdownPlugin(const std::string& name);
+      bool UnloadPlugin(const std::string& name);
+
+      // 状态查询
+      PluginState GetPluginState(const std::string& name) const;
+      std::vector<std::string> GetPluginsByState(PluginState state) const;
+      bool IsPluginHealthy(const std::string& name) const;
+
+      // 错误处理
+      void ReportPluginCrash(const std::string& name, const std::string& error);
+      bool ShouldRestartPlugin(const std::string& name) const;
+      void RestartPlugin(const std::string& name);
+
+      // 监控线程
+      void StartMonitoring();
+      void StopMonitoring();
+      void HealthCheck();
+
+      // 批量操作
+      void LoadAllPlugins(const std::string& directory);
+      void ShutdownAllPlugins();
+      void RestartAllPlugins();
+  };
+
+  加载时机策略
+
+  enum class LoadTiming {
+      OnStartup,          // 程序启动时
+      OnDemand,           // 按需加载
+      OnFirstUse,         // 首次使用时
+      OnSchedule,         // 计划时间
+      OnTrigger          // 特定触发事件
+  };
+
+  struct LoadingStrategy {
+      LoadTiming timing;
+      std::string condition;      // 加载条件（如文件路径、时间等）
+      int priority = 0;           // 加载优先级
+      bool background = false;    // 是否后台加载
+      std::chrono::seconds delay{0}; // 延迟加载时间
+  };
+
+  class PluginLoadingScheduler {
+  private:
+      std::map<std::string, LoadingStrategy> m_strategies;
+      std::priority_queue<ScheduledLoad> m_loadQueue;
+      std::thread m_schedulerThread;
+
+      struct ScheduledLoad {
+          std::string pluginName;
+          std::chrono::steady_clock::time_point when;
+          int priority;
+          bool operator<(const ScheduledLoad& other) const {
+              if (when == other.when) return priority < other.priority;
+              return when > other.when; // 反向，早的优先
+          }
+      };
+
+  public:
+      void SetLoadingStrategy(const std::string& plugin, const LoadingStrategy& strategy);
+      void ScheduleLoad(const std::string& plugin);
+      void TriggerLoad(const std::string& plugin, const std::string& trigger);
+      void StartScheduler();
+      void StopScheduler();
+  };
+
+✻ Thinking…
+
+  现在我完成了第二个任务，开始第三个任务：设计插件配置集成方案。这个非常重要，因为用户希望插件能够复用他们现有的设置系统，并且插件的配置能在设置界面中显示。
+
+● 3. 插件配置集成方案
+
+  插件配置文件结构
+
+  基于你现有的 settings.json 结构，为每个插件创建独立的配置文件：
+
+  // plugins/SamplePlugin/plugin_config.json
+  {
+      "version": 1,
+      "pluginInfo": {
+          "name": "SamplePlugin",
+          "displayName": "示例插件",
+          "description": "这是一个示例插件",
+          "version": "1.0.0",
+          "author": "Plugin Author",
+          "website": "https://example.com",
+          "minAppVersion": "1.0.0"
+      },
+      "prefList": [
+          {
+              "key": "sample_enable",
+              "title": "启用示例功能",
+              "type": "bool",
+              "subPage": "plugin_sample",
+              "defValue": true
+          },
+          {
+              "key": "sample_hotkey",
+              "title": "示例快捷键",
+              "type": "hotkeystring",
+              "subPage": "plugin_sample",
+              "defValue": "Ctrl+Shift+S"
+          },
+          {
+              "key": "sample_mode",
+              "title": "工作模式",
+              "type": "list",
+              "entries": ["快速模式", "详细模式", "自定义模式"],
+              "entryValues": ["fast", "detailed", "custom"],
+              "subPage": "plugin_sample",
+              "defValue": "fast"
+          }
+      ],
+      "loadingStrategy": {
+          "timing": "OnStartup",
+          "priority": 0,
+          "background": false,
+          "delaySeconds": 0
+      }
+  }
+
+  配置管理器设计
+
+  class PluginConfigManager {
+  private:
+      // 配置存储
+      std::map<std::string, nlohmann::json> m_pluginConfigs;      // 插件默认配置
+      std::map<std::string, nlohmann::json> m_userPluginConfigs; // 用户自定义配置
+      nlohmann::json m_mainConfig;                               // 主程序配置
+
+      // 配置文件路径
+      std::string m_pluginConfigDir;
+      std::string m_userConfigFile;
+
+      // 配置监听器
+      std::map<std::string, std::vector<std::function<void(const std::string&, const std::string&)>>> m_configListeners;
+
+      // 文件监控
+      std::unique_ptr<FileWatcher> m_fileWatcher;
+
+  public:
+      // 配置文件管理
+      bool LoadPluginConfig(const std::string& pluginName, const std::string& configPath);
+      bool SavePluginConfig(const std::string& pluginName);
+      void ReloadAllConfigs();
+
+      // 配置值操作
+      std::string GetPluginConfigValue(const std::string& pluginName, const std::string& key);
+      bool SetPluginConfigValue(const std::string& pluginName, const std::string& key, const std::string& value);
+      std::string GetDefaultValue(const std::string& pluginName, const std::string& key);
+
+      // 配置结构获取
+      nlohmann::json GetPluginConfigStructure(const std::string& pluginName);
+      std::vector<std::string> GetPluginSubPages(const std::string& pluginName);
+      std::vector<nlohmann::json> GetPluginPreferences(const std::string& pluginName, const std::string& subPage);
+
+      // 主程序配置访问
+      std::string GetMainConfigValue(const std::string& key);
+      bool SetMainConfigValue(const std::string& key, const std::string& value);
+
+      // 配置监听
+      void AddConfigListener(const std::string& pluginName, std::function<void(const std::string&, const std::string&)> listener);
+      void RemoveConfigListener(const std::string& pluginName);
+
+      // 配置验证
+      bool ValidateConfigValue(const std::string& pluginName, const std::string& key, const std::string& value);
+      std::vector<std::string> GetValidationErrors(const std::string& pluginName);
+
+      // 配置导入导出
+      bool ExportPluginConfig(const std::string& pluginName, const std::string& exportPath);
+      bool ImportPluginConfig(const std::string& pluginName, const std::string& importPath);
+
+      // 配置重置
+      void ResetPluginConfig(const std::string& pluginName);
+      void ResetAllPluginConfigs();
+  };
+
+  设置界面集成
+
+  修改现有的设置窗口，增加插件配置支持：
+
+  // SettingWindow.h 扩展
+  class SettingWindow {
+  private:
+      // 新增插件相关成员
+      std::map<std::string, HWND> m_pluginSubPages;
+      std::string m_currentPluginPage;
+      PluginConfigManager* m_pluginConfigManager;
+
+      // 动态控件管理
+      std::vector<std::unique_ptr<PluginSettingControl>> m_pluginControls;
+
+  public:
+      // 插件页面管理
+      void CreatePluginSubPages();
+      void ShowPluginSubPage(const std::string& pluginName, const std::string& subPage);
+      void RefreshPluginControls(const std::string& pluginName);
+
+      // 动态控件创建
+      HWND CreatePluginBoolControl(const nlohmann::json& prefItem, HWND parent);
+      HWND CreatePluginListControl(const nlohmann::json& prefItem, HWND parent);
+      HWND CreatePluginHotkeyControl(const nlohmann::json& prefItem, HWND parent);
+      HWND CreatePluginStringControl(const nlohmann::json& prefItem, HWND parent);
+      HWND CreatePluginButtonControl(const nlohmann::json& prefItem, HWND parent);
+
+      // 插件配置事件处理
+      void OnPluginConfigChanged(const std::string& pluginName, const std::string& key, const std::string& value);
+      void OnPluginButtonClicked(const std::string& pluginName, const std::string& key);
+  };
+
+  // 抽象插件设置控件基类
+  class PluginSettingControl {
+  public:
+      virtual ~PluginSettingControl() = default;
+      virtual HWND GetHandle() const = 0;
+      virtual std::string GetValue() const = 0;
+      virtual void SetValue(const std::string& value) = 0;
+      virtual void SetEnabled(bool enabled) = 0;
+      virtual bool Validate() const = 0;
+  };
+
+  配置同步机制
+
+  class ConfigSynchronizer {
+  private:
+      PluginConfigManager* m_configManager;
+      std::map<std::string, std::chrono::steady_clock::time_point> m_lastSyncTimes;
+      std::thread m_syncThread;
+      std::atomic<bool> m_running{false};
+
+  public:
+      // 同步操作
+      void StartSync();
+      void StopSync();
+      void SyncPluginConfig(const std::string& pluginName);
+      void SyncAllConfigs();
+
+      // 冲突解决
+      enum class ConflictResolution {
+          UseDefault,     // 使用默认值
+          UseUser,        // 使用用户值
+          Prompt,         // 提示用户选择
+          Merge          // 尝试合并
+      };
+
+      void ResolveConfigConflict(const std::string& pluginName, const std::string& key,
+                                const std::string& defaultValue, const std::string& userValue,
+                                ConflictResolution resolution = ConflictResolution::Prompt);
+
+      // 配置迁移
+      void MigrateConfig(const std::string& pluginName, const std::string& oldVersion, const std::string& newVersion);
+
+      // 配置备份
+      void BackupConfigs();
+      void RestoreConfigs(const std::string& backupPath);
+  };
+
+✻ Thinking…
+
+  现在我完成了第三个任务，开始第四个任务：实现插件发现和加载机制。这是插件系统的核心部分，需要设计如何发现插件、验证插件、安全加载插件等机制。
+
+● 4. 插件发现和加载机制
+
+  插件发现系统
+
+  class PluginDiscovery {
+  public:
+      struct PluginMetadata {
+          std::string name;
+          std::string displayName;
+          std::string description;
+          std::string version;
+          std::string author;
+          std::string website;
+          std::string minAppVersion;
+          std::string dllPath;
+          std::string configPath;
+          std::string iconPath;
+          std::vector<std::string> dependencies;
+          bool trusted = false;
+          std::string signature;
+          uint64_t fileSize = 0;
+          std::string fileHash;
+          std::chrono::file_time_type lastModified;
+      };
+
+  private:
+      std::vector<std::string> m_searchPaths;
+      std::map<std::string, PluginMetadata> m_discoveredPlugins;
+      std::set<std::string> m_trustedPublishers;
+      FileWatcher m_directoryWatcher;
+
+  public:
+      // 插件发现
+      void AddSearchPath(const std::string& path);
+      void RemoveSearchPath(const std::string& path);
+      std::vector<PluginMetadata> ScanForPlugins();
+      std::vector<PluginMetadata> ScanDirectory(const std::string& directory);
+
+      // 插件验证
+      bool ValidatePlugin(const PluginMetadata& plugin);
+      bool VerifyPluginSignature(const PluginMetadata& plugin);
+      bool CheckPluginDependencies(const PluginMetadata& plugin);
+      bool CheckVersionCompatibility(const PluginMetadata& plugin);
+
+      // 插件信息提取
+      PluginMetadata ExtractPluginInfo(const std::string& dllPath);
+      std::string CalculateFileHash(const std::string& filePath);
+
+      // 自动发现
+      void StartAutoDiscovery();
+      void StopAutoDiscovery();
+      void OnDirectoryChanged(const std::string& path);
+
+      // 信任管理
+      void AddTrustedPublisher(const std::string& publisher);
+      void RemoveTrustedPublisher(const std::string& publisher);
+      bool IsTrustedPublisher(const std::string& publisher);
+
+      // 插件获取
+      std::vector<PluginMetadata> GetDiscoveredPlugins() const;
+      std::optional<PluginMetadata> GetPluginMetadata(const std::string& name) const;
+  };
+
+  安全加载器
+
+  class SecurePluginLoader {
+  public:
+      enum class LoadResult {
+          Success,
+          FileNotFound,
+          InvalidSignature,
+          UntrustedPublisher,
+          IncompatibleVersion,
+          MissingDependencies,
+          LoadError,
+          InitializationFailed,
+          SecurityViolation
+      };
+
+  private:
+      struct LoadContext {
+          std::string pluginName;
+          HMODULE moduleHandle = nullptr;
+          CreatePluginFunc createFunc = nullptr;
+          DestroyPluginFunc destroyFunc = nullptr;
+          GetPluginApiVersionFunc getVersionFunc = nullptr;
+          std::unique_ptr<IPlugin> pluginInstance;
+          std::chrono::steady_clock::time_point loadTime;
+          std::thread::id loadingThread;
+      };
+
+      std::map<std::string, LoadContext> m_loadedPlugins;
+      std::mutex m_loadMutex;
+
+      // 安全策略
+      bool m_requireSignature = true;
+      bool m_allowUntrustedPlugins = false;
+      bool m_sandboxPlugins = true;
+      std::chrono::seconds m_loadTimeout{30};
+
+  public:
+      // 加载操作
+      LoadResult LoadPlugin(const PluginMetadata& metadata);
+      LoadResult UnloadPlugin(const std::string& name);
+
+      // 安全检查
+      bool PreLoadSecurityCheck(const PluginMetadata& metadata);
+      bool PostLoadSecurityCheck(const std::string& name);
+      bool ValidatePluginAPI(const LoadContext& context);
+
+      // 沙箱管理
+      bool CreatePluginSandbox(const std::string& name);
+      bool DestroyPluginSandbox(const std::string& name);
+      bool ApplySecurityPolicy(const std::string& name);
+
+      // 依赖解析
+      std::vector<std::string> ResolveDependencies(const PluginMetadata& metadata);
+      bool LoadDependencies(const std::vector<std::string>& dependencies);
+
+      // 错误处理
+      std::string GetLastError() const;
+      void ReportSecurityViolation(const std::string& plugin, const std::string& violation);
+
+      // 配置
+      void SetSecurityPolicy(bool requireSignature, bool allowUntrusted, bool useSandbox);
+      void SetLoadTimeout(std::chrono::seconds timeout);
+
+      // 状态查询
+      bool IsPluginLoaded(const std::string& name) const;
+      std::vector<std::string> GetLoadedPlugins() const;
+      LoadContext* GetLoadContext(const std::string& name);
+  };
+
+  依赖管理系统
+
+  class PluginDependencyManager {
+  public:
+      struct Dependency {
+          std::string name;
+          std::string version;
+          std::string type;        // "plugin", "library", "system"
+          bool optional = false;
+          std::string downloadUrl;
+          std::string installPath;
+      };
+
+      struct DependencyNode {
+          std::string name;
+          std::vector<std::string> dependencies;
+          std::vector<std::string> dependents;
+          bool loaded = false;
+          int refCount = 0;
+      };
+
+  private:
+      std::map<std::string, DependencyNode> m_dependencyGraph;
+      std::map<std::string, Dependency> m_availableDependencies;
+      std::mutex m_graphMutex;
+
+  public:
+      // 依赖图管理
+      void AddDependencyNode(const std::string& plugin, const std::vector<std::string>& deps);
+      void RemoveDependencyNode(const std::string& plugin);
+      bool UpdateDependencies(const std::string& plugin, const std::vector<std::string>& newDeps);
+
+      // 依赖解析
+      std::vector<std::string> GetLoadOrder(const std::vector<std::string>& plugins);
+      std::vector<std::string> GetUnloadOrder(const std::vector<std::string>& plugins);
+      bool HasCircularDependency(const std::string& plugin);
+      std::vector<std::string> GetMissingDependencies(const std::string& plugin);
+
+      // 依赖检查
+      bool CanLoad(const std::string& plugin);
+      bool CanUnload(const std::string& plugin);
+      std::vector<std::string> GetBlockingDependents(const std::string& plugin);
+
+      // 自动解决
+      bool ResolveDependencies(const std::string& plugin);
+      bool DownloadMissingDependencies(const std::string& plugin);
+      bool InstallDependency(const Dependency& dep);
+
+      // 引用计数
+      void IncrementRefCount(const std::string& plugin);
+      void DecrementRefCount(const std::string& plugin);
+      int GetRefCount(const std::string& plugin);
+
+      // 图分析
+      std::vector<std::string> GetTopologicalSort();
+      void DetectCircularDependencies();
+      void GenerateDependencyReport();
+  };
+
+  版本兼容性管理
+
+  class VersionCompatibilityManager {
+  public:
+      struct Version {
+          int major = 0;
+          int minor = 0;
+          int patch = 0;
+          std::string prerelease;
+          std::string build;
+
+          bool operator<(const Version& other) const;
+          bool operator==(const Version& other) const;
+          bool operator>(const Version& other) const;
+          std::string ToString() const;
+          static Version Parse(const std::string& versionString);
+      };
+
+      struct CompatibilityRule {
+          std::string pluginName;
+          Version minVersion;
+          Version maxVersion;
+          std::vector<Version> incompatibleVersions;
+          std::string reason;
+      };
+
+  private:
+      Version m_appVersion;
+      std::vector<CompatibilityRule> m_compatibilityRules;
+      std::map<std::string, Version> m_pluginVersions;
+
+  public:
+      // 版本检查
+      bool IsCompatible(const std::string& pluginName, const Version& pluginVersion);
+      bool IsAPICompatible(const Version& pluginApiVersion);
+      std::string GetIncompatibilityReason(const std::string& pluginName, const Version& pluginVersion);
+
+      // 规则管理
+      void AddCompatibilityRule(const CompatibilityRule& rule);
+      void RemoveCompatibilityRule(const std::string& pluginName);
+      void UpdateCompatibilityRules(const std::string& rulesFile);
+
+      // 版本升级
+      bool CanUpgrade(const std::string& pluginName, const Version& currentVersion, const Version& newVersion);
+      std::vector<std::string> GetUpgradeWarnings(const std::string& pluginName, const Version& newVersion);
+
+      // 版本信息
+      void SetAppVersion(const Version& version);
+      Version GetAppVersion() const;
+      void RegisterPluginVersion(const std::string& name, const Version& version);
+      std::optional<Version> GetPluginVersion(const std::string& name);
+  };
+
+✻ Thinking…
+
+  现在我完成了第四个任务，开始第五个任务：设计插件与主程序的数据交互接口。这是非常重要的部分，涉及到如何安全地让插件与主程序的allActions列表交互，以及提供其他数据访问接口。
+
+● 5. 插件与主程序的数据交互接口
+
+  数据交互抽象层
+
+  // 数据访问权限定义
+  enum class DataAccessLevel {
+      ReadOnly,       // 只读访问
+      Limited,        // 有限访问（只能访问自己的数据）
+      Standard,       // 标准访问（常规操作）
+      Elevated,       // 提升访问（需要用户确认）
+      System         // 系统级访问（仅信任插件）
+  };
+
+  // 数据操作结果
+  enum class DataOperationResult {
+      Success,
+      AccessDenied,
+      InvalidData,
+      OperationFailed,
+      RateLimited,
+      SecurityViolation
+  };
+
+  // 安全的数据访问接口
+  class ISecureDataAccess {
+  public:
+      virtual ~ISecureDataAccess() = default;
+
+      // 权限检查
+      virtual bool HasPermission(const std::string& operation, DataAccessLevel level) const = 0;
+      virtual DataAccessLevel GetMaxAccessLevel() const = 0;
+      virtual void RequestElevatedAccess(const std::string& reason, std::function<void(bool)> callback) = 0;
+
+      // 操作审计
+      virtual void LogOperation(const std::string& operation, const std::string& details) = 0;
+      virtual std::vector<std::string> GetOperationHistory() const = 0;
+  };
+
+  // 主程序数据访问接口
+  class IMainDataAccess : public ISecureDataAccess {
+  public:
+      // Actions 列表访问（你的 allActions）
+      virtual DataOperationResult AddAction(const PluginActionItem& action) = 0;
+      virtual DataOperationResult RemoveAction(const std::string& actionId) = 0;
+      virtual DataOperationResult UpdateAction(const PluginActionItem& action) = 0;
+      virtual std::vector<PluginActionItem> GetActions(const std::string& category = "") = 0;
+      virtual std::optional<PluginActionItem> GetAction(const std::string& actionId) = 0;
+
+      // 搜索和过滤
+      virtual std::vector<PluginActionItem> SearchActions(const std::string& query, int maxResults = 0) = 0;
+      virtual std::vector<PluginActionItem> FilterActions(const std::function<bool(const PluginActionItem&)>& filter) = 0;
+
+      // 系统信息访问
+      virtual std::string GetSystemInfo(const std::string& key) = 0;
+      virtual std::map<std::string, std::string> GetEnvironmentVariables() = 0;
+      virtual std::string GetCurrentUser() = 0;
+      virtual std::vector<std::string> GetRunningProcesses() = 0;
+
+      // 文件系统访问（受限）
+      virtual bool FileExists(const std::string& path) = 0;
+      virtual std::string ReadFile(const std::string& path, size_t maxSize = 1024*1024) = 0; // 1MB限制
+      virtual bool WriteFile(const std::string& path, const std::string& content) = 0;
+      virtual std::vector<std::string> ListDirectory(const std::string& path) = 0;
+
+      // 注册表访问（受限）
+      virtual std::string ReadRegistry(const std::string& keyPath, const std::string& valueName) = 0;
+      virtual bool WriteRegistry(const std::string& keyPath, const std::string& valueName, const std::string& value) = 0;
+
+      // 网络访问（受限）
+      virtual std::string HttpGet(const std::string& url, const std::map<std::string, std::string>& headers = {}) = 0;
+      virtual std::string HttpPost(const std::string& url, const std::string& data, const std::map<std::string, std::string>& headers = {}) = 0;
+  };
+
+  安全代理模式实现
+
+  class SecureDataProxy : public IMainDataAccess {
+  private:
+      IMainDataAccess* m_realDataAccess;
+      std::string m_pluginName;
+      DataAccessLevel m_accessLevel;
+
+      // 安全策略
+      std::set<std::string> m_allowedOperations;
+      std::set<std::string> m_allowedPaths;
+      std::set<std::string> m_allowedUrls;
+      std::map<std::string, std::chrono::steady_clock::time_point> m_rateLimits;
+
+      // 审计
+      mutable std::vector<std::string> m_operationLog;
+      mutable std::mutex m_logMutex;
+
+      // 权限验证
+      bool CheckPermission(const std::string& operation, DataAccessLevel requiredLevel) const;
+      bool CheckRateLimit(const std::string& operation);
+      bool ValidatePath(const std::string& path) const;
+      bool ValidateUrl(const std::string& url) const;
+      void LogSecurityViolation(const std::string& operation, const std::string& reason) const;
+
+  public:
+      SecureDataProxy(IMainDataAccess* realAccess, const std::string& pluginName, DataAccessLevel level);
+
+      // 权限管理
+      void SetAccessLevel(DataAccessLevel level) { m_accessLevel = level; }
+      void AddAllowedOperation(const std::string& operation) { m_allowedOperations.insert(operation); }
+      void AddAllowedPath(const std::string& path) { m_allowedPaths.insert(path); }
+      void AddAllowedUrl(const std::string& url) { m_allowedUrls.insert(url); }
+
+      // ISecureDataAccess实现
+      bool HasPermission(const std::string& operation, DataAccessLevel level) const override;
+      DataAccessLevel GetMaxAccessLevel() const override { return m_accessLevel; }
+      void RequestElevatedAccess(const std::string& reason, std::function<void(bool)> callback) override;
+      void LogOperation(const std::string& operation, const std::string& details) override;
+      std::vector<std::string> GetOperationHistory() const override;
+
+      // IMainDataAccess实现（带安全检查）
+      DataOperationResult AddAction(const PluginActionItem& action) override;
+      DataOperationResult RemoveAction(const std::string& actionId) override;
+      DataOperationResult UpdateAction(const PluginActionItem& action) override;
+      std::vector<PluginActionItem> GetActions(const std::string& category) override;
+      std::optional<PluginActionItem> GetAction(const std::string& actionId) override;
+
+      // ... 其他方法的安全包装实现
+  };
+
+  数据同步和事件系统
+
+  class DataSynchronizer {
+  public:
+      enum class SyncMode {
+          Immediate,      // 立即同步
+          Batched,        // 批量同步
+          Scheduled,      // 计划同步
+          OnDemand       // 按需同步
+      };
+
+      struct SyncRule {
+          std::string pluginName;
+          SyncMode mode;
+          std::chrono::milliseconds interval{1000};
+          size_t batchSize = 100;
+          std::function<bool(const PluginActionItem&)> filter;
+      };
+
+  private:
+      std::map<std::string, SyncRule> m_syncRules;
+      std::map<std::string, std::vector<PluginActionItem>> m_pendingActions;
+      std::thread m_syncThread;
+      std::atomic<bool> m_running{false};
+      std::mutex m_syncMutex;
+
+      // 事件回调
+      std::vector<std::function<void(const PluginActionItem&)>> m_onActionAdded;
+      std::vector<std::function<void(const std::string&)>> m_onActionRemoved;
+      std::vector<std::function<void(const PluginActionItem&)>> m_onActionUpdated;
+
+  public:
+      // 同步规则管理
+      void SetSyncRule(const std::string& pluginName, const SyncRule& rule);
+      void RemoveSyncRule(const std::string& pluginName);
+      SyncRule GetSyncRule(const std::string& pluginName) const;
+
+      // 同步操作
+      void StartSync();
+      void StopSync();
+      void SyncNow(const std::string& pluginName = "");
+      void QueueAction(const std::string& pluginName, const PluginActionItem& action);
+
+      // 事件订阅
+      void OnActionAdded(std::function<void(const PluginActionItem&)> callback);
+      void OnActionRemoved(std::function<void(const std::string&)> callback);
+      void OnActionUpdated(std::function<void(const PluginActionItem&)> callback);
+
+      // 冲突解决
+      enum class ConflictResolution {
+          PluginWins,     // 插件数据优先
+          MainWins,       // 主程序数据优先
+          Merge,          // 尝试合并
+          Manual         // 手动解决
+      };
+
+      void ResolveConflict(const std::string& actionId, const PluginActionItem& pluginVersion,
+                          const PluginActionItem& mainVersion, ConflictResolution resolution);
+  };
+
+  消息通信系统
+
+  class PluginMessageBus {
+  public:
+      struct Message {
+          std::string from;           // 发送者（插件名或"system"）
+          std::string to;             // 接收者（插件名、"system"或"broadcast"）
+          std::string type;           // 消息类型
+          std::string data;           // 消息内容（JSON格式）
+          std::chrono::steady_clock::time_point timestamp;
+          std::string messageId;      // 唯一消息ID
+          int priority = 0;           // 优先级
+          bool requiresResponse = false;
+      };
+
+      using MessageHandler = std::function<void(const Message&)>;
+      using ResponseHandler = std::function<void(const Message&, const std::string& response)>;
+
+  private:
+      std::map<std::string, std::vector<MessageHandler>> m_handlers;
+      std::map<std::string, ResponseHandler> m_responseHandlers;
+      std::queue<Message> m_messageQueue;
+      std::mutex m_queueMutex;
+      std::condition_variable m_queueCondition;
+      std::thread m_processingThread;
+      std::atomic<bool> m_running{false};
+
+      // 消息过滤和验证
+      std::map<std::string, std::function<bool(const Message&)>> m_messageFilters;
+
+  public:
+      // 消息系统控制
+      void Start();
+      void Stop();
+
+      // 消息发送
+      void SendMessage(const Message& message);
+      void SendMessage(const std::string& from, const std::string& to, const std::string& type, const std::string& data);
+      void BroadcastMessage(const std::string& from, const std::string& type, const std::string& data);
+      void SendResponse(const std::string& messageId, const std::string& response);
+
+      // 消息订阅
+      void Subscribe(const std::string& pluginName, const std::string& messageType, MessageHandler handler);
+      void Unsubscribe(const std::string& pluginName, const std::string& messageType);
+      void SetResponseHandler(const std::string& messageId, ResponseHandler handler);
+
+      // 消息过滤
+      void AddMessageFilter(const std::string& pluginName, std::function<bool(const Message&)> filter);
+      void RemoveMessageFilter(const std::string& pluginName);
+
+      // 消息历史
+      std::vector<Message> GetMessageHistory(const std::string& pluginName, int count = 100);
+      void ClearMessageHistory(const std::string& pluginName);
+
+  private:
+      void ProcessMessages();
+      bool ValidateMessage(const Message& message);
+      std::string GenerateMessageId();
+  };
+
+  回答用户关于 allActions 的疑问
+
+  关于你提到的"别人已经是dll了，它也有权限有线程可以更改我的 allActions 列表？"这个问题：
+
+  安全考虑：
+  1. 不建议直接暴露 allActions：插件不应该直接访问你的内部数据结构
+  2. 使用代理模式：通过 SecureDataProxy 提供受控访问
+  3. 权限分级：不同插件有不同的访问权限
+  4. 操作审计：记录所有数据访问操作
+  5. 沙箱隔离：限制插件的系统访问能力
+
+  推荐方案：
+  - 插件通过 IPluginHost 接口请求操作
+  - 主程序验证权限后执行操作
+  - 所有数据修改都通过主程序的API进行
+  - 实现数据同步机制处理并发访问
+
+  这样既保证了功能灵活性，又维护了系统安全性。
+
+✻ Thinking…
+
+  现在我完成了第五个任务，开始第六个任务：实现插件安全性和隔离机制。这是插件系统中最重要的部分之一，因为需要确保插件不会对主程序或系统造成安全威胁。
+
+● 6. 插件安全性和隔离机制
+
+  代码签名验证系统
+
+  class PluginSignatureVerifier {
+  public:
+      struct SignatureInfo {
+          bool isValid = false;
+          std::string signerName;
+          std::string signerEmail;
+          std::string certificateThumbprint;
+          std::chrono::system_clock::time_point signTime;
+          std::chrono::system_clock::time_point expiryTime;
+          bool isTrusted = false;
+          std::string trustChain;
+          std::vector<std::string> warnings;
+      };
+
+  private:
+      std::set<std::string> m_trustedCertificates;
+      std::set<std::string> m_blacklistedCertificates;
+      bool m_requireValidSignature = true;
+      bool m_allowSelfSigned = false;
+
+  public:
+      // 签名验证
+      SignatureInfo VerifySignature(const std::string& filePath);
+      bool IsSignatureValid(const std::string& filePath);
+      bool IsTrustedSigner(const SignatureInfo& info);
+
+      // 证书管理
+      void AddTrustedCertificate(const std::string& thumbprint);
+      void RemoveTrustedCertificate(const std::string& thumbprint);
+      void AddBlacklistedCertificate(const std::string& thumbprint);
+      bool IsCertificateBlacklisted(const std::string& thumbprint);
+
+      // 策略配置
+      void SetRequireValidSignature(bool require) { m_requireValidSignature = require; }
+      void SetAllowSelfSigned(bool allow) { m_allowSelfSigned = allow; }
+
+      // 证书信息提取
+      std::string ExtractCertificateInfo(const std::string& filePath);
+      std::vector<std::string> GetCertificateChain(const std::string& filePath);
+
+  private:
+      bool VerifyCodeSignature(const std::string& filePath, SignatureInfo& info);
+      bool ValidateCertificateChain(const std::string& filePath);
+      bool CheckCertificateRevocation(const std::string& thumbprint);
+  };
+
+  沙箱隔离系统
+
+  class PluginSandbox {
+  public:
+      struct SandboxPolicy {
+          // 文件系统访问
+          std::vector<std::string> allowedReadPaths;
+          std::vector<std::string> allowedWritePaths;
+          std::vector<std::string> blockedPaths;
+          bool allowTempFileAccess = true;
+
+          // 网络访问
+          std::vector<std::string> allowedHosts;
+          std::vector<int> allowedPorts;
+          bool allowLocalhost = false;
+          bool allowInternet = false;
+
+          // 系统访问
+          bool allowRegistryRead = false;
+          bool allowRegistryWrite = false;
+          bool allowProcessCreation = false;
+          bool allowSystemCalls = false;
+
+          // 资源限制
+          size_t maxMemoryUsage = 100 * 1024 * 1024; // 100MB
+          std::chrono::seconds maxExecutionTime{60};
+          size_t maxFileSize = 10 * 1024 * 1024; // 10MB
+          int maxThreads = 5;
+
+          // 权限级别
+          enum class PermissionLevel {
+              Minimal,    // 最小权限
+              Limited,    // 有限权限
+              Standard,   // 标准权限
+              Extended    // 扩展权限
+          } permissionLevel = PermissionLevel::Limited;
+      };
+
+  private:
+      std::map<std::string, SandboxPolicy> m_pluginPolicies;
+      std::map<std::string, HANDLE> m_sandboxJobs;           // Job objects for resource limits
+      std::map<std::string, std::unique_ptr<ProcessMonitor>> m_processMonitors;
+
+      // 系统API拦截
+      std::map<std::string, std::vector<std::string>> m_apiHooks;
+
+  public:
+      // 沙箱管理
+      bool CreateSandbox(const std::string& pluginName, const SandboxPolicy& policy);
+      bool DestroySandbox(const std::string& pluginName);
+      bool IsInSandbox(const std::string& pluginName);
+
+      // 权限检查
+      bool CheckFileAccess(const std::string& pluginName, const std::string& path, bool write = false);
+      bool CheckNetworkAccess(const std::string& pluginName, const std::string& host, int port);
+      bool CheckRegistryAccess(const std::string& pluginName, const std::string& keyPath, bool write = false);
+      bool CheckProcessCreation(const std::string& pluginName, const std::string& processPath);
+
+      // 资源监控
+      size_t GetMemoryUsage(const std::string& pluginName);
+      std::chrono::seconds GetExecutionTime(const std::string& pluginName);
+      int GetThreadCount(const std::string& pluginName);
+
+      // 策略管理
+      void SetSandboxPolicy(const std::string& pluginName, const SandboxPolicy& policy);
+      SandboxPolicy GetSandboxPolicy(const std::string& pluginName);
+      void UpdatePolicy(const std::string& pluginName, const SandboxPolicy& newPolicy);
+
+      // 违规处理
+      void OnSandboxViolation(const std::string& pluginName, const std::string& violation);
+      std::vector<std::string> GetViolationHistory(const std::string& pluginName);
+
+  private:
+      bool ApplyJobLimits(const std::string& pluginName, const SandboxPolicy& policy);
+      bool InstallAPIHooks(const std::string& pluginName);
+      bool RemoveAPIHooks(const std::string& pluginName);
+      void MonitorResourceUsage(const std::string& pluginName);
+  };
+
+  权限管理系统
+
+  class PluginPermissionManager {
+  public:
+      enum class Permission {
+          // 基础权限
+          ReadConfig,
+          WriteConfig,
+
+          // 数据访问权限
+          ReadActions,
+          WriteActions,
+          DeleteActions,
+
+          // 系统权限
+          FileSystemRead,
+          FileSystemWrite,
+          NetworkAccess,
+          RegistryRead,
+          RegistryWrite,
+          ProcessCreate,
+
+          // UI权限
+          ShowNotifications,
+          ShowDialogs,
+          ModifyUI,
+
+          // 高级权限
+          LoadOtherPlugins,
+          SystemAdministration,
+          RawSystemAccess
+      };
+
+      struct PermissionRequest {
+          std::string pluginName;
+          Permission permission;
+          std::string reason;
+          bool persistent = false;    // 是否持久授权
+          std::chrono::system_clock::time_point requestTime;
+          std::string requestId;
+      };
+
+      struct PermissionGrant {
+          Permission permission;
+          bool granted = false;
+          std::chrono::system_clock::time_point grantTime;
+          std::chrono::system_clock::time_point expiryTime;
+          std::string grantReason;
+          bool userApproved = false;
+      };
+
+  private:
+      std::map<std::string, std::map<Permission, PermissionGrant>> m_pluginPermissions;
+      std::queue<PermissionRequest> m_pendingRequests;
+      std::map<Permission, bool> m_defaultPermissions;
+
+      // 权限策略
+      std::map<std::string, std::vector<Permission>> m_rolePermissions;
+      std::map<std::string, std::string> m_pluginRoles;
+
+  public:
+      // 权限检查
+      bool HasPermission(const std::string& pluginName, Permission permission);
+      bool CanRequestPermission(const std::string& pluginName, Permission permission);
+      std::vector<Permission> GetGrantedPermissions(const std::string& pluginName);
+      std::vector<Permission> GetMissingPermissions(const std::string& pluginName, const std::vector<Permission>& required);
+
+      // 权限请求
+      std::string RequestPermission(const std::string& pluginName, Permission permission, const std::string& reason);
+      void ProcessPermissionRequest(const std::string& requestId, bool granted, const std::string& reason = "");
+      std::vector<PermissionRequest> GetPendingRequests();
+
+      // 权限管理
+      void GrantPermission(const std::string& pluginName, Permission permission, bool persistent = false);
+      void RevokePermission(const std::string& pluginName, Permission permission);
+      void RevokeAllPermissions(const std::string& pluginName);
+
+      // 角色管理
+      void CreateRole(const std::string& roleName, const std::vector<Permission>& permissions);
+      void AssignRole(const std::string& pluginName, const std::string& roleName);
+      void RemoveRole(const std::string& pluginName);
+      std::string GetPluginRole(const std::string& pluginName);
+
+      // 权限审计
+      void LogPermissionUsage(const std::string& pluginName, Permission permission, bool success);
+      std::vector<std::string> GetPermissionAuditLog(const std::string& pluginName);
+
+      // 默认策略
+      void SetDefaultPermission(Permission permission, bool granted);
+      bool GetDefaultPermission(Permission permission);
+
+  private:
+      bool IsPermissionExpired(const PermissionGrant& grant);
+      void CleanupExpiredPermissions();
+      std::string GenerateRequestId();
+  };
+
+  运行时安全监控
+
+  class PluginSecurityMonitor {
+  public:
+      struct SecurityEvent {
+          enum class Type {
+              UnauthorizedAccess,
+              SandboxViolation,
+              ResourceExceeded,
+              SuspiciousActivity,
+              PermissionViolation,
+              CodeInjection,
+              APIAbuse
+          };
+
+          Type type;
+          std::string pluginName;
+          std::string description;
+          std::string details;
+          std::chrono::system_clock::time_point timestamp;
+          int severity = 0;           // 0-10
+          bool actionTaken = false;
+          std::string action;
+      };
+
+      enum class ThreatLevel {
+          Low,
+          Medium,
+          High,
+          Critical
+      };
+
+  private:
+      std::vector<SecurityEvent> m_securityEvents;
+      std::map<std::string, int> m_pluginThreatScores;
+      std::map<std::string, ThreatLevel> m_pluginThreatLevels;
+
+      // 监控配置
+      bool m_realTimeMonitoring = true;
+      std::chrono::seconds m_monitoringInterval{5};
+      int m_maxThreatScore = 100;
+
+      // 自动响应
+      std::map<ThreatLevel, std::function<void(const std::string&)>> m_responseActions;
+
+      std::thread m_monitorThread;
+      std::atomic<bool> m_monitoring{false};
+
+  public:
+      // 监控控制
+      void StartMonitoring();
+      void StopMonitoring();
+      void SetMonitoringInterval(std::chrono::seconds interval);
+
+      // 事件记录
+      void RecordSecurityEvent(const SecurityEvent& event);
+      void RecordPermissionViolation(const std::string& pluginName, const std::string& permission);
+      void RecordSandboxViolation(const std::string& pluginName, const std::string& violation);
+      void RecordResourceViolation(const std::string& pluginName, const std::string& resource);
+
+      // 威胁评估
+      void UpdateThreatScore(const std::string& pluginName, int scoreDelta);
+      int GetThreatScore(const std::string& pluginName);
+      ThreatLevel GetThreatLevel(const std::string& pluginName);
+      void ResetThreatScore(const std::string& pluginName);
+
+      // 自动响应
+      void SetResponseAction(ThreatLevel level, std::function<void(const std::string&)> action);
+      void TriggerResponse(const std::string& pluginName, ThreatLevel level);
+
+      // 报告和分析
+      std::vector<SecurityEvent> GetSecurityEvents(const std::string& pluginName = "");
+      std::vector<SecurityEvent> GetEventsInTimeRange(std::chrono::system_clock::time_point start,
+                                                     std::chrono::system_clock::time_point end);
+      std::map<std::string, int> GetThreatSummary();
+      void GenerateSecurityReport(const std::string& outputPath);
+
+      // 插件隔离
+      void QuarantinePlugin(const std::string& pluginName, const std::string& reason);
+      void ReleaseFromQuarantine(const std::string& pluginName);
+      bool IsQuarantined(const std::string& pluginName);
+
+  private:
+      void MonitorLoop();
+      void AnalyzeBehavior(const std::string& pluginName);
+      void DetectAnomalies(const std::string& pluginName);
+      ThreatLevel CalculateThreatLevel(int threatScore);
+  };
+
+✻ Thinking…
+
+  现在我完成了第六个任务，开始第七个任务：创建插件开发工具包和文档。这对于插件生态系统的建立非常重要，需要让第三方开发者能够轻松地开发插件。
+
+● 7. 插件开发工具包和文档
+
+  插件开发SDK结构
+
+  CandyLauncher-Plugin-SDK/
+  ├── include/
+  │   ├── IPlugin.h                    # 核心插件接口
+  │   ├── PluginBase.h                 # 插件基类实现
+  │   ├── PluginHelper.h               # 辅助函数
+  │   └── PluginTypes.h                # 数据类型定义
+  ├── lib/
+  │   ├── x64/
+  │   │   ├── CandyLauncherPlugin.lib  # 静态链接库
+  │   │   └── CandyLauncherPlugin.dll  # 动态链接库
+  │   └── x86/
+  │       ├── CandyLauncherPlugin.lib
+  │       └── CandyLauncherPlugin.dll
+  ├── templates/
+  │   ├── BasicPlugin/                 # 基础插件模板
+  │   ├── SearchPlugin/                # 搜索插件模板
+  │   ├── ActionPlugin/                # 动作插件模板
+  │   └── UIPlugin/                    # UI插件模板
+  ├── tools/
+  │   ├── PluginGenerator.exe          # 插件代码生成器
+  │   ├── PluginSigner.exe             # 插件签名工具
+  │   ├── PluginValidator.exe          # 插件验证工具
+  │   └── PluginPackager.exe           # 插件打包工具
+  ├── samples/
+  │   ├── HelloWorld/                  # Hello World示例
+  │   ├── FileSearch/                  # 文件搜索示例
+  │   ├── Calculator/                  # 计算器示例
+  │   └── SystemInfo/                  # 系统信息示例
+  ├── docs/
+  │   ├── QuickStart.md               # 快速入门指南
+  │   ├── API-Reference.md            # API参考文档
+  │   ├── Best-Practices.md           # 最佳实践
+  │   └── Troubleshooting.md          # 故障排除
+  └── CMakeLists.txt                  # CMake构建配置
+
+  插件基类实现
+
+  // PluginBase.h
+  #pragma once
+  #include "IPlugin.h"
+  #include <string>
+  #include <memory>
+  #include <vector>
+  #include <functional>
+
+  class PluginBase : public IPlugin {
+  protected:
+      IPluginHost* m_host = nullptr;
+      std::string m_name;
+      std::string m_version;
+      std::string m_description;
+      std::string m_author;
+      bool m_initialized = false;
+
+      // 配置管理
+      std::map<std::string, std::string> m_config;
+
+      // 事件处理器
+      std::function<void(const std::string&)> m_inputHandler;
+      std::function<void(const std::string&)> m_actionHandler;
+      std::function<void(const std::string&, const std::string&)> m_messageHandler;
+      std::function<void(const std::string&, const std::string&)> m_configHandler;
+
+  public:
+      PluginBase(const std::string& name, const std::string& version,
+                 const std::string& description, const std::string& author);
+      virtual ~PluginBase() = default;
+
+      // IPlugin接口实现
+      std::string GetName() const override { return m_name; }
+      std::string GetVersion() const override { return m_version; }
+      std::string GetDescription() const override { return m_description; }
+      std::string GetAuthor() const override { return m_author; }
+
+      bool Initialize(IPluginHost* host) override;
+      void Shutdown() override;
+
+      void OnUserInput(const std::string& input) override;
+      void OnActionExecute(const std::string& actionId) override;
+      void OnMessage(const std::string& message, const std::string& data) override;
+      void OnConfigChanged(const std::string& key, const std::string& value) override;
+
+      // 便利方法
+      bool IsInitialized() const { return m_initialized; }
+      IPluginHost* GetHost() const { return m_host; }
+
+      // 配置辅助方法
+      std::string GetConfig(const std::string& key, const std::string& defaultValue = "");
+      void SetConfig(const std::string& key, const std::string& value);
+      bool GetConfigBool(const std::string& key, bool defaultValue = false);
+      int GetConfigInt(const std::string& key, int defaultValue = 0);
+
+      // 操作辅助方法
+      bool AddAction(const std::string& id, const std::string& title, const std::string& subtitle = "",
+                     const std::string& iconPath = "", const std::string& category = "", int priority = 0);
+      bool RemoveAction(const std::string& id);
+      bool UpdateAction(const std::string& id, const std::string& title, const std::string& subtitle = "");
+
+      // 通知辅助方法
+      void ShowNotification(const std::string& title, const std::string& message);
+      bool ShowConfirmDialog(const std::string& title, const std::string& message);
+
+      // 事件处理器设置
+      void SetInputHandler(std::function<void(const std::string&)> handler) { m_inputHandler = handler; }
+      void SetActionHandler(std::function<void(const std::string&)> handler) { m_actionHandler = handler; }
+      void SetMessageHandler(std::function<void(const std::string&, const std::string&)> handler) { m_messageHandler = handler; }
+      void SetConfigHandler(std::function<void(const std::string&, const std::string&)> handler) { m_configHandler = handler; }
+
+  protected:
+      // 子类可重写的虚函数
+      virtual void OnInitialize() {}
+      virtual void OnShutdown() {}
+      virtual void OnInputReceived(const std::string& input) {}
+      virtual void OnActionExecuted(const std::string& actionId) {}
+      virtual void OnMessageReceived(const std::string& message, const std::string& data) {}
+      virtual void OnConfigurationChanged(const std::string& key, const std::string& value) {}
+  };
+
+  插件辅助工具类
+
+  // PluginHelper.h
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <windows.h>
+
+  class PluginHelper {
+  public:
+      // 字符串工具
+      static std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);
+      static std::string TrimString(const std::string& str);
+      static std::string ToLowerCase(const std::string& str);
+      static std::string ToUpperCase(const std::string& str);
+      static bool StringContains(const std::string& str, const std::string& substring, bool ignoreCase = true);
+      static bool StringStartsWith(const std::string& str, const std::string& prefix, bool ignoreCase = true);
+      static bool StringEndsWith(const std::string& str, const std::string& suffix, bool ignoreCase = true);
+
+      // 文件系统工具
+      static bool FileExists(const std::string& path);
+      static bool DirectoryExists(const std::string& path);
+      static std::string GetFileName(const std::string& path);
+      static std::string GetFileExtension(const std::string& path);
+      static std::string GetDirectoryPath(const std::string& path);
+      static std::vector<std::string> ListFiles(const std::string& directory, const std::string& pattern = "*");
+      static std::string ReadTextFile(const std::string& path);
+      static bool WriteTextFile(const std::string& path, const std::string& content);
+
+      // 注册表工具
+      static std::string ReadRegistryString(HKEY hive, const std::string& keyPath, const std::string& valueName);
+      static bool WriteRegistryString(HKEY hive, const std::string& keyPath, const std::string& valueName, const std::string& value);
+      static DWORD ReadRegistryDWORD(HKEY hive, const std::string& keyPath, const std::string& valueName, DWORD defaultValue = 0);
+      static bool WriteRegistryDWORD(HKEY hive, const std::string& keyPath, const std::string& valueName, DWORD value);
+
+      // 系统工具
+      static std::string GetEnvironmentVariable(const std::string& name);
+      static std::vector<std::string> GetRunningProcesses();
+      static bool IsProcessRunning(const std::string& processName);
+      static std::string GetCurrentUserName();
+      static std::string GetComputerName();
+      static std::string GetSystemVersion();
+
+      // 网络工具
+      static std::string HttpGet(const std::string& url, int timeoutMs = 30000);
+      static std::string HttpPost(const std::string& url, const std::string& data, int timeoutMs = 30000);
+      static bool IsInternetAvailable();
+      static std::string UrlEncode(const std::string& str);
+      static std::string UrlDecode(const std::string& str);
+
+      // JSON工具
+      static std::string JsonEscape(const std::string& str);
+      static std::string JsonUnescape(const std::string& str);
+      static bool IsValidJson(const std::string& jsonStr);
+
+      // 编码转换
+      static std::wstring StringToWString(const std::string& str);
+      static std::string WStringToString(const std::wstring& wstr);
+      static std::string UTF8ToGBK(const std::string& utf8Str);
+      static std::string GBKToUTF8(const std::string& gbkStr);
+
+      // 时间工具
+      static std::string GetCurrentTimeString(const std::string& format = "%Y-%m-%d %H:%M:%S");
+      static std::string FormatTime(std::time_t time, const std::string& format = "%Y-%m-%d %H:%M:%S");
+      static std::time_t ParseTime(const std::string& timeStr, const std::string& format = "%Y-%m-%d %H:%M:%S");
+
+      // 加密工具
+      static std::string MD5Hash(const std::string& data);
+      static std::string SHA256Hash(const std::string& data);
+      static std::string Base64Encode(const std::string& data);
+      static std::string Base64Decode(const std::string& data);
+  };
+
+  插件代码生成器
+
+  // PluginGenerator.h
+  class PluginGenerator {
+  public:
+      struct PluginTemplate {
+          std::string name;
+          std::string description;
+          std::vector<std::string> files;
+          std::map<std::string, std::string> variables;
+      };
+
+      struct GenerationOptions {
+          std::string pluginName;
+          std::string pluginDisplayName;
+          std::string pluginDescription;
+          std::string author;
+          std::string version = "1.0.0";
+          std::string outputDirectory;
+          std::string templateName = "BasicPlugin";
+          bool createVSProject = true;
+          bool createCMakeProject = true;
+          std::string targetArchitecture = "x64";
+      };
+
+  private:
+      std::map<std::string, PluginTemplate> m_templates;
+      std::string m_templatesDirectory;
+
+  public:
+      // 模板管理
+      void LoadTemplates(const std::string& templatesDir);
+      std::vector<std::string> GetAvailableTemplates();
+      PluginTemplate GetTemplate(const std::string& name);
+
+      // 代码生成
+      bool GeneratePlugin(const GenerationOptions& options);
+      bool GenerateFile(const std::string& templatePath, const std::string& outputPath,
+                       const std::map<std::string, std::string>& variables);
+
+      // 项目文件生成
+      bool GenerateVSProject(const GenerationOptions& options);
+      bool GenerateCMakeProject(const GenerationOptions& options);
+      bool GeneratePackageConfig(const GenerationOptions& options);
+
+  private:
+      std::string ProcessTemplate(const std::string& content, const std::map<std::string, std::string>& variables);
+      std::map<std::string, std::string> GetDefaultVariables(const GenerationOptions& options);
+      bool CreateDirectoryStructure(const std::string& baseDir);
+  };
+
+  插件验证工具
+
+  // PluginValidator.h
+  class PluginValidator {
+  public:
+      struct ValidationResult {
+          bool isValid = false;
+          std::vector<std::string> errors;
+          std::vector<std::string> warnings;
+          std::vector<std::string> suggestions;
+
+          struct APIAnalysis {
+              std::vector<std::string> exportedFunctions;
+              std::vector<std::string> importedLibraries;
+              std::string apiVersion;
+              bool hasCreateFunction = false;
+              bool hasDestroyFunction = false;
+              bool hasVersionFunction = false;
+          } apiAnalysis;
+
+          struct SecurityAnalysis {
+              bool hasValidSignature = false;
+              bool isTrustedPublisher = false;
+              std::vector<std::string> securityIssues;
+              std::vector<std::string> permissions;
+          } securityAnalysis;
+
+          struct PerformanceAnalysis {
+              size_t fileSize = 0;
+              size_t loadTime = 0;
+              std::vector<std::string> optimizationSuggestions;
+          } performanceAnalysis;
+      };
+
+  private:
+      std::string m_pluginPath;
+      ValidationResult m_lastResult;
+
+  public:
+      // 主要验证方法
+      ValidationResult ValidatePlugin(const std::string& pluginPath);
+      ValidationResult ValidatePluginStructure(const std::string& pluginDir);
+      ValidationResult ValidateConfiguration(const std::string& configPath);
+
+      // API验证
+      bool ValidateAPICompatibility(const std::string& dllPath);
+      bool ValidateExportedFunctions(const std::string& dllPath);
+      std::string GetPluginAPIVersion(const std::string& dllPath);
+
+      // 安全验证
+      bool ValidateSignature(const std::string& filePath);
+      std::vector<std::string> AnalyzeSecurity(const std::string& dllPath);
+      std::vector<std::string> CheckPermissions(const std::string& configPath);
+
+      // 性能分析
+      size_t MeasureLoadTime(const std::string& dllPath);
+      std::vector<std::string> AnalyzePerformance(const std::string& dllPath);
+
+      // 依赖检查
+      std::vector<std::string> CheckDependencies(const std::string& dllPath);
+      bool ValidateDependencyVersions(const std::string& configPath);
+
+      // 报告生成
+      void GenerateValidationReport(const ValidationResult& result, const std::string& outputPath);
+      void GenerateHTMLReport(const ValidationResult& result, const std::string& outputPath);
+
+  private:
+      void AnalyzeAPI(const std::string& dllPath, ValidationResult::APIAnalysis& analysis);
+      void AnalyzeSecurity(const std::string& dllPath, ValidationResult::SecurityAnalysis& analysis);
+      void AnalyzePerformance(const std::string& dllPath, ValidationResult::PerformanceAnalysis& analysis);
+      std::vector<std::string> GetExportedFunctions(const std::string& dllPath);
+      std::vector<std::string> GetImportedLibraries(const std::string& dllPath);
+  };
+
+✻ Thinking…
+
+  现在我完成了第七个任务，开始第八个任务：设计插件错误处理和调试系统。这对于插件开发和维护非常重要，需要提供完善的错误处理、日志记录和调试支持。
+
+● 8. 插件错误处理和调试系统
+
+  错误分类和处理机制
+
+  // PluginErrorHandler.h
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <memory>
+  #include <functional>
+  #include <chrono>
+  #include <thread>
+
+  enum class PluginErrorType {
+      // 加载错误
+      LoadFailure,
+      InvalidDLL,
+      MissingExports,
+      DependencyMissing,
+      VersionMismatch,
+
+      // 运行时错误
+      RuntimeException,
+      AccessViolation,
+      StackOverflow,
+      HeapCorruption,
+      DeadLock,
+
+      // 逻辑错误
+      InvalidParameter,
+      InvalidState,
+      ResourceExhausted,
+      PermissionDenied,
+      ConfigurationError,
+
+      // 系统错误
+      OutOfMemory,
+      FileNotFound,
+      NetworkError,
+      RegistryError,
+      SystemCallFailed
+  };
+
+  enum class ErrorSeverity {
+      Info,       // 信息
+      Warning,    // 警告
+      Error,      // 错误
+      Critical,   // 严重错误
+      Fatal       // 致命错误
+  };
+
+  struct PluginError {
+      std::string pluginName;
+      PluginErrorType type;
+      ErrorSeverity severity;
+      std::string message;
+      std::string details;
+      std::string stackTrace;
+      std::chrono::system_clock::time_point timestamp;
+      std::string threadId;
+      std::string function;
+      std::string file;
+      int line = 0;
+
+      // 上下文信息
+      std::map<std::string, std::string> context;
+      std::vector<std::string> callStack;
+
+      // 错误码
+      DWORD systemErrorCode = 0;
+      HRESULT hresult = S_OK;
+  };
+
+  class PluginErrorHandler {
+  private:
+      std::vector<PluginError> m_errorHistory;
+      std::map<std::string, int> m_errorCounts;
+      std::mutex m_errorMutex;
+
+      // 错误处理策略
+      std::map<PluginErrorType, std::function<void(const PluginError&)>> m_errorHandlers;
+      std::map<ErrorSeverity, std::function<void(const PluginError&)>> m_severityHandlers;
+
+      // 自动恢复
+      std::map<std::string, int> m_restartCounts;
+      int m_maxRestartAttempts = 3;
+      std::chrono::minutes m_restartCooldown{5};
+
+  public:
+      // 错误报告
+      void ReportError(const PluginError& error);
+      void ReportError(const std::string& pluginName, PluginErrorType type, ErrorSeverity severity,
+                      const std::string& message, const std::string& details = "");
+
+      // 异常处理
+      void HandleException(const std::string& pluginName, const std::exception& ex);
+      void HandleSystemException(const std::string& pluginName, DWORD exceptionCode, EXCEPTION_POINTERS* exceptionInfo);
+      void HandleUnknownException(const std::string& pluginName);
+
+      // 错误处理策略
+      void SetErrorHandler(PluginErrorType type, std::function<void(const PluginError&)> handler);
+      void SetSeverityHandler(ErrorSeverity severity, std::function<void(const PluginError&)> handler);
+      void SetDefaultErrorHandler(std::function<void(const PluginError&)> handler);
+
+      // 自动恢复
+      bool ShouldRestartPlugin(const std::string& pluginName);
+      void RequestPluginRestart(const std::string& pluginName);
+      void ResetRestartCount(const std::string& pluginName);
+
+      // 错误查询
+      std::vector<PluginError> GetErrors(const std::string& pluginName = "");
+      std::vector<PluginError> GetErrorsByType(PluginErrorType type);
+      std::vector<PluginError> GetErrorsBySeverity(ErrorSeverity severity);
+      int GetErrorCount(const std::string& pluginName, PluginErrorType type = static_cast<PluginErrorType>(-1));
+
+      // 错误分析
+      std::map<PluginErrorType, int> GetErrorStatistics(const std::string& pluginName = "");
+      std::vector<std::string> GetMostProblematicPlugins(int count = 10);
+      std::string GenerateErrorReport(const std::string& pluginName = "");
+
+      // 错误清理
+      void ClearErrors(const std::string& pluginName = "");
+      void ClearOldErrors(std::chrono::hours maxAge = std::chrono::hours{24});
+
+  private:
+      std::string GetStackTrace();
+      std::string FormatError(const PluginError& error);
+      void TriggerErrorHandler(const PluginError& error);
+  };
+
+  调试支持系统
+
+  // PluginDebugger.h
+  class PluginDebugger {
+  public:
+      enum class DebugLevel {
+          None,
+          Error,
+          Warning,
+          Info,
+          Debug,
+          Verbose
+      };
+
+      struct DebugInfo {
+          std::string pluginName;
+          DebugLevel level;
+          std::string category;
+          std::string message;
+          std::chrono::system_clock::time_point timestamp;
+          std::thread::id threadId;
+          std::string function;
+          std::string file;
+          int line = 0;
+          std::map<std::string, std::string> variables;
+      };
+
+  private:
+      DebugLevel m_globalDebugLevel = DebugLevel::Info;
+      std::map<std::string, DebugLevel> m_pluginDebugLevels;
+      std::vector<DebugInfo> m_debugLog;
+      std::mutex m_debugMutex;
+
+      // 调试输出
+      std::ofstream m_logFile;
+      bool m_outputToConsole = true;
+      bool m_outputToFile = true;
+      bool m_outputToDebugger = true;
+
+      // 实时调试
+      std::map<std::string, std::vector<std::string>> m_breakpoints;
+      std::map<std::string, std::function<void(const DebugInfo&)>> m_debugCallbacks;
+
+      // 性能监控
+      std::map<std::string, std::chrono::steady_clock::time_point> m_functionTimers;
+      std::map<std::string, std::chrono::microseconds> m_functionTimes;
+
+  public:
+      // 调试控制
+      void SetGlobalDebugLevel(DebugLevel level);
+      void SetPluginDebugLevel(const std::string& pluginName, DebugLevel level);
+      DebugLevel GetDebugLevel(const std::string& pluginName);
+
+      // 调试输出
+      void DebugLog(const std::string& pluginName, DebugLevel level, const std::string& category,
+                    const std::string& message, const std::string& function = "",
+                    const std::string& file = "", int line = 0);
+      void DebugLogf(const std::string& pluginName, DebugLevel level, const std::string& category,
+                     const char* format, ...);
+
+      // 便利宏支持的方法
+      void LogError(const std::string& pluginName, const std::string& message);
+      void LogWarning(const std::string& pluginName, const std::string& message);
+      void LogInfo(const std::string& pluginName, const std::string& message);
+      void LogDebug(const std::string& pluginName, const std::string& message);
+      void LogVerbose(const std::string& pluginName, const std::string& message);
+
+      // 变量监视
+      void WatchVariable(const std::string& pluginName, const std::string& varName, const std::string& value);
+      void DumpVariables(const std::string& pluginName);
+      std::map<std::string, std::string> GetWatchedVariables(const std::string& pluginName);
+
+      // 断点支持
+      void SetBreakpoint(const std::string& pluginName, const std::string& location);
+      void RemoveBreakpoint(const std::string& pluginName, const std::string& location);
+      bool IsBreakpoint(const std::string& pluginName, const std::string& location);
+      void TriggerBreakpoint(const std::string& pluginName, const std::string& location);
+
+      // 性能分析
+      void StartTimer(const std::string& timerName);
+      void EndTimer(const std::string& timerName);
+      std::chrono::microseconds GetTimerResult(const std::string& timerName);
+      std::map<std::string, std::chrono::microseconds> GetAllTimers();
+      void ResetTimers();
+
+      // 调试回调
+      void SetDebugCallback(const std::string& pluginName, std::function<void(const DebugInfo&)> callback);
+      void RemoveDebugCallback(const std::string& pluginName);
+
+      // 日志管理
+      void SetLogFile(const std::string& filePath);
+      void SetOutputToConsole(bool enable) { m_outputToConsole = enable; }
+      void SetOutputToFile(bool enable) { m_outputToFile = enable; }
+      void SetOutputToDebugger(bool enable) { m_outputToDebugger = enable; }
+
+      // 日志查询
+      std::vector<DebugInfo> GetDebugLog(const std::string& pluginName = "", DebugLevel minLevel = DebugLevel::Debug);
+      std::vector<DebugInfo> GetRecentLog(int count = 100);
+      void ClearDebugLog();
+
+      // 调试报告
+      void GenerateDebugReport(const std::string& outputPath, const std::string& pluginName = "");
+      std::string GetDebugSummary(const std::string& pluginName = "");
+
+  private:
+      void OutputDebugInfo(const DebugInfo& info);
+      std::string FormatDebugInfo(const DebugInfo& info);
+      bool ShouldLog(const std::string& pluginName, DebugLevel level);
+  };
+
+  // 调试宏定义
+  #ifdef _DEBUG
+  #define PLUGIN_LOG_ERROR(plugin, msg) PluginDebugger::Instance().LogError(plugin, msg)
+  #define PLUGIN_LOG_WARNING(plugin, msg) PluginDebugger::Instance().LogWarning(plugin, msg)
+  #define PLUGIN_LOG_INFO(plugin, msg) PluginDebugger::Instance().LogInfo(plugin, msg)
+  #define PLUGIN_LOG_DEBUG(plugin, msg) PluginDebugger::Instance().LogDebug(plugin, msg)
+  #define PLUGIN_LOG_VERBOSE(plugin, msg) PluginDebugger::Instance().LogVerbose(plugin, msg)
+
+  #define PLUGIN_TIMER_START(name) PluginDebugger::Instance().StartTimer(name)
+  #define PLUGIN_TIMER_END(name) PluginDebugger::Instance().EndTimer(name)
+
+  #define PLUGIN_WATCH_VAR(plugin, var) PluginDebugger::Instance().WatchVariable(plugin, #var, std::to_string(var))
+  #define PLUGIN_BREAKPOINT(plugin, location) PluginDebugger::Instance().TriggerBreakpoint(plugin, location)
+  #else
+  #define PLUGIN_LOG_ERROR(plugin, msg)
+  #define PLUGIN_LOG_WARNING(plugin, msg)
+  #define PLUGIN_LOG_INFO(plugin, msg)
+  #define PLUGIN_LOG_DEBUG(plugin, msg)
+  #define PLUGIN_LOG_VERBOSE(plugin, msg)
+  #define PLUGIN_TIMER_START(name)
+  #define PLUGIN_TIMER_END(name)
+  #define PLUGIN_WATCH_VAR(plugin, var)
+  #define PLUGIN_BREAKPOINT(plugin, location)
+  #endif
+
+  崩溃转储和分析
+
+  // PluginCrashHandler.h
+  class PluginCrashHandler {
+  public:
+      struct CrashInfo {
+          std::string pluginName;
+          DWORD processId;
+          DWORD threadId;
+          DWORD exceptionCode;
+          std::string exceptionDescription;
+          void* exceptionAddress;
+          std::string stackTrace;
+          std::string moduleInfo;
+          std::string systemInfo;
+          std::chrono::system_clock::time_point crashTime;
+          std::string dumpFilePath;
+          std::map<std::string, std::string> context;
+      };
+
+  private:
+      std::string m_dumpDirectory;
+      bool m_enableMiniDumps = true;
+      bool m_enableFullDumps = false;
+      int m_maxDumpFiles = 10;
+
+      // 崩溃统计
+      std::map<std::string, std::vector<CrashInfo>> m_crashHistory;
+      std::mutex m_crashMutex;
+
+      // 异常过滤器
+      LPTOP_LEVEL_EXCEPTION_FILTER m_previousFilter = nullptr;
+
+  public:
+      // 崩溃处理初始化
+      bool Initialize(const std::string& dumpDirectory);
+      void Shutdown();
+
+      // 异常处理
+      static LONG WINAPI UnhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo);
+      void HandleCrash(const std::string& pluginName, EXCEPTION_POINTERS* exceptionInfo);
+
+      // 转储文件管理
+      bool CreateMiniDump(const std::string& pluginName, EXCEPTION_POINTERS* exceptionInfo, const std::string& filePath);
+      bool CreateFullDump(const std::string& pluginName, EXCEPTION_POINTERS* exceptionInfo, const std::string& filePath);
+      void CleanupOldDumps();
+
+      // 崩溃分析
+      CrashInfo AnalyzeCrash(const std::string& pluginName, EXCEPTION_POINTERS* exceptionInfo);
+      std::string GetStackTrace(EXCEPTION_POINTERS* exceptionInfo);
+      std::string GetModuleInfo(void* address);
+      std::string GetSystemInfo();
+
+      // 崩溃报告
+      void GenerateCrashReport(const CrashInfo& crashInfo, const std::string& outputPath);
+      std::string FormatCrashInfo(const CrashInfo& crashInfo);
+      void SendCrashReport(const CrashInfo& crashInfo); // 可选的自动报告功能
+
+      // 崩溃历史
+      std::vector<CrashInfo> GetCrashHistory(const std::string& pluginName = "");
+      int GetCrashCount(const std::string& pluginName);
+      void ClearCrashHistory(const std::string& pluginName = "");
+
+      // 配置
+      void SetDumpDirectory(const std::string& directory) { m_dumpDirectory = directory; }
+      void SetEnableMiniDumps(bool enable) { m_enableMiniDumps = enable; }
+      void SetEnableFullDumps(bool enable) { m_enableFullDumps = enable; }
+      void SetMaxDumpFiles(int maxFiles) { m_maxDumpFiles = maxFiles; }
+
+  private:
+      std::string GenerateDumpFileName(const std::string& pluginName, bool fullDump = false);
+      std::string GetExceptionDescription(DWORD exceptionCode);
+      void InitializeSymbols();
+      void CleanupSymbols();
+      std::string AddressToSymbol(void* address);
+  };
+
+  性能监控和分析
+
+  // PluginPerformanceMonitor.h
+  class PluginPerformanceMonitor {
+  public:
+      struct PerformanceMetrics {
+          // CPU指标
+          double cpuUsage = 0.0;              // CPU使用率(%)
+          std::chrono::microseconds totalCpuTime{0};
+
+          // 内存指标
+          size_t workingSetSize = 0;          // 工作集大小
+          size_t virtualSize = 0;             // 虚拟内存大小
+          size_t privateBytes = 0;            // 私有字节
+          size_t peakWorkingSet = 0;          // 峰值工作集
+
+          // 句柄和线程
+          int handleCount = 0;                // 句柄数量
+          int threadCount = 0;                // 线程数量
+
+          // 函数调用统计
+          std::map<std::string, int> functionCallCounts;
+          std::map<std::string, std::chrono::microseconds> functionTotalTimes;
+          std::map<std::string, std::chrono::microseconds> functionMaxTimes;
+          std::map<std::string, std::chrono::microseconds> functionMinTimes;
+
+          // I/O统计
+          uint64_t fileReadBytes = 0;
+          uint64_t fileWriteBytes = 0;
+          uint64_t networkReadBytes = 0;
+          uint64_t networkWriteBytes = 0;
+
+          std::chrono::system_clock::time_point measurementTime;
+      };
+
+  private:
+      std::map<std::string, PerformanceMetrics> m_currentMetrics;
+      std::map<std::string, std::vector<PerformanceMetrics>> m_metricsHistory;
+      std::mutex m_metricsMutex;
+
+      // 监控配置
+      std::chrono::seconds m_monitoringInterval{5};
+      int m_maxHistoryEntries = 288; // 24小时 * 60分钟 / 5分钟
+      bool m_realTimeMonitoring = true;
+
+      // 监控线程
+      std::thread m_monitorThread;
+      std::atomic<bool> m_monitoring{false};
+
+      // 性能阈值
+      struct PerformanceThresholds {
+          double maxCpuUsage = 80.0;
+          size_t maxMemoryUsage = 100 * 1024 * 1024; // 100MB
+          int maxHandleCount = 1000;
+          int maxThreadCount = 20;
+          std::chrono::microseconds maxFunctionTime{1000000}; // 1秒
+      };
+      std::map<std::string, PerformanceThresholds> m_thresholds;
+
+      // 性能警报
+      std::function<void(const std::string&, const std::string&)> m_alertCallback;
+
+  public:
+      // 监控控制
+      void StartMonitoring();
+      void StopMonitoring();
+      void SetMonitoringInterval(std::chrono::seconds interval);
+
+      // 性能数据收集
+      PerformanceMetrics CollectMetrics(const std::string& pluginName);
+      void UpdateMetrics(const std::string& pluginName);
+      void RecordFunctionCall(const std::string& pluginName, const std::string& functionName,
+                            std::chrono::microseconds duration);
+
+      // 性能数据查询
+      PerformanceMetrics GetCurrentMetrics(const std::string& pluginName);
+      std::vector<PerformanceMetrics> GetMetricsHistory(const std::string& pluginName);
+      PerformanceMetrics GetAverageMetrics(const std::string& pluginName, std::chrono::hours period = std::chrono::hours{1});
+      PerformanceMetrics GetPeakMetrics(const std::string& pluginName, std::chrono::hours period = std::chrono::hours{24});
+
+      // 性能分析
+      std::vector<std::string> GetTopCPUConsumers(int count = 5);
+      std::vector<std::string> GetTopMemoryConsumers(int count = 5);
+      std::vector<std::string> GetSlowestFunctions(const std::string& pluginName, int count = 10);
+
+      // 阈值管理
+      void SetPerformanceThresholds(const std::string& pluginName, const PerformanceThresholds& thresholds);
+      PerformanceThresholds GetPerformanceThresholds(const std::string& pluginName);
+      void SetAlertCallback(std::function<void(const std::string&, const std::string&)> callback);
+
+      // 性能报告
+      void GeneratePerformanceReport(const std::string& outputPath, const std::string& pluginName = "");
+      std::string GetPerformanceSummary(const std::string& pluginName);
+
+      // 性能优化建议
+      std::vector<std::string> GetOptimizationSuggestions(const std::string& pluginName);
+
+  private:
+      void MonitorLoop();
+      void CheckPerformanceThresholds(const std::string& pluginName, const PerformanceMetrics& metrics);
+      void TriggerAlert(const std::string& pluginName, const std::string& message);
+      PerformanceMetrics CollectSystemMetrics(const std::string& pluginName);
+      std::string FormatMetrics(const PerformanceMetrics& metrics);
+  };
+
+✻ Thinking…
+
+  现在我完成了第八个任务，开始第九个任务：实现插件热加载和卸载功能。这是一个技术挑战，因为Windows DLL的热替换有一些限制，需要巧妙的设计来实现。
+
+● 9. 插件热加载和卸载功能
+
+  热加载架构设计
+
+  // PluginHotLoader.h
+  #pragma once
+  #include <string>
+  #include <memory>
+  #include <map>
+  #include <atomic>
+  #include <mutex>
+  #include <thread>
+  #include <condition_variable>
+
+  class PluginHotLoader {
+  public:
+      enum class HotLoadResult {
+          Success,
+          FileInUse,
+          BackupFailed,
+          LoadFailed,
+          InitializationFailed,
+          RollbackRequired,
+          PermissionDenied,
+          VersionConflict
+      };
+
+      struct HotLoadState {
+          enum class State {
+              Idle,           // 空闲状态
+              Preparing,      // 准备热加载
+              Unloading,      // 卸载旧版本
+              Loading,        // 加载新版本
+              Initializing,   // 初始化新版本
+              Finalizing,     // 完成热加载
+              RollingBack,    // 回滚操作
+              Failed          // 失败状态
+          };
+
+          State state = State::Idle;
+          std::string pluginName;
+          std::string oldVersion;
+          std::string newVersion;
+          std::string oldDllPath;
+          std::string newDllPath;
+          std::string backupPath;
+          std::chrono::steady_clock::time_point startTime;
+          std::string errorMessage;
+          bool canRollback = false;
+      };
+
+  private:
+      std::map<std::string, HotLoadState> m_hotLoadStates;
+      std::mutex m_stateMutex;
+
+      // 文件监控
+      std::unique_ptr<FileWatcher> m_fileWatcher;
+      std::map<std::string, std::string> m_watchedPlugins;  // pluginName -> filePath
+
+      // 热加载配置
+      bool m_autoHotLoad = false;
+      std::chrono::seconds m_cooldownPeriod{5};  // 冷却期，防止频繁热加载
+      std::string m_backupDirectory;
+      int m_maxBackupVersions = 5;
+
+      // 热加载队列
+      std::queue<std::string> m_hotLoadQueue;
+      std::mutex m_queueMutex;
+      std::condition_variable m_queueCondition;
+      std::thread m_hotLoadThread;
+      std::atomic<bool> m_running{false};
+
+      // 依赖管理
+      PluginDependencyManager* m_dependencyManager = nullptr;
+      PluginManager* m_pluginManager = nullptr;
+
+  public:
+      // 初始化和配置
+      bool Initialize(const std::string& backupDirectory);
+      void Shutdown();
+      void SetDependencyManager(PluginDependencyManager* manager) { m_dependencyManager = manager; }
+      void SetPluginManager(PluginManager* manager) { m_pluginManager = manager; }
+
+      // 热加载控制
+      HotLoadResult HotLoadPlugin(const std::string& pluginName, const std::string& newDllPath);
+      HotLoadResult HotUnloadPlugin(const std::string& pluginName);
+      HotLoadResult RollbackPlugin(const std::string& pluginName);
+
+      // 文件监控
+      void WatchPluginFile(const std::string& pluginName, const std::string& filePath);
+      void UnwatchPluginFile(const std::string& pluginName);
+      void SetAutoHotLoad(bool enable) { m_autoHotLoad = enable; }
+
+      // 状态查询
+      HotLoadState GetHotLoadState(const std::string& pluginName);
+      std::vector<std::string> GetHotLoadablePlugins();
+      bool IsHotLoadInProgress(const std::string& pluginName);
+
+      // 备份管理
+      bool CreateBackup(const std::string& pluginName, const std::string& sourcePath);
+      bool RestoreFromBackup(const std::string& pluginName, const std::string& version = "");
+      std::vector<std::string> GetAvailableBackups(const std::string& pluginName);
+      void CleanupOldBackups(const std::string& pluginName);
+
+      // 版本管理
+      std::string GetPluginVersion(const std::string& dllPath);
+      bool IsNewerVersion(const std::string& currentVersion, const std::string& newVersion);
+
+  private:
+      // 热加载实现
+      HotLoadResult PerformHotLoad(const std::string& pluginName, const std::string& newDllPath);
+      HotLoadResult PrepareHotLoad(HotLoadState& state);
+      HotLoadResult UnloadOldVersion(HotLoadState& state);
+      HotLoadResult LoadNewVersion(HotLoadState& state);
+      HotLoadResult InitializeNewVersion(HotLoadState& state);
+      HotLoadResult FinalizeHotLoad(HotLoadState& state);
+      HotLoadResult PerformRollback(HotLoadState& state);
+
+      // 文件操作
+      bool CopyFileWithRetry(const std::string& source, const std::string& destination, int maxRetries = 3);
+      bool DeleteFileWithRetry(const std::string& filePath, int maxRetries = 3);
+      bool IsFileInUse(const std::string& filePath);
+      std::string GenerateBackupPath(const std::string& pluginName, const std::string& version);
+
+      // 依赖处理
+      std::vector<std::string> GetDependentPlugins(const std::string& pluginName);
+      HotLoadResult UnloadDependentPlugins(const std::string& pluginName, std::vector<std::string>& unloadedPlugins);
+      HotLoadResult ReloadDependentPlugins(const std::vector<std::string>& pluginNames);
+
+      // 线程管理
+      void HotLoadWorkerThread();
+      void ProcessHotLoadQueue();
+      void OnFileChanged(const std::string& filePath);
+
+      // 状态管理
+      void SetHotLoadState(const std::string& pluginName, HotLoadState::State state, const std::string& error = "");
+      void UpdateHotLoadState(const std::string& pluginName, const std::function<void(HotLoadState&)>& updater);
+  };
+
+  安全卸载机制
+
+  // SafePluginUnloader.h
+  class SafePluginUnloader {
+  public:
+      enum class UnloadStrategy {
+          Immediate,      // 立即卸载
+          Graceful,       // 优雅卸载（等待任务完成）
+          Forced,         // 强制卸载
+          Scheduled      // 计划卸载
+      };
+
+      struct UnloadContext {
+          std::string pluginName;
+          UnloadStrategy strategy;
+          std::chrono::seconds timeout{30};
+          bool waitForTasks = true;
+          bool cleanupResources = true;
+          std::function<void(bool)> callback;
+
+          // 状态跟踪
+          std::atomic<bool> inProgress{false};
+          std::atomic<bool> completed{false};
+          std::atomic<bool> success{false};
+          std::string errorMessage;
+          std::chrono::steady_clock::time_point startTime;
+      };
+
+  private:
+      std::map<std::string, UnloadContext> m_unloadContexts;
+      std::mutex m_contextMutex;
+
+      // 活动监控
+      std::map<std::string, std::atomic<int>> m_pluginActiveCalls;
+      std::map<std::string, std::vector<std::thread::id>> m_pluginActiveThreads;
+      std::map<std::string, std::vector<HANDLE>> m_pluginResources;
+
+      // 卸载队列
+      std::queue<std::string> m_unloadQueue;
+      std::mutex m_queueMutex;
+      std::condition_variable m_queueCondition;
+      std::thread m_unloadThread;
+      std::atomic<bool> m_running{false};
+
+      PluginManager* m_pluginManager = nullptr;
+
+  public:
+      // 初始化
+      void Initialize(PluginManager* pluginManager);
+      void Shutdown();
+
+      // 卸载操作
+      bool UnloadPlugin(const std::string& pluginName, UnloadStrategy strategy = UnloadStrategy::Graceful);
+      bool UnloadPluginAsync(const std::string& pluginName, UnloadStrategy strategy, std::function<void(bool)> callback);
+      bool ForceUnloadPlugin(const std::string& pluginName);
+      bool ScheduleUnload(const std::string& pluginName, std::chrono::steady_clock::time_point when);
+
+      // 活动监控
+      void RegisterActiveCall(const std::string& pluginName);
+      void UnregisterActiveCall(const std::string& pluginName);
+      void RegisterActiveThread(const std::string& pluginName, std::thread::id threadId);
+      void UnregisterActiveThread(const std::string& pluginName, std::thread::id threadId);
+      void RegisterResource(const std::string& pluginName, HANDLE resource);
+      void UnregisterResource(const std::string& pluginName, HANDLE resource);
+
+      // 状态查询
+      bool IsPluginActive(const std::string& pluginName);
+      int GetActiveCallCount(const std::string& pluginName);
+      std::vector<std::thread::id> GetActiveThreads(const std::string& pluginName);
+      bool CanUnloadSafely(const std::string& pluginName);
+
+      // 卸载状态
+      bool IsUnloadInProgress(const std::string& pluginName);
+      UnloadContext GetUnloadContext(const std::string& pluginName);
+
+  private:
+      // 卸载实现
+      bool PerformUnload(const std::string& pluginName, UnloadStrategy strategy, std::chrono::seconds timeout);
+      bool WaitForPluginInactive(const std::string& pluginName, std::chrono::seconds timeout);
+      bool CleanupPluginResources(const std::string& pluginName);
+      bool TerminatePluginThreads(const std::string& pluginName);
+
+      // 工作线程
+      void UnloadWorkerThread();
+      void ProcessUnloadQueue();
+
+      // 资源清理
+      void CleanupHandles(const std::vector<HANDLE>& handles);
+      void CleanupThreads(const std::vector<std::thread::id>& threadIds);
+
+      // 超时处理
+      void HandleUnloadTimeout(const std::string& pluginName);
+  };
+
+  插件代理和转发机制
+
+  // PluginProxy.h
+  class PluginProxy : public IPlugin {
+  private:
+      std::string m_pluginName;
+      std::unique_ptr<IPlugin> m_realPlugin;
+      std::shared_ptr<std::mutex> m_proxyMutex;
+      std::atomic<bool> m_isValid{true};
+      std::atomic<bool> m_isReloading{false};
+
+      // 调用队列（热加载期间缓存调用）
+      struct PendingCall {
+          enum class Type {
+              OnUserInput,
+              OnActionExecute,
+              OnMessage,
+              OnConfigChanged
+          };
+
+          Type type;
+          std::vector<std::string> parameters;
+          std::chrono::steady_clock::time_point timestamp;
+      };
+
+      std::queue<PendingCall> m_pendingCalls;
+      std::mutex m_callsMutex;
+      bool m_queueCalls = false;
+
+      // 引用计数
+      std::atomic<int> m_refCount{0};
+
+  public:
+      PluginProxy(const std::string& pluginName);
+      ~PluginProxy();
+
+      // 代理管理
+      void SetRealPlugin(std::unique_ptr<IPlugin> plugin);
+      void InvalidateProxy();
+      bool IsValid() const { return m_isValid.load(); }
+      void SetReloading(bool reloading);
+      bool IsReloading() const { return m_isReloading.load(); }
+
+      // 引用计数
+      void AddRef() { m_refCount.fetch_add(1); }
+      void Release() { m_refCount.fetch_sub(1); }
+      int GetRefCount() const { return m_refCount.load(); }
+
+      // 调用缓存
+      void SetQueueCalls(bool queue) { m_queueCalls = queue; }
+      void ProcessPendingCalls();
+      void ClearPendingCalls();
+
+      // IPlugin接口实现（代理）
+      std::string GetName() const override;
+      std::string GetVersion() const override;
+      std::string GetDescription() const override;
+      std::string GetAuthor() const override;
+
+      bool Initialize(IPluginHost* host) override;
+      void Shutdown() override;
+
+      void OnUserInput(const std::string& input) override;
+      void OnActionExecute(const std::string& actionId) override;
+      void OnMessage(const std::string& message, const std::string& data) override;
+      void OnConfigChanged(const std::string& key, const std::string& value) override;
+
+      void OnStartup() override;
+      void OnUIShow() override;
+      void OnFileChanged(const std::string& filePath) override;
+      void OnTimerTick() override;
+      void OnCustomTrigger(const std::string& trigger) override;
+
+  private:
+      template<typename Func>
+      auto SafeCall(Func&& func) -> decltype(func());
+
+      void QueueCall(PendingCall::Type type, const std::vector<std::string>& params);
+      bool ShouldQueueCall() const;
+  };
+
+  // 插件代理管理器
+  class PluginProxyManager {
+  private:
+      std::map<std::string, std::shared_ptr<PluginProxy>> m_proxies;
+      std::mutex m_proxiesMutex;
+
+  public:
+      // 代理管理
+      std::shared_ptr<PluginProxy> CreateProxy(const std::string& pluginName);
+      std::shared_ptr<PluginProxy> GetProxy(const std::string& pluginName);
+      void RemoveProxy(const std::string& pluginName);
+      void InvalidateProxy(const std::string& pluginName);
+
+      // 热加载支持
+      void PrepareForHotLoad(const std::string& pluginName);
+      void CompleteHotLoad(const std::string& pluginName, std::unique_ptr<IPlugin> newPlugin);
+      void RollbackHotLoad(const std::string& pluginName);
+
+      // 批量操作
+      void InvalidateAllProxies();
+      std::vector<std::string> GetActiveProxies();
+      int GetTotalRefCount(const std::string& pluginName);
+
+      // 等待操作
+      bool WaitForProxyInactive(const std::string& pluginName, std::chrono::seconds timeout);
+      void WaitForAllProxiesInactive();
+  };
+
+  热加载协调器
+
+  // HotLoadCoordinator.h
+  class HotLoadCoordinator {
+  public:
+      struct HotLoadPlan {
+          std::string targetPlugin;
+          std::vector<std::string> dependentPlugins;
+          std::vector<std::string> dependencyPlugins;
+          std::string newDllPath;
+          bool rollbackOnFailure = true;
+          std::chrono::seconds timeout{60};
+
+          // 执行状态
+          enum class Phase {
+              Planning,
+              PreparingDependents,
+              UnloadingDependents,
+              UnloadingTarget,
+              LoadingTarget,
+              InitializingTarget,
+              ReloadingDependents,
+              Completed,
+              Failed,
+              RollingBack
+          };
+
+          Phase currentPhase = Phase::Planning;
+          std::string errorMessage;
+          std::vector<std::string> completedSteps;
+          std::vector<std::string> failedSteps;
+      };
+
+  private:
+      PluginHotLoader* m_hotLoader = nullptr;
+      SafePluginUnloader* m_unloader = nullptr;
+      PluginProxyManager* m_proxyManager = nullptr;
+      PluginDependencyManager* m_dependencyManager = nullptr;
+
+      std::map<std::string, HotLoadPlan> m_activePlans;
+      std::mutex m_plansMutex;
+
+      // 协调配置
+      bool m_allowConcurrentHotLoads = false;
+      std::chrono::seconds m_defaultTimeout{60};
+
+  public:
+      // 初始化
+      void Initialize(PluginHotLoader* hotLoader, SafePluginUnloader* unloader,
+                     PluginProxyManager* proxyManager, PluginDependencyManager* dependencyManager);
+
+      // 热加载协调
+      bool PlanHotLoad(const std::string& pluginName, const std::string& newDllPath);
+      bool ExecuteHotLoadPlan(const std::string& pluginName);
+      bool RollbackHotLoad(const std::string& pluginName);
+      bool CancelHotLoad(const std::string& pluginName);
+
+      // 计划管理
+      HotLoadPlan GetHotLoadPlan(const std::string& pluginName);
+      std::vector<std::string> GetActiveHotLoads();
+      bool IsHotLoadActive(const std::string& pluginName);
+
+      // 批量热加载
+      bool PlanBatchHotLoad(const std::vector<std::pair<std::string, std::string>>& pluginsAndPaths);
+      bool ExecuteBatchHotLoad();
+
+      // 配置
+      void SetAllowConcurrentHotLoads(bool allow) { m_allowConcurrentHotLoads = allow; }
+      void SetDefaultTimeout(std::chrono::seconds timeout) { m_defaultTimeout = timeout; }
+
+  private:
+      // 计划生成
+      HotLoadPlan CreateHotLoadPlan(const std::string& pluginName, const std::string& newDllPath);
+      std::vector<std::string> CalculateUnloadOrder(const std::string& pluginName);
+      std::vector<std::string> CalculateReloadOrder(const std::vector<std::string>& plugins);
+
+      // 执行步骤
+      bool ExecutePhase(HotLoadPlan& plan, HotLoadPlan::Phase phase);
+      bool PrepareDependentPlugins(HotLoadPlan& plan);
+      bool UnloadDependentPlugins(HotLoadPlan& plan);
+      bool UnloadTargetPlugin(HotLoadPlan& plan);
+      bool LoadTargetPlugin(HotLoadPlan& plan);
+      bool InitializeTargetPlugin(HotLoadPlan& plan);
+      bool ReloadDependentPlugins(HotLoadPlan& plan);
+
+      // 回滚操作
+      bool RollbackPlan(HotLoadPlan& plan);
+      bool RollbackPhase(HotLoadPlan& plan, HotLoadPlan::Phase phase);
+
+      // 状态管理
+      void UpdatePlanPhase(HotLoadPlan& plan, HotLoadPlan::Phase newPhase);
+      void AddCompletedStep(HotLoadPlan& plan, const std::string& step);
+      void AddFailedStep(HotLoadPlan& plan, const std::string& step, const std::string& error);
+
+      // 验证
+      bool ValidateHotLoadPlan(const HotLoadPlan& plan);
+      bool CanPerformHotLoad(const std::string& pluginName);
+      bool CheckDependencyConstraints(const std::string& pluginName);
+  };
+
+✻ Thinking…
+
+  现在我完成了第九个任务，开始最后一个任务：创建示例插件和测试用例。这对于验证插件系统的可用性和为开发者提供参考非常重要。
+
+● 10. 创建示例插件和测试用例
+
+  Hello World 示例插件
+
+  // samples/HelloWorld/HelloWorldPlugin.h
+  #pragma once
+  #include "PluginBase.h"
+
+  class HelloWorldPlugin : public PluginBase {
+  public:
+      HelloWorldPlugin();
+      ~HelloWorldPlugin() override = default;
+
+  protected:
+      void OnInitialize() override;
+      void OnShutdown() override;
+      void OnInputReceived(const std::string& input) override;
+      void OnActionExecuted(const std::string& actionId) override;
+
+  private:
+      void CreateHelloActions();
+      void ShowHelloDialog();
+      void ShowTimeDialog();
+  };
+
+  // HelloWorldPlugin.cpp
+  #include "HelloWorldPlugin.h"
+  #include "PluginHelper.h"
+  #include <windows.h>
+
+  HelloWorldPlugin::HelloWorldPlugin()
+      : PluginBase("HelloWorld", "1.0.0", "Hello World 示例插件", "CandyLauncher Team") {
+  }
+
+  void HelloWorldPlugin::OnInitialize() {
+      CreateHelloActions();
+
+      // 设置默认配置
+      if (GetConfig("show_time", "true") == "true") {
+          AddAction("hello_time", "显示当前时间", "HelloWorld插件", "", "HelloWorld", 1);
+      }
+
+      PLUGIN_LOG_INFO(GetName(), "HelloWorld 插件初始化完成");
+  }
+
+  void HelloWorldPlugin::OnShutdown() {
+      PLUGIN_LOG_INFO(GetName(), "HelloWorld 插件正在关闭");
+  }
+
+  void HelloWorldPlugin::CreateHelloActions() {
+      AddAction("hello_world", "Hello World", "显示问候对话框", "", "HelloWorld", 0);
+      AddAction("hello_user", "Hello " + PluginHelper::GetCurrentUserName(),
+                "向当前用户问候", "", "HelloWorld", 0);
+  }
+
+  void HelloWorldPlugin::OnInputReceived(const std::string& input) {
+      if (PluginHelper::StringContains(input, "hello") ||
+          PluginHelper::StringContains(input, "你好")) {
+          // 动态添加匹配的操作
+          AddAction("hello_dynamic", "Hello " + input, "对输入内容的问候", "", "HelloWorld", 0);
+      }
+  }
+
+  void HelloWorldPlugin::OnActionExecuted(const std::string& actionId) {
+      if (actionId == "hello_world" || actionId == "hello_user" || actionId == "hello_dynamic") {
+          ShowHelloDialog();
+      } else if (actionId == "hello_time") {
+          ShowTimeDialog();
+      }
+  }
+
+  void HelloWorldPlugin::ShowHelloDialog() {
+      std::string message = "Hello from CandyLauncher Plugin!\n";
+      message += "当前用户: " + PluginHelper::GetCurrentUserName() + "\n";
+      message += "计算机名: " + PluginHelper::GetComputerName() + "\n";
+      message += "系统版本: " + PluginHelper::GetSystemVersion();
+
+      ShowNotification("Hello World", message);
+  }
+
+  void HelloWorldPlugin::ShowTimeDialog() {
+      std::string timeStr = PluginHelper::GetCurrentTimeString("%Y年%m月%d日 %H:%M:%S");
+      ShowNotification("当前时间", timeStr);
+  }
+
+  // 导出函数
+  extern "C" __declspec(dllexport) IPlugin* CreatePlugin() {
+      return new HelloWorldPlugin();
+  }
+
+  extern "C" __declspec(dllexport) void DestroyPlugin(IPlugin* plugin) {
+      delete plugin;
+  }
+
+  extern "C" __declspec(dllexport) const char* GetPluginAPIVersion() {
+      return "1.0.0";
+  }
+
+  文件搜索插件示例
+
+  // samples/FileSearch/FileSearchPlugin.h
+  #pragma once
+  #include "PluginBase.h"
+  #include <vector>
+  #include <thread>
+  #include <atomic>
+
+  class FileSearchPlugin : public PluginBase {
+  public:
+      FileSearchPlugin();
+      ~FileSearchPlugin() override;
+
+  protected:
+      void OnInitialize() override;
+      void OnShutdown() override;
+      void OnInputReceived(const std::string& input) override;
+      void OnActionExecuted(const std::string& actionId) override;
+      void OnConfigurationChanged(const std::string& key, const std::string& value) override;
+
+  private:
+      struct SearchResult {
+          std::string filePath;
+          std::string fileName;
+          std::string directory;
+          uint64_t fileSize;
+          std::chrono::file_time_type lastModified;
+          double relevanceScore;
+      };
+
+      // 搜索相关
+      void PerformSearch(const std::string& query);
+      void SearchInDirectory(const std::string& directory, const std::string& pattern,
+                            std::vector<SearchResult>& results);
+      void UpdateSearchResults(const std::vector<SearchResult>& results);
+      double CalculateRelevanceScore(const std::string& fileName, const std::string& query);
+
+      // 搜索配置
+      std::vector<std::string> m_searchPaths;
+      std::vector<std::string> m_fileExtensions;
+      bool m_searchSubdirectories = true;
+      int m_maxResults = 20;
+      int m_minQueryLength = 2;
+
+      // 搜索状态
+      std::atomic<bool> m_searchInProgress{false};
+      std::thread m_searchThread;
+      std::string m_lastQuery;
+
+      // 结果缓存
+      std::map<std::string, std::vector<SearchResult>> m_searchCache;
+      std::chrono::steady_clock::time_point m_lastSearchTime;
+
+      // 辅助方法
+      void LoadConfiguration();
+      void ParseSearchPaths(const std::string& pathsStr);
+      void ParseFileExtensions(const std::string& extensionsStr);
+      std::string FormatFileSize(uint64_t size);
+      std::string FormatLastModified(std::chrono::file_time_type time);
+  };
+
+  // FileSearchPlugin.cpp
+  #include "FileSearchPlugin.h"
+  #include "PluginHelper.h"
+  #include <regex>
+  #include <algorithm>
+  #include <filesystem>
+
+  FileSearchPlugin::FileSearchPlugin()
+      : PluginBase("FileSearch", "1.0.0", "文件搜索插件", "CandyLauncher Team") {
+  }
+
+  FileSearchPlugin::~FileSearchPlugin() {
+      if (m_searchThread.joinable()) {
+          m_searchThread.join();
+      }
+  }
+
+  void FileSearchPlugin::OnInitialize() {
+      LoadConfiguration();
+      PLUGIN_LOG_INFO(GetName(), "文件搜索插件初始化完成");
+  }
+
+  void FileSearchPlugin::OnShutdown() {
+      m_searchInProgress = false;
+      if (m_searchThread.joinable()) {
+          m_searchThread.join();
+      }
+      PLUGIN_LOG_INFO(GetName(), "文件搜索插件关闭完成");
+  }
+
+  void FileSearchPlugin::LoadConfiguration() {
+      // 加载搜索路径
+      std::string searchPaths = GetConfig("search_paths", "C:\\Users;D:\\");
+      ParseSearchPaths(searchPaths);
+
+      // 加载文件扩展名过滤
+      std::string extensions = GetConfig("file_extensions", ".txt,.doc,.docx,.pdf,.jpg,.png");
+      ParseFileExtensions(extensions);
+
+      // 加载其他配置
+      m_searchSubdirectories = GetConfigBool("search_subdirectories", true);
+      m_maxResults = GetConfigInt("max_results", 20);
+      m_minQueryLength = GetConfigInt("min_query_length", 2);
+  }
+
+  void FileSearchPlugin::OnInputReceived(const std::string& input) {
+      // 检查是否为文件搜索查询
+      if (input.length() >= m_minQueryLength) {
+          // 检查是否包含文件搜索关键词或文件扩展名
+          bool isFileQuery = false;
+
+          // 检查文件扩展名
+          for (const auto& ext : m_fileExtensions) {
+              if (PluginHelper::StringContains(input, ext)) {
+                  isFileQuery = true;
+                  break;
+              }
+          }
+
+          // 检查搜索关键词
+          if (!isFileQuery) {
+              std::vector<std::string> fileKeywords = {"文件", "file", "搜索", "search", "查找", "find"};
+              for (const auto& keyword : fileKeywords) {
+                  if (PluginHelper::StringContains(input, keyword)) {
+                      isFileQuery = true;
+                      break;
+                  }
+              }
+          }
+
+          if (isFileQuery) {
+              PerformSearch(input);
+          }
+      }
+  }
+
+  void FileSearchPlugin::PerformSearch(const std::string& query) {
+      // 避免重复搜索
+      if (m_searchInProgress || query == m_lastQuery) {
+          return;
+      }
+
+      m_lastQuery = query;
+      m_searchInProgress = true;
+
+      // 在新线程中执行搜索
+      if (m_searchThread.joinable()) {
+          m_searchThread.join();
+      }
+
+      m_searchThread = std::thread([this, query]() {
+          std::vector<SearchResult> results;
+
+          try {
+              for (const auto& searchPath : m_searchPaths) {
+                  if (!m_searchInProgress) break;
+
+                  if (PluginHelper::DirectoryExists(searchPath)) {
+                      SearchInDirectory(searchPath, query, results);
+                  }
+              }
+
+              // 按相关性排序
+              std::sort(results.begin(), results.end(),
+                       [](const SearchResult& a, const SearchResult& b) {
+                           return a.relevanceScore > b.relevanceScore;
+                       });
+
+              // 限制结果数量
+              if (results.size() > m_maxResults) {
+                  results.resize(m_maxResults);
+              }
+
+              // 更新搜索结果
+              UpdateSearchResults(results);
+
+              // 缓存结果
+              m_searchCache[query] = results;
+              m_lastSearchTime = std::chrono::steady_clock::now();
+
+          } catch (const std::exception& ex) {
+              PLUGIN_LOG_ERROR(GetName(), "搜索过程中发生错误: " + std::string(ex.what()));
+          }
+
+          m_searchInProgress = false;
+      });
+  }
+
+  void FileSearchPlugin::SearchInDirectory(const std::string& directory, const std::string& pattern,
+                                          std::vector<SearchResult>& results) {
+      try {
+          std::filesystem::path dirPath(directory);
+
+          auto searchIterator = m_searchSubdirectories ?
+              std::filesystem::recursive_directory_iterator(dirPath) :
+              std::filesystem::directory_iterator(dirPath);
+
+          for (const auto& entry : searchIterator) {
+              if (!m_searchInProgress) break;
+
+              if (entry.is_regular_file()) {
+                  std::string fileName = entry.path().filename().string();
+                  std::string fileExt = entry.path().extension().string();
+
+                  // 检查文件扩展名过滤
+                  if (!m_fileExtensions.empty()) {
+                      bool matchExtension = false;
+                      for (const auto& ext : m_fileExtensions) {
+                          if (PluginHelper::StringEndsWith(fileName, ext, true)) {
+                              matchExtension = true;
+                              break;
+                          }
+                      }
+                      if (!matchExtension) continue;
+                  }
+
+                  // 检查文件名匹配
+                  if (PluginHelper::StringContains(fileName, pattern, true)) {
+                      SearchResult result;
+                      result.filePath = entry.path().string();
+                      result.fileName = fileName;
+                      result.directory = entry.path().parent_path().string();
+                      result.fileSize = entry.file_size();
+                      result.lastModified = entry.last_write_time();
+                      result.relevanceScore = CalculateRelevanceScore(fileName, pattern);
+
+                      results.push_back(result);
+                  }
+              }
+          }
+      } catch (const std::exception& ex) {
+          PLUGIN_LOG_WARNING(GetName(), "搜索目录失败: " + directory + ", 错误: " + ex.what());
+      }
+  }
+
+  void FileSearchPlugin::UpdateSearchResults(const std::vector<SearchResult>& results) {
+      // 清除之前的搜索结果
+      for (int i = 0; i < m_maxResults; ++i) {
+          RemoveAction("file_result_" + std::to_string(i));
+      }
+
+      // 添加新的搜索结果
+      for (size_t i = 0; i < results.size(); ++i) {
+          const auto& result = results[i];
+          std::string actionId = "file_result_" + std::to_string(i);
+          std::string subtitle = result.directory + " (" + FormatFileSize(result.fileSize) + ")";
+
+          AddAction(actionId, result.fileName, subtitle, "", "FileSearch", 0);
+      }
+  }
+
+  double FileSearchPlugin::CalculateRelevanceScore(const std::string& fileName, const std::string& query) {
+      double score = 0.0;
+
+      // 完全匹配得分最高
+      if (PluginHelper::StringContains(fileName, query, true)) {
+          score += 1.0;
+      }
+
+      // 开头匹配得分较高
+      if (PluginHelper::StringStartsWith(fileName, query, true)) {
+          score += 0.5;
+      }
+
+      // 根据匹配位置调整得分
+      std::string lowerFileName = PluginHelper::ToLowerCase(fileName);
+      std::string lowerQuery = PluginHelper::ToLowerCase(query);
+
+      size_t pos = lowerFileName.find(lowerQuery);
+      if (pos != std::string::npos) {
+          // 越靠前的匹配得分越高
+          score += (1.0 - (double)pos / lowerFileName.length()) * 0.3;
+      }
+
+      return score;
+  }
+
+  void FileSearchPlugin::OnActionExecuted(const std::string& actionId) {
+      if (PluginHelper::StringStartsWith(actionId, "file_result_")) {
+          // 提取结果索引
+          std::string indexStr = actionId.substr(12); // "file_result_"的长度是12
+          int index = std::stoi(indexStr);
+
+          // 从缓存中获取对应的文件路径
+          if (m_searchCache.count(m_lastQuery) > 0) {
+              const auto& results = m_searchCache[m_lastQuery];
+              if (index >= 0 && index < results.size()) {
+                  const auto& result = results[index];
+
+                  // 打开文件或显示文件位置
+                  std::string command = "explorer.exe /select,\"" + result.filePath + "\"";
+                  system(command.c_str());
+              }
+          }
+      }
+  }
+
+  // 其他方法实现...
+
+  计算器插件示例
+
+  // samples/Calculator/CalculatorPlugin.h
+  #pragma once
+  #include "PluginBase.h"
+  #include <regex>
+
+  class CalculatorPlugin : public PluginBase {
+  public:
+      CalculatorPlugin();
+      ~CalculatorPlugin() override = default;
+
+  protected:
+      void OnInitialize() override;
+      void OnInputReceived(const std::string& input) override;
+      void OnActionExecuted(const std::string& actionId) override;
+
+  private:
+      struct CalculationResult {
+          bool isValid = false;
+          double value = 0.0;
+          std::string expression;
+          std::string formattedResult;
+          std::string error;
+      };
+
+      // 计算功能
+      CalculationResult EvaluateExpression(const std::string& expression);
+      bool IsValidExpression(const std::string& input);
+      std::string FormatNumber(double value);
+
+      // 表达式解析
+      double ParseExpression(const std::string& expr);
+      double ParseTerm(const std::string& expr, size_t& pos);
+      double ParseFactor(const std::string& expr, size_t& pos);
+      double ParseNumber(const std::string& expr, size_t& pos);
+
+      // 数学函数
+      double CalculateFunction(const std::string& funcName, double arg);
+      std::map<std::string, std::function<double(double)>> m_mathFunctions;
+
+      // 常量
+      std::map<std::string, double> m_constants;
+
+      // 历史记录
+      std::vector<CalculationResult> m_history;
+      int m_maxHistorySize = 20;
+
+      // 配置
+      int m_decimalPlaces = 6;
+      bool m_showScientificNotation = false;
+      bool m_enableAdvancedFunctions = true;
+
+      void InitializeMathFunctions();
+      void InitializeConstants();
+      void LoadConfiguration();
+      std::string m_lastExpression;
+      CalculationResult m_lastResult;
+  };
+
+  // CalculatorPlugin.cpp 部分实现
+  CalculatorPlugin::CalculatorPlugin()
+      : PluginBase("Calculator", "1.0.0", "计算器插件", "CandyLauncher Team") {
+  }
+
+  void CalculatorPlugin::OnInitialize() {
+      InitializeMathFunctions();
+      InitializeConstants();
+      LoadConfiguration();
+
+      PLUGIN_LOG_INFO(GetName(), "计算器插件初始化完成");
+  }
+
+  void CalculatorPlugin::InitializeMathFunctions() {
+      m_mathFunctions["sin"] = [](double x) { return std::sin(x); };
+      m_mathFunctions["cos"] = [](double x) { return std::cos(x); };
+      m_mathFunctions["tan"] = [](double x) { return std::tan(x); };
+      m_mathFunctions["log"] = [](double x) { return std::log10(x); };
+      m_mathFunctions["ln"] = [](double x) { return std::log(x); };
+      m_mathFunctions["sqrt"] = [](double x) { return std::sqrt(x); };
+      m_mathFunctions["abs"] = [](double x) { return std::abs(x); };
+      m_mathFunctions["ceil"] = [](double x) { return std::ceil(x); };
+      m_mathFunctions["floor"] = [](double x) { return std::floor(x); };
+  }
+
+  void CalculatorPlugin::InitializeConstants() {
+      m_constants["pi"] = 3.14159265358979323846;
+      m_constants["e"] = 2.71828182845904523536;
+      m_constants["phi"] = 1.61803398874989484820; // 黄金比例
+  }
+
+  void CalculatorPlugin::OnInputReceived(const std::string& input) {
+      if (IsValidExpression(input)) {
+          CalculationResult result = EvaluateExpression(input);
+
+          if (result.isValid) {
+              m_lastExpression = input;
+              m_lastResult = result;
+
+              // 添加计算结果动作
+              std::string actionTitle = result.expression + " = " + result.formattedResult;
+              AddAction("calc_result", actionTitle, "点击复制结果到剪贴板", "", "Calculator", 1);
+
+              // 添加到历史记录
+              m_history.push_back(result);
+              if (m_history.size() > m_maxHistorySize) {
+                  m_history.erase(m_history.begin());
+              }
+          } else {
+              // 显示错误
+              AddAction("calc_error", "计算错误: " + result.error, "", "", "Calculator", 0);
+          }
+      }
+  }
+
+  bool CalculatorPlugin::IsValidExpression(const std::string& input) {
+      // 使用正则表达式检查是否为有效的数学表达式
+      std::regex mathPattern(R"(^[\d\+\-\*/\(\)\.\s,sincostanlgqrtabef]+$)", std::regex_constants::icase);
+      return std::regex_match(input, mathPattern) &&
+             (input.find_first_of("0123456789") != std::string::npos);
+  }
+
+  CalculatorPlugin::CalculationResult CalculatorPlugin::EvaluateExpression(const std::string& expression) {
+      CalculationResult result;
+      result.expression = expression;
+
+      try {
+          // 替换常量
+          std::string processedExpr = expression;
+          for (const auto& constant : m_constants) {
+              size_t pos = 0;
+              while ((pos = processedExpr.find(constant.first, pos)) != std::string::npos) {
+                  processedExpr.replace(pos, constant.first.length(), std::to_string(constant.second));
+                  pos += std::to_string(constant.second).length();
+              }
+          }
+
+          // 计算表达式
+          result.value = ParseExpression(processedExpr);
+          result.formattedResult = FormatNumber(result.value);
+          result.isValid = true;
+
+      } catch (const std::exception& ex) {
+          result.error = ex.what();
+          result.isValid = false;
+      }
+
+      return result;
+  }
+
+  void CalculatorPlugin::OnActionExecuted(const std::string& actionId) {
+      if (actionId == "calc_result" && m_lastResult.isValid) {
+          // 复制结果到剪贴板
+          if (OpenClipboard(nullptr)) {
+              EmptyClipboard();
+
+              std::string result = m_lastResult.formattedResult;
+              HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, result.size() + 1);
+              if (hGlobal) {
+                  char* pGlobal = static_cast<char*>(GlobalLock(hGlobal));
+                  strcpy_s(pGlobal, result.size() + 1, result.c_str());
+                  GlobalUnlock(hGlobal);
+                  SetClipboardData(CF_TEXT, hGlobal);
+              }
+
+              CloseClipboard();
+              ShowNotification("计算器", "结果已复制到剪贴板: " + result);
+          }
+      }
+  }
+
+✻ Thinking…
+
+  现在我已经完成了所有的TODO任务！让我为用户提供一个总结，回答他们关于插件系统设计的问题。
+
+  让我回顾一下我设计的插件系统的主要特点：
+
+  1. 安全性：通过代理模式、权限管理、沙箱隔离等确保插件不能直接修改主程序的allActions列表
+  2. 配置集成：插件可以复用主程序的设置系统，配置会显示在设置界面的插件子页面中
+  3. 多种加载时机：支持程序启动、UI显示、文件变化、用户输入、定时器、自定义触发等多种加载时机
+  4. 热加载：支持插件的动态加载和卸载，无需重启主程序
+  5. 开发工具：提供完整的SDK、模板、验证工具等
+
+  关于用户担心的"插件直接操作allActions列表"的问题，我的设计通过以下方式解决了这个安全问题：
+  - 插件不能直接访问allActions，而是通过IPluginHost接口请求操作
+  - 所有操作都经过权限验证和安全检查
+  - 使用代理模式隔离插件和主程序的数据
+  - 提供审计日志记录所有操作
+
+  这样既保证了灵活性，又维护了安全性。
+
+● 插件系统设计完成总结
+
+  我已经完成了CandyLauncher插件系统的详细设计。以下是整个系统的核心特点：
+
+  🔒 安全性保障
+
+  关于你担心的"插件直接操作allActions列表"问题，我的设计通过以下方式完全解决了这个安全隐患：
+
+  1. 代理模式隔离：插件不能直接访问你的allActions，而是通过IPluginHost接口请求操作
+  2. 权限分级管理：不同插件有不同的数据访问权限（只读、有限、标准、提升、系统级）
+  3. 操作审计：所有数据修改都被记录，可以追踪是哪个插件做了什么操作
+  4. 沙箱隔离：限制插件的系统访问能力，防止恶意行为
+
+  🔧 配置系统集成
+
+  - 插件可以复用你现有的settings.json配置系统
+  - 每个插件有独立的配置文件，但使用相同的JSON结构
+  - 插件配置会自动显示在你的设置界面中，作为新的子页面
+  - 支持配置热更新和冲突解决
+
+  ⚡ 多种加载时机
+
+  你提到的所有加载时机都支持：
+  1. 程序启动时：统一索引所有插件条目
+  2. 主界面显示时：后台更新条目
+  3. 文件监控：监听文件变化触发更新
+  4. 用户输入时：动态生成条目
+  5. 消息机制：插件可以随时请求更新索引
+  6. 定时器：定期更新
+  7. 自定义触发：支持任意自定义事件
+
+  🔄 热加载能力
+
+  - 支持插件的动态加载和卸载，无需重启程序
+  - 智能依赖管理，自动处理插件间的依赖关系
+  - 版本兼容性检查和自动回滚
+  - 安全的热替换机制，避免Windows DLL锁定问题
+
+  🛠️ 完整开发生态
+
+  - 提供完整的SDK和开发工具包
+  - 包含多个示例插件（HelloWorld、文件搜索、计算器等）
+  - 插件代码生成器、验证工具、签名工具
+  - 详细的API文档和开发指南
+
+  📊 监控和调试
+
+  - 完善的错误处理和崩溃分析
+  - 性能监控和优化建议
+  - 实时调试支持和日志系统
+  - 安全监控和威胁检测
+
+  这个插件系统既保证了安全性（插件无法直接破坏你的程序），又提供了灵活性（支持丰富的功能扩展），同时具备易用性（开发者可以轻松创建插件）。
+
+  你觉得这个设计如何？有什么特定的部分需要我进一步详细说明吗？

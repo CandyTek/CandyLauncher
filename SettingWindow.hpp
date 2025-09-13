@@ -143,6 +143,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 	switch (msg) {
 		case WM_CREATE: {
 			RefreshSkinFile();
+			AddAppStartupTime();
 			originalSkinPath = g_currectSkinFilePath;
 			MyScrollViewRegisterClass();
 			// --------- 1. 收集所有subPage名 ---------
@@ -382,7 +383,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			}
 				// --- 保存 ---
 			else if (LOWORD(wParam) == 9999) {
-				saveConfig(hwnd, subPages, g_settings2, hCtrlsByTab);
+				saveConfig(hwnd, subPages, g_settings2, hCtrlsByTab,USER_SETTINGS_PATH);
 				DestroyWindow(hwnd);
 				break;
 			}
@@ -444,4 +445,20 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
 	return 0;
+}
+
+// 注册设置窗口类。
+inline ATOM SettingWindowRegisterClass(HINSTANCE hInstance) {
+	WNDCLASSEXW wc{};
+
+	wc.cbSize = sizeof(WNDCLASSEX);
+	//wc.style = CS_HREDRAW | CS_VREDRAW;
+	wc.lpfnWndProc = SettingsWndProc;
+	wc.hInstance = hInstance;
+	//wc.cbClsExtra = 0;
+	//wc.cbWndExtra = 0;
+	wc.hbrBackground = reinterpret_cast<HBRUSH>((COLOR_WINDOW + 1));
+
+	wc.lpszClassName = L"SettingsWndClass";
+	return RegisterClassExW(&wc);
 }

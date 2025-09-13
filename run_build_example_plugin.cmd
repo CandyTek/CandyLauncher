@@ -9,4 +9,4 @@ for /f "usebackq tokens=*" %%i in (`call "%ProgramFiles(x86)%\Microsoft Visual S
 :: call VsDevCmd.bat
 call "%VS_PATH%\Common7\Tools\VsDevCmd.bat"
 
-cmake -S . -B cmake-build-debug-ninja-vs -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
+cmake --build cmake-build-debug-ninja-vs --config Debug --target ExamplePlugin -j 18

@@ -4,22 +4,22 @@ This file provides guidance to gemini (google.com/Gemini) when working with code
 
 ## Build Commands
 
-> No reading required @CMakePresets.json
+> IMPORTANT: No need to read any files, just execute the following command
 
 ### Generate, CMake with Ninja + MSVC
-```bash
-"E:\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" && cmake -S . -B cmake-build-debug-ninja-vs -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
+```shell
+run_cmake_generate.cmd
 ```
 
 ### Build
 
-```bash
-"E:\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" && cmake --build cmake-build-debug-ninja-vs --config Debug --target WindowsProject1  -j 18
+```shell
+run_build.cmd
 ```
 
 ### Test Commands
-```bash
-"E:\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" && ctest -C Debug --test-dir cmake-build-debug-ninja-vs
+```shell
+run_debug_test.cmd
 ```
 
 ## Architecture Overview

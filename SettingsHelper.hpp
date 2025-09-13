@@ -141,7 +141,7 @@ static std::string GetSettingsJsonText()
  * @return A nlohmann::json object containing the user's settings.
  * Returns an empty json object if the file doesn't exist or is invalid.
  */
-static nlohmann::json loadUserConfig(const std::string &filename = "user_settings.json") {
+static nlohmann::json loadUserConfig(const std::wstring filename) {
 	std::string f = ReadUtf8File(filename);
 	nlohmann::json userConfig;
 	try {
@@ -150,9 +150,9 @@ static nlohmann::json loadUserConfig(const std::string &filename = "user_setting
 	}
 	catch (const nlohmann::json::parse_error &e) {
 		// The file is corrupted or not valid JSON.
-		std::string error_msg = "Config file load error in '" + filename +
-								"'. Using default settings.\n\nError: " + e.what();
-		MessageBoxA(nullptr, error_msg.c_str(), "Config Load Error", MB_OK | MB_ICONWARNING);
+		std::wstring error_msg = L"Config file load error in '" + filename +
+								L"'. Using default settings.\n\nError: " + utf8_to_wide(e.what());
+		MessageBoxW(nullptr, error_msg.c_str(), L"Config Load Error", MB_OK | MB_ICONWARNING);
 		return {}; // Return empty to fall back to defaults.
 	}
 	return userConfig;
@@ -169,7 +169,7 @@ static void LoadSettingsMap() {
 
 static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std::vector<SettingItem> &settings2,
                        const std::vector<std::vector<HWND>> &hCtrlsByTab,
-                       const std::string &filename = "user_settings.json") {
+                       const std::wstring filename) {
 	// The final JSON object will be a simple key-value map.
 	nlohmann::json newConfig;
 
@@ -187,7 +187,14 @@ static void saveConfig(HWND hwnd, const std::vector<std::wstring> &subPages, std
 
 			// "text" and "button" types are for display only and have no value to save.
 			// They also don't have a corresponding value control, so we skip them.
-			if (item.type == "text" || item.type == "button") {
+			if (item.type == "text" ) {
+				// 严重依赖控件的顺序，由于text项只创建了一项，所以跳过时加1
+				ctrlIdx+=1;
+				continue;
+			}
+			if ( item.type == "button") {
+				// 严重依赖控件的顺序，由于button项创建了一对，所以跳过时加2
+				ctrlIdx+=2;
 				continue;
 			}
 
@@ -324,7 +331,7 @@ static void LoadSettingList() {
 		ShowErrorMsgBox(L"解析用户配置失败，使用默认的设置运行程序！");
 		g_settings2 = {};
 	}
-	nlohmann::json userConfig = loadUserConfig();
+	nlohmann::json userConfig = loadUserConfig(USER_SETTINGS_PATH);
 	if (!g_settings2.empty()) {
 		// 将用户设置合并到主要设置结构中。此此更新在UI构建之前更新每个项目的“ defvalue”。
 		if (!userConfig.is_null() && !userConfig.empty()) {
@@ -419,7 +426,7 @@ static void applySettings(HWND hwnd, const std::vector<std::wstring> &subPages,
 						  std::vector<SettingItem> &settings2,
 						  const std::vector<std::vector<HWND>> &hCtrlsByTab) {
 	// Apply settings without closing the window
-	saveConfig(hwnd, subPages, settings2, hCtrlsByTab, "user_settings.json");
+	saveConfig(hwnd, subPages, settings2, hCtrlsByTab,USER_SETTINGS_PATH);
 
 	// Show a brief confirmation message
 	MessageBoxW(hwnd, L"设置已应用", L"应用完成", MB_OK | MB_ICONINFORMATION);
@@ -442,7 +449,7 @@ static void handleButtonAction(HWND hwnd, const std::string &key) {
 		swprintf_s(fileName, L"settings_backup_%04d%02d%02d_%02d%02d%02d.json",
 				   st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
-		if (CopyFileW(L"user_settings.json", fileName, FALSE)) {
+		if (CopyFileW(USER_SETTINGS_PATH.c_str(), fileName, FALSE)) {
 			std::wstring message = L"设置已备份到: " + std::wstring(fileName);
 			MessageBoxW(hwnd, message.c_str(), L"备份成功", MB_OK | MB_ICONINFORMATION);
 		} else {
@@ -466,7 +473,7 @@ static void handleButtonAction(HWND hwnd, const std::string &key) {
 		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
 		if (GetOpenFileNameW(&ofn)) {
-			if (CopyFileW(szFile, L"user_settings.json", FALSE)) {
+			if (CopyFileW(szFile, USER_SETTINGS_PATH.c_str(), FALSE)) {
 				MessageBoxW(hwnd, L"设置已恢复，请重启程序生效", L"恢复成功", MB_OK | MB_ICONINFORMATION);
 			} else {
 				MessageBoxW(hwnd, L"恢复失败", L"错误", MB_OK | MB_ICONERROR);
@@ -475,3 +482,11 @@ static void handleButtonAction(HWND hwnd, const std::string &key) {
 	}
 }
 
+static void AddAppStartupTime() {
+	auto it = std::find_if(g_settings2.rbegin(), g_settings2.rend(),
+						   [](const SettingItem &item) { return item.key == "pref_about_other1"; });
+	if (it == g_settings2.rend()) {
+		return;
+	}
+	it->title = "本次应用启动完成耗时: " + std::to_string(APP_STARTUP_TIME) + "ms";
+}

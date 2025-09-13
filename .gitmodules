@@ -1,3 +1,9 @@
 [submodule "3rdparty/RapidFuzz"]
 	path = 3rdparty/RapidFuzz
 	url = https://github.com/rapidfuzz/rapidfuzz-cpp.git
+[submodule "3rdparty/ExprTk"]
+	path = 3rdparty/ExprTk
+	url = https://github.com/ArashPartow/exprtk.git
+[submodule "plugins/calc/exprtk"]
+	path = plugins/calc/exprtk
+	url = https://github.com/ArashPartow/exprtk

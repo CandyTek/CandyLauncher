@@ -1,57 +1,21 @@
-﻿#pragma once
+﻿// 此类放置与 Windowsproject1 强相关的方法，不要被其他文件引用，只能被唯一主程序引用
+
+#pragma once
 
 #include "SettingsHelper.hpp"
 #include "TrayMenuManager.h"
 #include "dwmapi.h"
 #include "SettingWindow.hpp"
 #include "ShortCutHelper.hpp"
+#include "ListedRunnerPlugin.h"
+#include "ListViewManager.h"
+#include <atomic>
+
+#include "PluginRunningApps.hpp"
 
 // --- (在此处粘贴上面定义的 MAKE_HOTKEY_KEY, HotkeyMap) ---
 #define MAKE_HOTKEY_KEY(modifiers, vk) (static_cast<UINT64>(modifiers) << 32 | static_cast<UINT64>(vk))
 using HotkeyMap = std::unordered_map<UINT64, UINT64>;
-
-
-static bool IsRunAsAdmin() {
-	BOOL isAdmin = FALSE;
-	PSID adminGroup = NULL;
-	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
-
-	if (AllocateAndInitializeSid(&NtAuthority, 2,
-								 SECURITY_BUILTIN_DOMAIN_RID,
-								 DOMAIN_ALIAS_RID_ADMINS,
-								 0, 0, 0, 0, 0, 0,
-								 &adminGroup)) {
-		CheckTokenMembership(NULL, adminGroup, &isAdmin);
-		FreeSid(adminGroup);
-	}
-
-	return isAdmin == TRUE;
-}
-
-
-static bool RelaunchAsAdmin() {
-	WCHAR szPath[MAX_PATH];
-	if (!GetModuleFileNameW(NULL, szPath, MAX_PATH))
-		return false;
-
-	SHELLEXECUTEINFOW sei = {sizeof(sei)};
-	sei.lpVerb = L"runas"; // 关键点：请求以管理员身份运行
-	sei.lpFile = szPath; // 当前程序路径
-	sei.hwnd = NULL;
-	sei.nShow = SW_NORMAL;
-
-	if (!ShellExecuteExW(&sei)) {
-		DWORD dwErr = GetLastError();
-		if (dwErr == ERROR_CANCELLED) {
-			MessageBoxW(NULL, L"用户取消了权限提升。", L"提示", MB_ICONINFORMATION);
-		} else {
-			MessageBoxW(NULL, L"无法以管理员身份重新启动程序。", L"错误", MB_ICONERROR);
-		}
-		return false;
-	}
-
-	return true;
-}
 
 // 解析字符串并存储到 Map 中，用于主程序里的窗口快捷键
 static bool AddHotkey(const std::wstring &hotkeyStr, UINT64 action) {
@@ -99,15 +63,7 @@ static bool AddHotkey(const std::wstring &hotkeyStr, UINT64 action) {
 }
 
 static bool AddHotkey(const std::string &hotkeyStr, UINT64 action) {
-	return AddHotkey(utf8_to_wide(hotkeyStr),action);
-}
-
-
-// 已弃用 Win7以前有效
-static BOOL IsDwmExclusiveFullscreen(HWND hwnd) {
-	BOOL isCloaked = FALSE;
-	HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &isCloaked, sizeof(isCloaked));
-	return SUCCEEDED(hr) && isCloaked;
+	return AddHotkey(utf8_to_wide(hotkeyStr), action);
 }
 
 static bool shouldShowInCurrentWindowMode(HWND hwnd) {
@@ -199,8 +155,7 @@ static bool shouldShowInCurrentWindowTopmostMode(HWND hwnd) {
 	return true;
 }
 
-
-static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager) {
+static void userSettingsAfterTheAppStart() {
 	initGlobalVariable();
 	bool pref_run_app_as_admin = (g_settings_map["pref_run_app_as_admin"].boolValue);
 	if (pref_run_app_as_admin) {
@@ -223,10 +178,10 @@ static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager) {
 			g_settings_map["pref_hotkey_run_item_as_admin"].stringValue);
 
 	if (pref_show_tray_icon) {
-		trayMenuManager.ShowTrayIcon();
-//		TrayMenuManager::AddTrayIcon(g_mainHwnd);
+		TrayMenuManager::ShowTrayIcon();
+		//		TrayMenuManager::AddTrayIcon(g_mainHwnd);
 	} else {
-		trayMenuManager.HideTrayIcon();
+		TrayMenuManager::HideTrayIcon();
 	}
 
 	// UnregisterHotKey(s_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
@@ -265,8 +220,8 @@ static void userSettingsAfterTheAppStart(TrayMenuManager trayMenuManager) {
 /**
  * 当用户配置更改时，执行一些功能变更操作
  */
-static void doPrefChanged(TrayMenuManager trayMenuManager) {
-	userSettingsAfterTheAppStart(trayMenuManager);
+static void doPrefChanged() {
+	userSettingsAfterTheAppStart();
 	// 初始化一些常见变量
 	wchar_t myAppExePath[MAX_PATH];
 	GetModuleFileNameW(nullptr, myAppExePath, MAX_PATH);
@@ -314,125 +269,17 @@ static void doPrefChanged(TrayMenuManager trayMenuManager) {
 	}
 }
 
-
-// 读取窗口位置
-static RECT LoadWindowRectFromRegistry() {
-	RECT rect = {CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT + MAIN_WINDOW_WIDTH, CW_USEDEFAULT + MAIN_WINDOW_HEIGHT};
-	HKEY hKey;
-	if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-		DWORD size = sizeof(rect);
-		RegQueryValueExW(hKey, L"WindowRect", nullptr, nullptr, (LPBYTE) &rect, &size);
-		RegCloseKey(hKey);
-	}
-	return rect;
-}
-
-// 保存窗口位置
-static void SaveWindowRectToRegistry(HWND hWnd) {
-	RECT rect;
-	if (GetWindowRect(hWnd, &rect)) {
-		HKEY hKey;
-		if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, nullptr, 0, KEY_WRITE, nullptr,
-							&hKey, nullptr) == ERROR_SUCCESS) {
-			RegSetValueExW(hKey, L"WindowRect", 0, REG_BINARY, (const BYTE *) &rect, sizeof(rect));
-			RegCloseKey(hKey);
-		}
-	}
-}
-
-// 监听皮肤文件
-static void watchSkinFile() {
-	std::wstring directory = LR"(C:\Users\Administrator\source\repos\WindowsProject1)";
-	std::wstring fileName = L"skin_test.json";
-
-	HANDLE hDir = CreateFileW(
-			directory.c_str(),
-			FILE_LIST_DIRECTORY,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-			nullptr,
-			OPEN_EXISTING,
-			FILE_FLAG_BACKUP_SEMANTICS,
-			nullptr
-	);
-
-
-	if (hDir == INVALID_HANDLE_VALUE) {
-		DWORD err = GetLastError();
-		std::wcerr << L"无法打开目录句柄。错误代码：" << err << std::endl;
-		return;
-	}
-
-	// 1. (推荐) 使用 BYTE 数组作为缓冲区
-	char buffer[(sizeof(FILE_NOTIFY_INFORMATION) + MAX_PATH) * 2]{};
-	DWORD bytesReturned;
-
-	while (true) // 线程将在此循环
-	{
-		BOOL success = ReadDirectoryChangesW(
-				hDir,
-				buffer,
-				sizeof(buffer),
-				FALSE, // 不递归
-				FILE_NOTIFY_CHANGE_LAST_WRITE,
-				&bytesReturned,
-				nullptr,
-				nullptr
-		);
-
-		if (!success) {
-			DWORD err = GetLastError();
-			std::wcerr << L"ReadDirectoryChangesW 失败，错误代码：" << err << std::endl;
-			break; // 发生错误，退出循环
-		}
-
-		// 2. (关键修复) 只有当确实返回了数据时才处理
-		if (bytesReturned > 0) {
-			FILE_NOTIFY_INFORMATION *pNotify;
-			size_t offset = 0;
-
-			do {
-				pNotify = (FILE_NOTIFY_INFORMATION *) ((BYTE *) buffer + offset);
-
-				// FileNameLength 是以字节为单位的，需要转换为 WCHAR 的数量
-				std::wstring changedFile(pNotify->FileName, pNotify->FileNameLength / sizeof(WCHAR));
-
-				if (changedFile == fileName) {
-					std::wcout << L"检测到文件修改：" << changedFile << std::endl;
-					PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
-				}
-
-				// 移动到下一个通知记录
-				offset += pNotify->NextEntryOffset;
-			} while (pNotify->NextEntryOffset != 0);
-		}
-	}
-
-	CloseHandle(hDir);
-}
-
-/**
- * 打开一个控制台，用于显示调试信息
- */
-inline void AttachConsoleForDebug() {
-	AllocConsole();
-	FILE *fp;
-	freopen_s(&fp, "CONOUT$", "w", stdout);
-	freopen_s(&fp, "CONOUT$", "w", stderr);
-	std::wcout << "Console attached!" << std::endl;
-}
-
-
 inline void DoMyContextMenuAction(UINT cmd, int index, std::shared_ptr<RunCommandAction> &action) {
 	switch (cmd) {
 		case IDM_REMOVE_ITEM: {
 			// 从 ListView 以及你的数据结构移除
-//			ListView_DeleteItem(ListViewManager::hListView, index);
-//			ListViewManager::filteredActions.erase(ListViewManager::filteredActions.begin() + index);
+			//			ListView_DeleteItem(ListViewManager::hListView, index);
+			//			ListViewManager::filteredActions.erase(ListViewManager::filteredActions.begin() + index);
 		}
 			break;
 		case IDM_RENAME_ITEM: {
 			// A. 只改 ListView 的显示名：启动就地编辑
-//			ListView_EditLabel(ListViewManager::hListView, index);
+			//			ListView_EditLabel(ListViewManager::hListView, index);
 			// B. 如果你想真的重命名文件：
 			//    建议在 LVN_ENDLABELEDIT 里拿到新名字，调用 MoveFileExW(old, new, 0)
 		}
@@ -467,7 +314,6 @@ inline void DoMyContextMenuAction(UINT cmd, int index, std::shared_ptr<RunComman
 			break;
 	}
 }
-
 
 static UINT ShowMyContextMenu(HWND hWnd, const std::wstring &path, POINT screenPt) {
 	HMENU hMenu = CreatePopupMenu();
@@ -520,92 +366,201 @@ static UINT ShowMyContextMenu(HWND hWnd, const std::wstring &path, POINT screenP
 	return cmd; // 0 表示没点任何命令（点了空白/ESC）
 }
 
+inline std::unordered_map<std::string, std::function<void()>> getAppLaunchActionCallBacks(){
+	std::unordered_map<std::string, std::function<void()>> callbacks;
+	HWND hWnd = g_mainHwnd;
 
+	callbacks["refreshList"] = []() {
+		refreshPluginRunner();
+	};
+	callbacks["refreshPlugins"] = []() {
+		if (g_pluginManager) {
+			g_pluginManager->RefreshAllActions();
+		}
+	};
+	callbacks["quit"] = [hWnd]() {
+		DestroyWindow(hWnd);
+	};
+	callbacks["restart"] = [hWnd]() {
+		TrayMenuManager::TrayMenuClick(10005, hWnd, nullptr);
+	};
+	callbacks["settings"] = [hWnd]() {
+		TrayMenuManager::TrayMenuClick(10010, hWnd, nullptr);
+	};
+	callbacks["editUserConfig"] = []() {
+		// 打开用户配置文件
+		ShellExecute(nullptr, L"open", USER_SETTINGS_PATH.c_str(), nullptr, nullptr, SW_SHOW);
+	};
 
-#define ICON_COUNT 330
-#define ICON_SIZE  16
-#define ICON_SPACING 30   // 图标间距
-#define ICONS_PER_ROW 20  // 每行多少个
-
-static LRESULT CALLBACK Shell32IcoViewerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	switch (msg)
-	{
-		case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hdc = BeginPaint(hwnd, &ps);
-
-			SetBkMode(hdc, TRANSPARENT);   // 透明背景
-			SetTextColor(hdc, RGB(0, 0, 0)); // 黑色文字
-
-			int x = 0, y = 0;
-			for (int i = 0; i < ICON_COUNT; i++)
-			{
-				HICON hIcon = LoadShellIcon(i, ICON_SIZE, ICON_SIZE);
-				if (hIcon)
-				{
-					// 画图标
-					DrawIconEx(hdc, x, y, hIcon, ICON_SIZE, ICON_SIZE, 0, NULL, DI_NORMAL);
-
-					// 在图标下方显示序号
-					wchar_t buf[16];
-					swprintf(buf, 16, L"%d", i);
-					TextOutW(hdc, x, y + ICON_SIZE + 2, buf, static_cast<int>(wcslen(buf)));
-				}
-
-				x += ICON_SPACING;
-				if ((i + 1) % ICONS_PER_ROW == 0)
-				{
-					x = 0;
-					y += ICON_SPACING + 12; // 多留一点高度放数字
+	callbacks["viewAllSettings"] = []() {
+		// 提取并打开 settings.json (从资源文件)
+		HMODULE hModule = GetModuleHandle(nullptr);
+		HRSRC hRes = FindResourceW(hModule, MAKEINTRESOURCEW(IDR_SETTINGS_JSON), RT_RCDATA);
+		if (hRes) {
+			HGLOBAL hData = LoadResource(hModule, hRes);
+			if (hData) {
+				DWORD dataSize = SizeofResource(hModule, hRes);
+				void *pData = LockResource(hData);
+				if (pData) {
+					// 创建临时文件并写入内容
+					std::wstring tempPath = std::filesystem::temp_directory_path().wstring() + L"\\settings_view.json";
+					std::ofstream file(tempPath, std::ios::binary);
+					file.write(static_cast<const char *>(pData), dataSize);
+					file.close();
+					// 打开临时文件
+					ShellExecute(nullptr, L"open", tempPath.c_str(), nullptr, nullptr, SW_SHOW);
 				}
 			}
-
-			EndPaint(hwnd, &ps);
 		}
-			break;
-			break;
+	};
 
-		case WM_DESTROY:
-			PostQuitMessage(0);
-			break;
+	callbacks["viewIndexConfig"] = []() {
+		// 打开 runner.json 配置文件
+		ShellExecute(nullptr, L"open", RUNNER_CONFIG_PATH.c_str(), nullptr, nullptr, SW_SHOW);
+	};
 
-		default:
-			return DefWindowProc(hwnd, msg, wParam, lParam);
-	}
-	return 0;
+	callbacks["indexManager"] = [hWnd]() {
+		// 打开索引管理器窗口
+		ShowIndexedManagerWindow(hWnd);
+	};
+
+	callbacks["openHelp"] = []() {
+		// 打开项目主页的帮助文档
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki", nullptr, nullptr, SW_SHOW);
+	};
+
+	callbacks["checkUpdate"] = []() {
+		// 打开项目主页检查更新
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/releases", nullptr, nullptr,
+					 SW_SHOW);
+	};
+
+	callbacks["feedback"] = []() {
+		// 打开项目主页反馈建议
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/issues", nullptr, nullptr, SW_SHOW);
+	};
+
+	callbacks["openGithub"] = []() {
+		// 打开项目Github主页
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher", nullptr, nullptr, SW_SHOW);
+	};
+	return callbacks;
 }
 
-/**
- * SHELL32 图标查看器
- * @param hInstance 
- */
-static void ShowShell32IcoViewer(HINSTANCE hInstance)
+inline int MainWindowCustomPaint(PAINTSTRUCT ps,HDC hdc)
 {
-	const wchar_t CLASS_NAME[] = L"ShellIconWindow";
+	// 使用 GDI+ 绘制背景图
+	// 如果没有背景图，则填充纯色背景
+	if (g_skinJson != nullptr) {
+		if (g_BgImage) {
+			Gdiplus::Graphics graphics(hdc);
+			graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
+			Gdiplus::Rect rect(ps.rcPaint.left, ps.rcPaint.top, ps.rcPaint.right, ps.rcPaint.bottom);
+			graphics.DrawImage(g_BgImage, rect);
+		} else {
+			std::string bgColorStr = g_skinJson.value("window_bg_color", "#FFFFFF");
+			if (bgColorStr.empty()) {
+				EndPaint(g_mainHwnd, &ps);
+				return 1;
+			} else {
+				// 绘制透明色
+				Gdiplus::SolidBrush bgBrush(HexToGdiplusColor(bgColorStr));
+				Gdiplus::Graphics graphics(hdc);
+				graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
+				Gdiplus::Rect rect(ps.rcPaint.left,
+								   ps.rcPaint.top,
+								   ps.rcPaint.right - ps.rcPaint.left,
+								   ps.rcPaint.bottom - ps.rcPaint.top);
+				graphics.FillRectangle(&bgBrush, rect);
+			}
+		}
+	} else {
+		HBRUSH hBrush = CreateSolidBrush(COLOR_UI_BG);
+		FillRect(hdc, &ps.rcPaint, hBrush);
+		DeleteObject(hBrush);
+	}
+	return -1;
+}
 
-	WNDCLASS wc = {};
-	wc.lpfnWndProc = Shell32IcoViewerWndProc;
-	wc.hInstance = hInstance;
-	wc.lpszClassName = CLASS_NAME;
-	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+inline int mainWindowHotkey(WPARAM wParam)
+{
+	switch (wParam)
+	{
+	case HOTKEY_ID_TOGGLE_MAIN_PANEL:
+		{
+			Println(L"Hotkey Alt + K");
+			if (IsWindowVisible(g_mainHwnd))
+			{
+				HideWindow();
+			}
+			else
+			{
+				// 判断全屏应用模式
+				bool shouldShow = true;
+				if (pref_hide_in_fullscreen)
+					shouldShow = shouldShowInCurrentWindowMode(GetForegroundWindow());
+				else if (pref_hide_in_topmost_fullscreen)
+					shouldShow = shouldShowInCurrentWindowTopmostMode(GetForegroundWindow());
 
-	RegisterClass(&wc);
+				if (shouldShow)
+				{
+					if (pref_show_window_and_release_modifier_key)
+						ReleaseAltKey();
+					UserShowMainWindowSimple();
+				}
+			}
+		}
+		return 0;
+	default:
+		break;
+	}
+	return -1;
+}
 
-	HWND hwnd = CreateWindowEx(
-			0,
-			CLASS_NAME,
-			L"Shell32.dll 330 icons",
-			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 700, 800,
-			NULL,
-			NULL,
-			hInstance,
-			NULL
-	);
+inline void editControlHotkey(WPARAM wParam)
+{
+				
+	const std::shared_ptr<RunCommandAction> it = GetListViewSelectedAction(
+		g_listViewHwnd, filteredActions);
+	if (!it)
+	{
+		switch (wParam)
+		{
+		case HOTKEY_ID_SHOW_SETTING_WINDOW:
+			ShowSettingsWindow(g_hInst, nullptr);
+			if (pref_close_after_open_item)
+				HideWindow();
+			break;
+		default: ;
+		}
+	}
+	else
+	{
+		if (pref_close_after_open_item)
+			HideWindow();
 
-	if (!hwnd) return ;
+		switch (wParam)
+		{
+		case HOTKEY_ID_RUN_ITEM:
+			it->Invoke();
+			break;
+		case HOTKEY_ID_OPEN_FILE_LOCATION:
+			it->InvokeOpenFolder();
+			break;
+		case HOTKEY_ID_OPEN_TARGET_LOCATION:
+			it->InvokeOpenGoalFolder();
+			break;
+		case HOTKEY_ID_RUN_ITEM_AS_ADMIN:
+			it->InvokeWithTarget(nullptr, TRUE);
+			break;
+		case HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS:
+			it->InvokeWithTargetClipBoard();
+			break;
+		case HOTKEY_ID_SHOW_SETTING_WINDOW:
+			ShowSettingsWindow(g_hInst, nullptr);
+			break;
+		default: ;
+		}
+	}
 
-	ShowWindow(hwnd, SW_SHOW);
 }

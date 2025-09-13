@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// 此类放置程序所有通用方法，本hpp不要引用其他抽象文件，只引用通用工具
+
+#pragma once
 
 #include <windows.h>
 #include <string>
@@ -17,6 +19,9 @@
 #include <set>
 #include <stdexcept>
 #include <array>
+#include <dwmapi.h>
+#include <io.h>
+#include <fcntl.h>
 
 #include "Constants.hpp"
 #include "DataKeeper.hpp"
@@ -80,12 +85,6 @@ static void HideWindow() {
 	// SendMessage(hEdit, EM_SETSEL, 0, -1); // Ctrl+A: 全选
 	//SendMessage(hWnd, WM_WINDOWS_HIDE, 0, 0); // Ctrl+A: 全选
 	// SetTimer(hWnd, 1001, 50, NULL);
-}
-
-inline void RestoreWindowIfMinimized(HWND hWnd) {
-	if (IsIconic(hWnd)) {
-		ShowWindow(hWnd, SW_RESTORE);
-	}
 }
 
 static void showMainWindowInCursorScreen(HWND hWnd) {
@@ -189,8 +188,8 @@ static void showMainWindowInForegroundRect(HWND hWnd) {
 		int width = rect.right - rect.left;
 		int height = rect.bottom - rect.top;
 
-		std::wcout << L"前台窗口位置: (" << x << ", " << y << ")" << std::endl;
-		std::wcout << L"前台窗口大小: " << width << " x " << height << std::endl;
+		std::wcout << L"foregroundWindow location: (" << x << ", " << y << ")" << std::endl;
+		std::wcout << L"foregroundWindow size: " << width << " x " << height << std::endl;
 
 		const int centerX = static_cast<int>(x + (width - MAIN_WINDOW_WIDTH) * window_position_offset_x);
 		const int centerY = static_cast<int>(y + (height - MAIN_WINDOW_HEIGHT) * window_position_offset_y);
@@ -204,7 +203,7 @@ static void showMainWindowInForegroundRect(HWND hWnd) {
 			lastWindowCenterY = centerY;
 		}
 	} else {
-		std::wcout << L"获取窗口矩形失败。" << std::endl;
+		std::wcout << L"Failed to get window rectangle." << std::endl;
 		showMainWindowInCursorScreen(hWnd);
 		return;
 	}
@@ -346,15 +345,6 @@ static void MyMoveWindow(HWND hWnd) {
 	} else if (pref_window_popup_position == "screen_third") {
 		showMainWindowInIndexScreen(hWnd, 2);
 	}
-}
-
-static void ShowMainWindowSimple() {
-	RestoreWindowIfMinimized(g_mainHwnd);
-	SetFocus(g_editHwnd);
-	MyMoveWindow(g_mainHwnd);
-	SetForegroundWindow(g_mainHwnd);
-	if (g_hklIme != nullptr)
-		PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM) g_hklIme);
 }
 
 // static const std::shared_ptr<RunCommandAction>& GetListViewSelectedAction(HWND hListView,std::vector<std::shared_ptr<RunCommandAction>>& filteredActions)
@@ -951,3 +941,220 @@ static std::vector<TraverseOptions> ParseRunnerConfig() {
 	return configs;
 }
 
+/**
+ * 系统图像列表的索引
+ */
+static int GetSysImageIndex(const std::wstring &filePath) {
+	SHFILEINFOW sfi = {};
+	SHGetFileInfoW(filePath.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi),
+				   SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES);
+	return sfi.iIcon;
+}
+
+inline void ShowMainWindowSimple() {
+	RestoreWindowIfMinimized(g_mainHwnd);
+	SetFocus(g_editHwnd);
+	MyMoveWindow(g_mainHwnd);
+	SetForegroundWindow(g_mainHwnd);
+	if (g_hklIme != nullptr)
+		PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM) g_hklIme);
+}
+
+
+// Helper: 获取 PNG 编码器 CLSID
+static int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
+{
+	UINT num = 0, size = 0;
+	Gdiplus::GetImageEncodersSize(&num, &size);
+	if (size == 0) return -1;
+
+	Gdiplus::ImageCodecInfo* pImageCodecInfo = static_cast<Gdiplus::ImageCodecInfo*>(malloc(size));
+	if (!pImageCodecInfo) return -1;
+
+	Gdiplus::GetImageEncoders(num, size, pImageCodecInfo);
+
+	for (UINT i = 0; i < num; ++i)
+	{
+		if (wcscmp(pImageCodecInfo[i].MimeType, format) == 0)
+		{
+			*pClsid = pImageCodecInfo[i].Clsid;
+			free(pImageCodecInfo);
+			return i;
+		}
+	}
+
+	free(pImageCodecInfo);
+	return -1;
+}
+
+static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
+{
+	std::vector<BYTE> buffer;
+	if (!hBitmap) return buffer;
+
+	Gdiplus::Bitmap bmp(hBitmap, nullptr);
+	CLSID pngClsid;
+	GetEncoderClsid(L"image/png", &pngClsid);
+
+	IStream* pStream = nullptr;
+	CreateStreamOnHGlobal(nullptr, TRUE, &pStream);
+
+	bmp.Save(pStream, &pngClsid, nullptr);
+
+	STATSTG stat;
+	pStream->Stat(&stat, STATFLAG_NONAME);
+	const ULONG size = static_cast<ULONG>(stat.cbSize.QuadPart);
+
+	buffer.resize(size);
+	const LARGE_INTEGER liZero = {};
+	pStream->Seek(liZero, STREAM_SEEK_SET, nullptr);
+	ULONG read = 0;
+	pStream->Read(buffer.data(), size, &read);
+	pStream->Release();
+
+	return buffer;
+}
+
+
+// 没有用到这个图标查询方法
+static HICON GetFileIcon(const std::wstring& filePath, const bool largeIcon)
+{
+	SHFILEINFOW sfi = {0};
+	UINT flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
+	flags |= largeIcon ? SHGFI_LARGEICON : SHGFI_SMALLICON;
+
+	SHGetFileInfoW(filePath.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi), flags);
+	return sfi.hIcon;
+}
+
+static HBITMAP IconToBitmap(HICON hIcon)
+{
+	if (!hIcon) return nullptr;
+
+	ICONINFO iconInfo;
+	GetIconInfo(hIcon, &iconInfo);
+
+	return iconInfo.hbmColor;
+}
+
+static HBITMAP GetIconFromPath(const std::wstring& path)
+{
+	std::wstring actualPath = path;
+
+	if (MyEndsWith(path, L".lnk"))
+	{
+		actualPath = GetShortcutTarget(path);
+	}
+
+	HICON hIcon = GetFileIcon(actualPath, true);
+	HBITMAP hBitmap = IconToBitmap(hIcon);
+	DestroyIcon(hIcon);
+	return hBitmap;
+}
+
+/**
+ * 打开一个控制台，用于显示调试信息
+ */
+inline void AttachConsoleForDebug2() {
+	AllocConsole();
+	FILE *fp;
+	freopen_s(&fp, "CONOUT$", "w", stdout);
+	freopen_s(&fp, "CONOUT$", "w", stderr);
+	std::wcout << "Console attached!" << std::endl;
+	std::wcout << "Console attached!" << std::endl;
+}
+
+inline void AttachConsoleForDebug() {
+	AllocConsole();
+
+	// 设置控制台为 UTF-8
+	SetConsoleOutputCP(CP_UTF8);
+	SetConsoleCP(CP_UTF8);
+
+	FILE *fp;
+	freopen_s(&fp, "CONOUT$", "w", stdout);
+	freopen_s(&fp, "CONOUT$", "w", stderr);
+	freopen_s(&fp, "CONIN$", "r", stdin);
+
+	// 让 C++ 的宽字符流输出 UTF-8y以hb//，// 会崩溃_setmode(_fileno(stdout), _O_U8TEXT);
+	// _setmode(_fileno(stderr), _O_U8TEX////);
+	_setmode(_fileno(stdin),  _O_U8TEXT);
+
+	std::wcout << L"控制台已附加 (UTF-8 模式) 🎉" << std::endl;
+	std::wcout << L"测试中文输出：你好，世界！" << std::endl;
+}
+
+
+
+// 读取窗口位置
+static RECT LoadWindowRectFromRegistry() {
+	RECT rect = {CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT + MAIN_WINDOW_WIDTH, CW_USEDEFAULT + MAIN_WINDOW_HEIGHT};
+	HKEY hKey;
+	if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+		DWORD size = sizeof(rect);
+		RegQueryValueExW(hKey, L"WindowRect", nullptr, nullptr, (LPBYTE) &rect, &size);
+		RegCloseKey(hKey);
+	}
+	return rect;
+}
+
+// 保存窗口位置
+static void SaveWindowRectToRegistry(HWND hWnd) {
+	RECT rect;
+	if (GetWindowRect(hWnd, &rect)) {
+		HKEY hKey;
+		if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, nullptr, 0, KEY_WRITE, nullptr,
+							&hKey, nullptr) == ERROR_SUCCESS) {
+			RegSetValueExW(hKey, L"WindowRect", 0, REG_BINARY, (const BYTE *) &rect, sizeof(rect));
+			RegCloseKey(hKey);
+							}
+	}
+}
+
+// 已弃用 Win7以前有效
+static BOOL IsDwmExclusiveFullscreen(HWND hwnd) {
+	BOOL isCloaked = FALSE;
+	HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &isCloaked, sizeof(isCloaked));
+	return SUCCEEDED(hr) && isCloaked;
+}
+
+static bool IsRunAsAdmin() {
+	BOOL isAdmin = FALSE;
+	PSID adminGroup = NULL;
+	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+
+	if (AllocateAndInitializeSid(&NtAuthority, 2,
+								 SECURITY_BUILTIN_DOMAIN_RID,
+								 DOMAIN_ALIAS_RID_ADMINS,
+								 0, 0, 0, 0, 0, 0,
+								 &adminGroup)) {
+		CheckTokenMembership(NULL, adminGroup, &isAdmin);
+		FreeSid(adminGroup);
+								 }
+
+	return isAdmin == TRUE;
+}
+
+static bool RelaunchAsAdmin() {
+	WCHAR szPath[MAX_PATH];
+	if (!GetModuleFileNameW(NULL, szPath, MAX_PATH))
+		return false;
+
+	SHELLEXECUTEINFOW sei = {sizeof(sei)};
+	sei.lpVerb = L"runas"; // 关键点：请求以管理员身份运行
+	sei.lpFile = szPath; // 当前程序路径
+	sei.hwnd = NULL;
+	sei.nShow = SW_NORMAL;
+
+	if (!ShellExecuteExW(&sei)) {
+		DWORD dwErr = GetLastError();
+		if (dwErr == ERROR_CANCELLED) {
+			MessageBoxW(NULL, L"用户取消了权限提升。", L"提示", MB_ICONINFORMATION);
+		} else {
+			MessageBoxW(NULL, L"无法以管理员身份重新启动程序。", L"错误", MB_ICONERROR);
+		}
+		return false;
+	}
+
+	return true;
+}

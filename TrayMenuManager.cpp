@@ -110,7 +110,7 @@ void TrayMenuManager::TrayMenuClick(const int position, HWND hWnd, HWND hEdit)
 		break;
 	case TRAY_MENU_ID_SHOW_WINDOW: // 打开主窗口
 		{
-			ShowMainWindowSimple();
+			PostMessageW(g_mainHwnd,WM_HOTKEY,HOTKEY_ID_TOGGLE_MAIN_PANEL,0);
 		}
 		break;
 	case TRAY_MENU_ID_OPEN_FOLDER: // 打开程序目录

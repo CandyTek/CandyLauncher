@@ -52,7 +52,7 @@ inline HBRUSH hBrushButtonSuccess = nullptr;
 inline HBRUSH hBrushButtonDanger = nullptr;
 
 // Initialize button resources
-static void InitializeButtonResources() {
+static void InitializeCustomButtonResources() {
 	// Initialize fonts
 	if (!hFontDefault) {
 		hFontDefault = CreateFontW(

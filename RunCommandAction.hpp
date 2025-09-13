@@ -12,6 +12,13 @@
 
 using namespace Microsoft::WRL;
 
+enum ITEM_TYPE : int {
+	NORMAL_FILE = 0,
+	UWP_APP,
+	RUNNING_APP,
+	PLUGIN_ACTION,
+};
+
 // 启动的错误处理
 static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring &path) {
 	std::wstringstream ss;
@@ -50,20 +57,27 @@ static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring &path)
 
 class RunCommandAction : public ActionBase {
 public:
+	// 被委托的构造函数（原构造函数）会完全执行完毕，才会执行第二个
 	RunCommandAction(
 			const std::wstring &justName,
 			const std::wstring &targetFilePath,
-			const bool isUwpItem = false,
-			const bool admin = false,
+			const int itemType = NORMAL_FILE,
+			const bool isRunAsAdmin = false,
 			const std::wstring &workingDir = L"",
 			std::wstring args = L"")
-			: IsUwpItem(isUwpItem),
-			  RunCommand(PinyinHelper::GetPinyinLongStr(MyToLower(justName))),
+			: itemType(itemType),
 			  targetFilePath(targetFilePath),
-			  defaultAsAdmin(admin), // 用拼音转换工具时替换
+			  defaultAsAdmin(isRunAsAdmin),
 			  workingDirectory(workingDir.empty() ? GetDirectory(targetFilePath) : workingDir),
 			  arguments(std::move(args)) {
-		SetTitle(justName);
+		if(itemType==RUNNING_APP){
+			//targetFilePath 获取 单文件名
+			matchText=(PinyinHelper::GetPinyinLongStr(MyToLower(justName)));
+			SetTitle(L"正在运行: "+justName);
+		}else{
+			matchText=(PinyinHelper::GetPinyinLongStr(MyToLower(justName)));
+			SetTitle(justName);
+		}
 		SetExecutable(true);
 		if (!targetFilePath.empty())
 			SetSubtitle(targetFilePath + L" " + arguments);
@@ -73,35 +87,33 @@ public:
 
 	RunCommandAction(
 			const std::wstring &justName,
-			const std::wstring &uwpCommand,
-			const std::wstring &_uwpCommandSouce,
-			HBITMAP _hIcon)
-			: RunCommandAction(justName, uwpCommand, true) // 委托构造
+			const std::wstring &targetFilePath2,
+			const std::wstring &otherSource2,
+			int itemType=UWP_APP,
+			HBITMAP _hIcon = nullptr
+			)
+			: RunCommandAction(justName, targetFilePath2,itemType) // 委托构造
 	{
 		hIcon = _hIcon;
-		uwpCommandSouce = _uwpCommandSouce;
+		otherSource = otherSource2;
 	}
-
-	RunCommandAction(
-			const std::wstring &justName,
-			const std::wstring &uwpCommand,
-			int _imageIndex)
-			: RunCommandAction(justName, uwpCommand, true) // 委托构造
-	{
-		iImageIndex = _imageIndex;
-	}
-
 
 	// 运行命令
 	void InvokeWithTarget(const wchar_t *target, bool isForceAdmin) {
-		if (IsUwpItem) {
+		if (itemType == PLUGIN_ACTION) {
+			// 插件动作执行 - 延迟到包含了SimplePluginManager的文件中处理
+			extern void ExecutePluginAction(const std::wstring& actionId);
+			ExecutePluginAction(targetFilePath);
+		} else if (itemType == RUNNING_APP) {
+			showCurrectWindowSimple(reinterpret_cast<HWND>((static_cast<uintptr_t>(std::stoull(otherSource)))));
+		} else if (itemType == UWP_APP) {
 			HINSTANCE hInst = ShellExecuteW(nullptr, (pref_run_item_as_admin || isForceAdmin) ? L"runas" : L"open",
 											targetFilePath.c_str(), target, nullptr, SW_SHOWNORMAL);
 			if (reinterpret_cast<INT_PTR>(hInst) <= 32) {
 				// 错误，可能权限不够、路径不存在等
 				ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst), targetFilePath);
 			}
-		} else {
+		} else if (itemType == NORMAL_FILE){
 			HINSTANCE hInst = ShellExecuteW(nullptr, (pref_run_item_as_admin || isForceAdmin) ? L"runas" : L"open",
 											targetFilePath.c_str(), target,
 											workingDirectory.c_str(), SW_SHOWNORMAL);
@@ -172,10 +184,18 @@ public:
 
 	int iImageIndex = -1;
 
-	bool IsUwpItem;
-	std::wstring RunCommand;
-	std::wstring uwpCommandSouce;
+	int itemType = NORMAL_FILE;
+	std::wstring matchText;
+	std::wstring otherSource;
 	HBITMAP hIcon = nullptr;
+
+	~RunCommandAction() override {
+		if (hIcon) {
+			DeleteObject(hIcon);
+			hIcon = nullptr;
+		}
+	}
+
 
 protected:
 	std::wstring targetFilePath;
@@ -223,4 +243,5 @@ private:
 		CoUninitialize();
 		return L"";
 	}
+
 };

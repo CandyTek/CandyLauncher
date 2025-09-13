@@ -28,6 +28,8 @@ LANGUAGE 4, 2
 // 在所有系统中保持一致。
 
 IDI_WINDOWSPROJECT1       ICON         "WindowsProject1.ico"
+IDI_CLOSE       ICON         "close.ico"
+IDI_REFRESH       ICON         "refresh.ico"
 IDI_SMALL               ICON         "small.ico"
 
 /////////////////////////////////////////////////////////////////////////////

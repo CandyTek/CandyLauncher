@@ -13,7 +13,6 @@ add_executable(WindowsProject1 WIN32
         ActionBase.hpp
         framework.h
         json.hpp
-        ListedRunnerPlugin.cpp
         ListedRunnerPlugin.h
         Resource.h
         RunCommandAction.hpp
@@ -21,7 +20,6 @@ add_executable(WindowsProject1 WIN32
         WindowsProject1.cpp
         WindowsProject1.h
         PinyinHelper.h
-        ListViewManager.cpp
         ListViewManager.h
         MainTools.hpp
         GlassHelper.hpp
@@ -36,7 +34,9 @@ add_executable(WindowsProject1 WIN32
         BaseTools.hpp
         windowsproject1.rc
         WindowsProject1.ico
+        close.ico
         small.ico
+        refresh.ico
         settings.json
         ScrollViewHelper.hpp
         ShortCutHelper.hpp
@@ -61,6 +61,9 @@ add_executable(WindowsProject1 WIN32
         SwitchInfo.hpp
         CustomBgcolorView.hpp
         NinePatchImage.hpp
+        EditCustomPaint.hpp
+        PluginRunningApps.hpp
+        Shell32IcoViewer.hpp
 )
 
 target_precompile_headers(WindowsProject1
@@ -78,6 +81,11 @@ target_compile_definitions(WindowsProject1 PRIVATE UNICODE _UNICODE
         $<$<CONFIG:Release>:NDEBUG=1>
 )
 
+# Add /bigobj flag for MSVC to handle large object files (ExprTk)
+if(MSVC)
+    target_compile_options(WindowsProject1 PRIVATE /bigobj)
+endif()
+
 
 # 仅在 Windows 平台上设置 GUI 子系统和相关链接选项
 if (WIN32)
@@ -87,7 +95,7 @@ if (WIN32)
     # 检查是否是 Visual Studio 2022
     if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio 17")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
-        add_compile_options(/W4 /WX)
+        add_compile_options(/W4 /WX /bigobj)
         add_definitions(-DUSE_VS_TOOLCHAIN=1)
         set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -145,9 +153,12 @@ target_link_libraries(WindowsProject1 PRIVATE
         advapi32
         shlwapi
         dwmapi
+        d2d1
+        dwrite
+        msimg32
         rapidfuzz::rapidfuzz
         ${EVERYTHING_LIB}
-        
+
 )
 
 #include_directories("E:/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/atlmfc/include")
@@ -155,6 +166,7 @@ target_link_libraries(WindowsProject1 PRIVATE
 include_directories(
         ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/include
         ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/ipc
+#        ${CMAKE_SOURCE_DIR}/3rdparty/ExprTk
 )
 
 add_custom_command(TARGET WindowsProject1 POST_BUILD
@@ -166,5 +178,6 @@ add_custom_command(TARGET WindowsProject1 POST_BUILD
 
 enable_testing()
 add_subdirectory(tests)
+add_subdirectory(plugins)
 add_subdirectory(3rdparty/RapidFuzz)
 

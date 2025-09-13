@@ -10,9 +10,13 @@
 #define IDD_ABOUTBOX			103
 #define IDM_ABOUT				104
 #define IDM_EXIT				105
-#define IDI_WINDOWSPROJECT1		107
-#define IDI_SMALL				108
-#define IDC_WINDOWSPROJECT1		109
+#define IDI_SMALL				111
+#define IDI_WINDOWSPROJECT1		112
+#define IDI_CLOSE				113
+#define IDI_REFRESH				114
+//#define IDI_RESTART				(IDI_SMALL+4)
+
+#define IDC_WINDOWSPROJECT1		120
 #define IDR_SETTINGS_JSON 131
 #define IDC_MYICON				2
 #ifndef IDC_STATIC

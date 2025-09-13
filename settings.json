@@ -394,6 +394,27 @@
 			"defValue": ""
 		},
 		{
+			"key": "pref_indexed_myapp_base_launch",
+			"title": "索引 CandyLauncher 基础导航",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": true
+		},
+		{
+			"key": "pref_indexed_myapp_extra_launch",
+			"title": "索引 CandyLauncher 扩展导航",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": false
+		},
+		{
+			"key": "pref_indexed_running_app",
+			"title": "索引系统正在运行的程序",
+			"type": "bool",
+			"subPage": "index",
+			"defValue": true
+		},
+		{
 			"key": "pref_app_name",
 			"title": "CandyLauncher",
 			"type": "text",
@@ -417,6 +438,13 @@
 		{
 			"key": "pref_acknowledgements",
 			"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_about_other1",
+			"title": "",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""

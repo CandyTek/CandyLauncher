@@ -49,6 +49,7 @@ extern std::unordered_map<std::string, SettingItem> g_settings_map;
 
 extern std::wstring EXE_FOLDER_PATH;
 extern std::wstring RUNNER_CONFIG_PATH;
+extern std::wstring USER_SETTINGS_PATH;
 extern std::wstring EDIT_HINT_TEXT;
 extern std::string pref_force_ime_mode;
 extern std::string pref_hotkey_toggle_main_panel;
@@ -83,6 +84,7 @@ extern int lastWindowCenterY ;
 //const int COLOR_UI_BG_VALUE = 255;
 extern int LISTITEM_ICON_SIZE;
 extern int64_t pref_fuzzy_match_score_threshold;
+extern ULONGLONG APP_STARTUP_TIME;
 
 
 const int COLOR_UI_BG_VALUE = 170;

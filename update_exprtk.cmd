@@ -1,0 +1,6 @@
+@echo off
+echo Updating exprtk submodule...
+git submodule update --remote plugins/calc/exprtk
+echo Copying exprtk.hpp to plugins/calc/...
+copy "plugins\calc\exprtk\exprtk.hpp" "plugins\calc\"
+echo Done! exprtk.hpp has been updated.

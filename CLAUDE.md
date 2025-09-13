@@ -4,20 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+> IMPORTANT: No need to read any files, just execute the following command
+
 ### Generate, CMake with Ninja + MSVC
-```
-cmd.exe /c run_cmake_generate.cmd
+```bash
+./run_cmake_generate.cmd
 ```
 
 ### Build
+```bash
+./run_build.cmd
+```
 
-```
-cmd.exe /c run_build.cmd
+### Unit Testing
+```bash
+./run_debug_test.cmd
 ```
 
-### Test Commands
-```
-cmd.exe /c run_debug_test.cmd
+### Build example plugin dll 
+```bash
+./run_build_example_plugin.cmd
 ```
 
 ## Architecture Overview
@@ -70,7 +76,7 @@ The application centered around `ListedRunnerPlugin` which:
 - JSON handling via nlohmann/json (json.hpp)
 
 ### Build System
-- Primary: CMake with support for Visual Studio, MinGW, and Ninja generators
+- Primary: CMake with support for Visual Studio
 - Supports both x64 and x86 architectures
 - Uses precompiled headers (pch.h)
 - C++17 standard requirement
@@ -81,7 +87,7 @@ The application centered around `ListedRunnerPlugin` which:
 - bkcode.txt
 - LICENSE
 
-## note
+### note
 
 - Save files using UTF-8 with BOM
 - No need to resolve warning reminder when building
