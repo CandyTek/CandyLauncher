@@ -2,25 +2,63 @@
 	"version": 1,
 	"prefList": [
 		{
-			"key": "pref_auto_start",
-			"title": "开机自动启动",
-			"type": "bool",
+			"key": "expand_test1",
+			"type": "expand",
+			"title": "测试折叠",
 			"subPage": "normal",
-			"defValue": false
+			"children": [
+				{
+					"key": "pref_auto_start",
+					"title": "开机自动启动",
+					"type": "bool",
+					"subPage": "normal",
+					"defValue": false
+				},
+				{
+					"key": "expand_test2",
+					"type": "expand",
+					"title": "测试折叠2",
+					"subPage": "normal",
+					"children": [
+						{
+							"key": "pref_show_tray_icon",
+							"title": "显示托盘图标",
+							"type": "bool",
+							"subPage": "normal",
+							"defValue": true
+						},
+						{
+							"key": "pref_acknowledgements2",
+							"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
+							"type": "text",
+							"subPage": "normal",
+							"defValue": ""
+						}
+					]
+				}
+			]
 		},
 		{
-			"key": "pref_show_tray_icon",
-			"title": "显示托盘图标",
-			"type": "bool",
+			"key": "expand_test3",
+			"type": "expand",
+			"title": "测试折叠3",
 			"subPage": "normal",
-			"defValue": true
-		},
-		{
-			"key": "pref_run_app_as_admin",
-			"title": "以管理员身份启动本程序",
-			"type": "bool",
-			"subPage": "normal",
-			"defValue": true
+			"children": [
+				{
+					"key": "pref_run_app_as_admin",
+					"title": "以管理员身份启动本程序",
+					"type": "bool",
+					"subPage": "normal",
+					"defValue": true
+				},
+				{
+					"key": "pref_acknowledgements3",
+					"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
+					"type": "text",
+					"subPage": "normal",
+					"defValue": ""
+				}
+			]
 		},
 		{
 			"key": "pref_hide_window_after_run",

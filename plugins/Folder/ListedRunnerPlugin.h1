@@ -1,0 +1,199 @@
+﻿#pragma once
+
+#include "RunCommandAction.hpp"
+#include <string>
+#include <vector>
+#include <unordered_set>
+#include <unordered_map>
+#include <memory>
+#include <functional>
+
+#include "DataKeeper.hpp"
+#include "actions/ActionNormal.hpp"
+#include "TraverseOptions.h"
+#include "SimplePluginManager.hpp"
+
+#pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "shell32.lib") // Link against the shell library
+#pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "Uuid.lib")
+
+#include "ListedRunnerPlugin.h"
+#include "DataKeeper.hpp"
+#include "TraverseFilesHelper.hpp"
+#include "MainTools.hpp"
+
+#include <shobjidl.h>
+#include <windows.h>
+#include <fstream>
+#include <iostream>
+#include <shlobj.h>
+#include <objbase.h>
+#include <combaseapi.h> // for CreateStreamOnHGlobal
+#include <sstream> // for CreateStreamOnHGlobal
+#include <codecvt>
+#include <objidl.h>
+#include <gdiplus.h>
+
+#include <filesystem>
+#include <propkey.h>  // For property keys (optional but good practice)
+#include <shlwapi.h>       // For Path* functions (optional)
+#include <propvarutil.h>   // Optional for PROPVARIANT helpers
+#include <VersionHelpers.h>  // 添加这个头文件
+
+// 不能少
+#include <shellapi.h>
+#include <Everything.h>
+
+#ifndef ESI_ALLITEMS
+#define ESI_ALLITEMS 0x00000040
+#endif
+
+inline std::vector<std::shared_ptr<RunCommandAction>> runnerActionSource;
+
+static void traverseUwpApps(
+	std::vector<std::shared_ptr<RunCommandAction>>& outActions, const TraverseOptions& options
+)
+{
+	// *** UWP应用程序加载逻辑 ***
+	if (IsWindows8OrGreater())
+		try
+		{
+			LoadUwpApps(outActions, options);
+		}
+		catch (const std::exception& e)
+		{
+			std::wcerr << L"Failed to load UWP apps: " << Utf8ToWString(e.what()) << std::endl;
+		}
+}
+
+static void loadRunnerJsonConfig()
+{
+	MethodTimerStart();
+	bool isUwpAdded = false;
+	bool isPathAdded = false;
+	bool isRegeditAdded = false;
+
+	runnerActionSource.clear();
+	runnerActionSource.push_back(std::make_shared<ActionNormal>(L"刷新列表", L"刷新索引列表", IDI_REFRESH,
+														appLaunchActionCallBacks["refreshList"]));
+	runnerActionSource.push_back(std::make_shared<ActionNormal>(L"刷新插件", L"重新加载所有插件动作", IDI_REFRESH,
+														appLaunchActionCallBacks["refreshPlugins"]));
+
+	if (g_settings_map["pref_indexed_myapp_extra_launch"].boolValue)
+	{
+		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"退出软件", L"退出本软件", IDI_CLOSE,
+															appLaunchActionCallBacks["quit"]));
+		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"重启软件", L"重启本软件", IDI_REFRESH,
+															appLaunchActionCallBacks["restart"]));
+		runnerActionSource.push_back(
+			std::make_shared<ActionNormal>(L"查看用户软件配置 JSON 文件", L"打开user_settings.json文件", IDI_CLOSE,
+											appLaunchActionCallBacks["editUserConfig"]));
+		runnerActionSource.push_back(
+			std::make_shared<ActionNormal>(L"查看所有软件配置 JSON 文件", L"打开settings.json文件", IDI_CLOSE,
+											appLaunchActionCallBacks["viewAllSettings"]));
+		runnerActionSource.push_back(
+			std::make_shared<ActionNormal>(L"查看用户索引配置 JSON 文件", L"打开runner.json文件", IDI_CLOSE,
+											appLaunchActionCallBacks["viewIndexConfig"]));
+		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"软件帮助文档", L"前往浏览器查看帮助文档", IDI_CLOSE,
+															appLaunchActionCallBacks["openHelp"]));
+		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"检查更新", L"前往浏览器检查更新", IDI_CLOSE,
+															appLaunchActionCallBacks["checkUpdate"]));
+		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"反馈建议", L"前往浏览器反馈建议", IDI_CLOSE,
+															appLaunchActionCallBacks["feedback"]));
+		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"打开Github项目主页", L"前往浏览器浏览项目主页", IDI_CLOSE,
+															appLaunchActionCallBacks["openGithub"]));
+	}
+	std::vector<TraverseOptions> runnerConfigs = ParseRunnerConfig();
+	for (TraverseOptions traverseOptions1 : runnerConfigs)
+	{
+		if (traverseOptions1.type.empty())
+		{
+			if (g_settings_map["pref_use_everything_sdk_index"].boolValue)
+			{
+				::TraverseFilesForEverythingSDK(traverseOptions1.folder, traverseOptions1, [&](const std::wstring& name,
+												const std::wstring& fullPath,
+												const std::wstring& parent,
+												const std::wstring& ext)
+												{
+													const auto action = std::make_shared<RunCommandAction>(
+														name, fullPath, false, true, parent
+													);
+													runnerActionSource.push_back(action);
+												});
+			}
+			else
+			{
+				::TraverseFiles(traverseOptions1.folder, traverseOptions1, [&](const std::wstring& name,
+																				const std::wstring& fullPath,
+																				const std::wstring& parent,
+																				const std::wstring& ext)
+				{
+					const auto action = std::make_shared<RunCommandAction>(
+						name, fullPath, false, true, parent
+					);
+					runnerActionSource.push_back(action);
+				});
+			}
+		}
+		else if (traverseOptions1.type == L"uwp" && !isUwpAdded &&
+			g_settings_map["pref_indexed_uwp_apps_enable"].boolValue)
+		{
+			traverseUwpApps(runnerActionSource, traverseOptions1);
+			isUwpAdded = true;
+		}
+		else if (traverseOptions1.type == L"path" && !isPathAdded &&
+			g_settings_map["pref_indexed_envpath_apps"].boolValue)
+		{
+			TraversePATHExecutables2(runnerActionSource, traverseOptions1);
+			isPathAdded = true;
+		}
+		else if (traverseOptions1.type == L"regedit" && !isRegeditAdded &&
+			g_settings_map["pref_indexed_regedit_apps"].boolValue)
+		{
+			TraverseRegistryApps(runnerActionSource, traverseOptions1);
+			isRegeditAdded = true;
+		}
+	}
+
+
+	TraverseOptions emptyTraverseOptions;
+	TraverseOptions defaultOptions = CreateDefaultPathTraverseOptions();
+	if (!isUwpAdded && g_settings_map["pref_indexed_uwp_apps_enable"].boolValue)
+	{
+		traverseUwpApps(runnerActionSource, emptyTraverseOptions);
+	}
+	else if (!isPathAdded && g_settings_map["pref_indexed_envpath_apps"].boolValue)
+	{
+		// TODO: 解决这个崩溃问题
+		TraversePATHExecutables2(runnerActionSource, defaultOptions);
+	}
+	else if (!isRegeditAdded && g_settings_map["pref_indexed_regedit_apps"].boolValue)
+	{
+		TraverseRegistryApps(runnerActionSource, emptyTraverseOptions);
+	}
+
+	MethodTimerEnd(L"loadlist");
+}
+
+
+static void writeDefaultRunnerJsonConfig(const std::wstring& path)
+{
+	using json = nlohmann::json;
+
+	json jArray = json::array();
+	jArray.push_back({
+		{"Command", "ProgramData开始菜单"},
+		{"FolderPath", R"(C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs)"},
+		{"IsSearchSubFolder", true},
+		{"ExcludeNameWordArr", {"uninstall", "帮助", "help"}}
+	});
+
+	// std::ofstream out(path);
+
+	std::ofstream out;
+	out.open(path.c_str()); // ✅ 使用 c_str() 得到 const wchar_t*
+
+	out << jArray.dump(4); // Pretty-print JSON
+	out.close();
+}

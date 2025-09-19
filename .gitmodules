@@ -4,6 +4,6 @@
 [submodule "3rdparty/ExprTk"]
 	path = 3rdparty/ExprTk
 	url = https://github.com/ArashPartow/exprtk.git
-[submodule "plugins/calc/exprtk"]
-	path = plugins/calc/exprtk
+[submodule "plugins/CalcExprtk/exprtk"]
+	path = plugins/CalcExprtk/exprtk
 	url = https://github.com/ArashPartow/exprtk

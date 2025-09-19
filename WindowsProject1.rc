@@ -8,7 +8,7 @@
 // 从 TEXTINCLUDE 资源生成。
 //
 #ifndef APSTUDIO_INVOKED
-#include "targetver.h"
+#include "common/targetver.h"
 #endif
 #define APSTUDIO_HIDDEN_SYMBOLS
 #include "windows.h"
@@ -27,10 +27,10 @@ LANGUAGE 4, 2
 // ID 值最低的图标放在最前面，以确保应用程序图标
 // 在所有系统中保持一致。
 
-IDI_WINDOWSPROJECT1       ICON         "WindowsProject1.ico"
-IDI_CLOSE       ICON         "close.ico"
-IDI_REFRESH       ICON         "refresh.ico"
-IDI_SMALL               ICON         "small.ico"
+IDI_WINDOWSPROJECT1       ICON         "icons/WindowsProject1.ico"
+IDI_CLOSE       ICON         "icons/close.ico"
+IDI_REFRESH       ICON         "icons/refresh.ico"
+IDI_SMALL               ICON         "icons/small.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //

@@ -8,67 +8,63 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(.)
 
 add_executable(WindowsProject1 WIN32
-        pch.h
-        
-        ActionBase.hpp
-        framework.h
-        json.hpp
-        ListedRunnerPlugin.h
+        common/pch.h
+        plugins/ActionBase.hpp
+        common/framework.h
+        util/json.hpp
         Resource.h
-        RunCommandAction.hpp
-        targetver.h
+        common/targetver.h
         WindowsProject1.cpp
-        WindowsProject1.h
-        PinyinHelper.h
-        ListViewManager.h
-        MainTools.hpp
-        GlassHelper.hpp
-        TrayMenuManager.h
-        TrayMenuManager.cpp
-        actions/ActionNormal.hpp
-        DataKeeper.hpp
-        EditHelper.hpp
-        SettingsHelper.hpp
-        SettingWindow.hpp
-        Constants.hpp
-        BaseTools.hpp
+        util/PinyinHelper.h
+        manager/ListViewManager.h
+        util/MainTools.hpp
+        view/GlassHelper.hpp
+        manager/TrayMenuManager.h
+        common/DataKeeper.hpp
+        manager/EditManager.hpp
+        window/SettingsHelper.hpp
+        window/SettingWindow.hpp
+        common/Constants.hpp
+        util/BaseTools.hpp
         windowsproject1.rc
-        WindowsProject1.ico
-        close.ico
-        small.ico
-        refresh.ico
+        icons/WindowsProject1.ico
+        icons/close.ico
+        icons/small.ico
+        icons/refresh.ico
         settings.json
-        ScrollViewHelper.hpp
-        ShortCutHelper.hpp
+        view/ScrollViewHelper.hpp
+        util/ShortCutHelper.hpp
         AppTools.hpp
-        DataKeeper.cpp
-        PinyinHelper.cpp
+        common/DataKeeper.cpp
+        util/PinyinHelper.cpp
         app.manifest
-        ThreadPool.h
-        IndexedManager.hpp
-        SkinHelper.h
-        TraverseFilesHelper.hpp
-        TraverseOptions.h
-        CustomButtonHelper.hpp
-        SwitchView.h
-        HotkeyEditView.h
-        SwitchViewStyle.h
-        EditScrollSyncHelper.hpp
-        RenameDialog.hpp
-        ShortcutFixWindow.hpp
-        FileInfo.hpp
-        ToolTipHelper.hpp
-        SwitchInfo.hpp
-        CustomBgcolorView.hpp
-        NinePatchImage.hpp
-        EditCustomPaint.hpp
-        PluginRunningApps.hpp
-        Shell32IcoViewer.hpp
+        util/ThreadPool.h
+        manager/SkinHelper.h
+        util/TraverseFilesHelper.hpp
+        model/TraverseOptions.h
+        view/CustomButtonHelper.hpp
+        view/SwitchView.h
+        view/HotkeyEditView.h
+        view/SwitchViewStyle.h
+        view/EditScrollSyncHelper.hpp
+        window/RenameDialog.hpp
+        plugins/Folder/ShortcutFixWindow.hpp
+        model/FileInfo.hpp
+        view/ToolTipHelper.hpp
+        view/SwitchInfo.hpp
+        view/CustomBgcolorView.hpp
+        util/NinePatchImage.hpp
+        manager/EditCustomPaint.hpp
+        window/Shell32IcoViewer.hpp
+        plugins/ActionNormal.hpp
+        #        plugins/IndexedManager.hpp
+        #        ListedRunnerPlugin.h
+
 )
 
 target_precompile_headers(WindowsProject1
         PRIVATE
-        pch.h
+        common/pch.h
 )
 
 
@@ -166,7 +162,6 @@ target_link_libraries(WindowsProject1 PRIVATE
 include_directories(
         ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/include
         ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/ipc
-#        ${CMAKE_SOURCE_DIR}/3rdparty/ExprTk
 )
 
 add_custom_command(TARGET WindowsProject1 POST_BUILD
@@ -178,6 +173,17 @@ add_custom_command(TARGET WindowsProject1 POST_BUILD
 
 enable_testing()
 add_subdirectory(tests)
-add_subdirectory(plugins)
 add_subdirectory(3rdparty/RapidFuzz)
+#plugins
+add_subdirectory(plugins/RunningApp)
+add_subdirectory(plugins/CalcExprtk)
+add_subdirectory(plugins/Example)
+add_subdirectory(plugins/Folder)
 
+#add_dependencies(WindowsProject1 ExamplePlugin)
+#add_dependencies(WindowsProject1 CalcPlugin)
+#add_dependencies(WindowsProject1 RunningAppPlugin)
+add_dependencies(WindowsProject1 RunningAppPlugin ExamplePlugin CalcPlugin FolderPlugin)
+#add_dependencies(WindowsProject1 RunningAppPlugin)
+#add_dependencies(WindowsProject1 FolderPlugin)
+#add_dependencies(WindowsProject1)

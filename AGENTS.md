@@ -43,7 +43,7 @@ The application centered around `ListedRunnerPlugin` which:
 ### UI Components
 - **GlassHelper**: Handles Aero glass effects and window transparency
 - **SettingWindow**: Configuration interface
-- **EditHelper**: Search input field management with keyboard shortcuts
+- **EditManager**: Search input field management with keyboard shortcuts
 - **ScrollViewHelper**: List scrolling functionality in the configuration interface
 - **CustomButtonHelper**: beautiful custom buttons and radiobutton features
 - **SwichView**: a switch control that imitates winui

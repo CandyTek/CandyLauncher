@@ -196,30 +196,25 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AppTools.hpp" />
-    <ClInclude Include="Constants.hpp" />
-    <ClInclude Include="DataKeeper.hpp" />
+    <ClInclude Include="common\Constants.hpp" />
+    <ClInclude Include="common\DataKeeper.hpp" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="HotkeyEditView.h" />
-    <ClInclude Include="ListedRunnerPlugin.h" />
-    <ClInclude Include="ListViewManager.h" />
     <ClInclude Include="MainTools.hpp" />
+    <ClInclude Include="manager\TrayMenuManager.h" />
     <ClInclude Include="PinyinHelper.h" />
+    <ClInclude Include="plugins\ActionBase.hpp" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SettingsHelper.hpp" />
     <ClInclude Include="SettingWindow.hpp" />
     <ClInclude Include="SkinHelper.h" />
-    <ClInclude Include="targetver.h" />
     <ClInclude Include="ThreadPool.h" />
-    <ClInclude Include="TrayMenuManager.h" />
+    <ClInclude Include="util\PinyinHelper.h" />
     <ClInclude Include="WindowsProject1.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AppTools.cpp" />
-    <ClCompile Include="DataKeeper.cpp" />
-    <ClCompile Include="ListedRunnerPlugin.cpp" />
-    <ClCompile Include="ListViewManager.cpp" />
-    <ClCompile Include="PinyinHelper.cpp" />
-    <ClCompile Include="TrayMenuManager.cpp" />
+    <ClCompile Include="common\DataKeeper.cpp" />
+    <ClCompile Include="util\PinyinHelper.cpp" />
     <ClCompile Include="WindowsProject1.cpp" />
   </ItemGroup>
   <ItemGroup>

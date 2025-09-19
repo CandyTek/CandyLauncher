@@ -2036,3 +2036,477 @@ static std::vector<std::shared_ptr<RunCommandAction>> Search(const std::wstring&
 
 	return results;
 }
+
+	for (size_t i = 0; i < runnerActionSource.size(); ++i) {
+		const std::shared_ptr<RunCommandAction> &action = runnerActionSource[i];
+		if (action->itemType==UWP_APP) {
+			// 用这个方法来加载图标的话（把hicon添加到列表，再获取索引给action），在listview显示的时候顺序会乱，不知道为什么
+			// if (action->iImageIndex == -1)
+			// {
+			// 	int imageIndex = ImageList_Add(hImageList, action->hIcon, nullptr);
+			// 	action->iImageIndex = imageIndex;
+			// }
+		} else {
+			// 获取图标
+			if (action->iImageIndex == -1)
+				action->iImageIndex = GetSysImageIndex(action->GetTargetPath());
+		}
+	}
+
+
+
+// 用户遍历的可启动项目和uwp、程序基础快径
+inline std::vector<std::shared_ptr<RunCommandAction>> runnerActions;
+// 系统正在运行的可见项目
+inline std::vector<std::shared_ptr<RunCommandAction>> runningAppActions;
+
+
+	addAction(runningAppActions);
+	addAction(runnerActions);
+
+
+//加载运行中的列表
+	for (const auto &action: runningAppActions) {
+		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword,
+														 action->matchText);score >=pref_fuzzy_match_score_threshold) {
+			scoredActions.push_back({action, score+8});
+		}
+	}
+	
+		//加载运行中的列表
+    	for (const auto &action: runningAppActions) {
+    		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword,
+    														 action->matchText);score >=pref_fuzzy_match_score_threshold) {
+    			scored.push_back({action, score+8});
+    		}
+    	}
+
+	//加载运行中的列表
+	for (const auto &action: runningAppActions) {
+		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword,
+														 action->matchText);score >=pref_fuzzy_match_score_threshold) {
+			scoredActions.push_back({action, score+8});
+		}
+	}
+
+
+
+	if (g_settings_map["pref_indexed_running_app"].boolValue) {
+		// 向子线程提交下列任务，注意可能会有: 查询、清除，添加冲突问题
+		SubmitTask([]() {
+			// 先清除旧的运行应用列表
+			runningAppActions.clear();
+
+			// 遍历运行中的窗口并添加到列表
+			::TraverseRunningWindows([&](const std::wstring &name,
+										 const std::wstring &fullPath,
+										 const std::wstring &hwnd,
+										 const std::wstring &command) {
+				const auto action = std::make_shared<RunCommandAction>(
+						name, fullPath, hwnd, RUNNING_APP
+				);
+				action->iImageIndex = GetSysImageIndex(action->GetTargetPath());
+				runningAppActions.push_back(action);
+			});
+		});
+		
+	}
+
+// ULONG_PTR ActionBase::gdiplusToken = 0;  // ✅ 只能出现在一个 .cpp 中
+
+
+
+actionbase
+
+	// std::vector<BYTE> _iconBytes;
+	// HBITMAP _hBitmap;
+
+	// static ULONG_PTR gdiplusToken;
+
+	// static void InitGDIPlus()
+	// {
+	// Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+	// Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+	// }
+
+	// static HBITMAP ByteArrayToHBitmap(const std::vector<BYTE>& data)
+	// {
+	// 	IStream* pStream = nullptr;
+	// 	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, data.size());
+	// 	memcpy(GlobalLock(hMem), data.data(), data.size());
+	// 	GlobalUnlock(hMem);
+	// 	CreateStreamOnHGlobal(hMem, TRUE, &pStream);
+	//
+	// 	const Gdiplus::Bitmap* bitmap = Gdiplus::Bitmap::FromStream(pStream);
+	// 	HBITMAP hBmp = nullptr;
+	// 	// bitmap->GetHBITMAP(NULL, &hBmp);
+	// 	bitmap->GetHBITMAP(Gdiplus::Color(0), &hBmp);
+	//
+	// 	delete bitmap;
+	// 	pStream->Release();
+	//
+	// 	return hBmp;
+	// }
+
+
+
+
+
+	// virtual ~ActionBase()
+	// {
+	// if (_hBitmap)
+	// {
+	// 	DeleteObject(_hBitmap);
+	// }
+	// }
+
+	// 图标 - 从byte数组转换为HBITMAP
+	// HBITMAP GetIcon()
+	// {
+	// 	if (!_hBitmap && !_iconBytes.empty())
+	// 	{
+	// 		_hBitmap = ByteArrayToHBitmap(_iconBytes);
+	// 	}
+	// 	return _hBitmap;
+	// }
+
+	// void SetIconBytes(const std::vector<BYTE>& bytes)
+	// {
+	// 	_iconBytes = bytes;
+	// 	if (_hBitmap)
+	// 	{
+	// 		DeleteObject(_hBitmap);
+	// 		_hBitmap = nullptr;
+	// 	}
+	// }
+
+
+
+
+
+
+	// ActionBase() : _isExecutable(false), _hBitmap(nullptr)
+	// {
+	// if (gdiplusToken == 0)
+	// InitGDIPlus();
+	// }
+
+	// [[nodiscard]] const std::vector<BYTE>& GetIconBytes() const
+	// {
+	// 	return _iconBytes;
+	// }
+
+
+	//static ULONG_PTR gdiplusToken; // ← 只声明，不能初始化
+	// ULONG_PTR gdiplusToken = 0;
+
+
+// #include <windows.h>
+// #include <vector>
+// #include <gdiplus.h>
+// #pragma comment(lib, "gdiplus.lib")
+
+
+	// void DispatchActionExecute(const std::wstring& actionId)
+	// {
+	
+	}
+	// 	for (auto& pair : m_plugins)
+	// 	{
+	// 		if (pair.second.loaded && pair.second.plugin)
+	// 		{
+	// 			pair.second.plugin->OnActionExecute(actionId);
+	// 		}
+	// 	}
+	// }
+
+
+
+	// if (MyStartsWith2(editTextBuffer, L"calc "))
+	// {
+	// 	// 提取后面的公式，使用ExprTk库，计算出结果
+	// 	pluginScientificCalculator(editTextBuffer.substr(5));
+	// }
+	// else
+	// {
+
+
+	static double EvaluateExpression(const std::wstring &keyword) {
+		using namespace exprtk;
+
+		const std::string& exprStr = getInput(keyword);
+	
+		symbol_table<double> symbol_table;
+		expression<double> expression;
+		parser<double> parser;
+
+		expression.register_symbol_table(symbol_table);
+
+		if (!parser.compile(exprStr, expression)) {
+			// 解析失败，返回 NaN 或者 0
+			return std::numeric_limits<double>::quiet_NaN();
+		}
+
+		return expression.value();
+	}
+
+以上是普通的exprtk使用
+
+				// swprintf(editTextBuf, 64, L"结果: %.15g", numericResult);
+
+	//	std::any value;
+
+//	std::variant<int64_t, bool,double, std::string> value;
+
+
+	// Display the result in a message box as the original code did.
+	// In a real application, you would save this string to your settings file,
+	// for example, by calling a function like `WriteSettingsJsonText(newSettingsText);`
+	// ShowErrorMsgBox(newSettingsText);
+	
+		// Notify the user.
+    	// MessageBoxW(hwnd, L"Settings saved successfully!", L"Success", MB_OK);
+
+
+
+// 等未来彻底稳定了再实现该方法
+static void resetToDefaults(HWND hwnd, const std::vector<std::wstring>& subPages,
+							std::vector<SettingItem>& settings2,
+							const std::vector<std::vector<HWND>>& hCtrlsByTab) {
+	// Reset all settings to their default values in the JSON
+	std::string defaultSettingsText = GetSettingsJsonText();
+	std::vector<SettingItem> defaultSettings = ParseConfig(defaultSettingsText);
+
+	// Update the UI controls with default values
+	for (size_t tabIdx = 0; tabIdx < subPages.size(); ++tabIdx) {
+		int ctrlIdx = 0;
+
+		for (auto& item : settings2) {
+			if (utf8_to_wide(item.subPage) != subPages[tabIdx]) continue;
+
+			if (item.type == "text" || item.type == "button") continue;
+
+			// Find the corresponding default setting
+			auto defaultItem = std::find_if(defaultSettings.begin(), defaultSettings.end(),
+											[&item](const SettingItem& def) {
+												return def.key == item.key;
+											});
+
+			if (defaultItem != defaultSettings.end()) {
+				HWND hCtrl = hCtrlsByTab[tabIdx][static_cast<size_t>(ctrlIdx + 1)];
+
+				if (item.type == "bool") {
+					bool defaultValue = defaultItem->boolValue;
+					SetSwitchState(hCtrl, defaultValue);
+					item.setDefValue( defaultItem->getDefValue());
+				} else if (item.type == "string" || item.type == "hotkeystring") {
+					std::string defaultValue = defaultItem->stringValue;
+					SetWindowTextW(hCtrl, utf8_to_wide(defaultValue).c_str());
+					item.setDefValue( defaultItem->getDefValue());
+				} else if (item.type == "long") {
+					int64_t defaultValue = defaultItem->intValue;
+					SetWindowTextW(hCtrl, std::to_wstring(defaultValue).c_str());
+					item.setDefValue( defaultItem->getDefValue());
+				} else if (item.type == "list") {
+					std::string defaultValue = defaultItem->stringValue;
+					for (size_t i = 0; i < item.entryValues.size(); ++i) {
+						if (item.entryValues[i] == defaultValue) {
+							SendMessage(hCtrl, CB_SETCURSEL, i, 0);
+							break;
+						}
+					}
+					item.setDefValue( defaultItem->getDefValue());
+				} else if (item.type == "stringArr") {
+					if (defaultItem->getDefValue().is_array()) {
+						std::wstring defaultText;
+						for (const auto& str : defaultItem->getDefValue()) {
+							defaultText += utf8_to_wide(str.get<std::string>()) + L"\r\n";
+						}
+						SetWindowTextW(hCtrl, defaultText.c_str());
+					item.setDefValue( defaultItem->getDefValue());
+					}
+				}
+			}
+
+			ctrlIdx += 2;
+		}
+	}
+
+	MessageBoxW(hwnd, L"设置已重置为默认值", L"重置完成", MB_OK | MB_ICONINFORMATION);
+}
+
+
+
+// 等未来彻底稳定了再实现该方法
+static void applySettings(HWND hwnd, const std::vector<std::wstring>& subPages,
+						std::vector<SettingItem>& settings2,
+						const std::vector<std::vector<HWND>>& hCtrlsByTab) {
+	// Apply settings without closing the window
+	saveConfig(hwnd, subPages, settings2, hCtrlsByTab, USER_SETTINGS_PATH);
+
+	// Show a brief confirmation message
+	MessageBoxW(hwnd, L"设置已应用", L"应用完成", MB_OK | MB_ICONINFORMATION);
+}
+
+
+			// 在切换Tab前，先同步当前显示的控件值到temp
+			// nlohmann::json _unused; 
+			// saveSettingControlValues(subPages,g_settings_ui_temp, hCtrlsByTab,_unused);
+
+
+
+static void saveConfig(HWND hwnd, const std::vector<std::wstring>& subPages, std::vector<SettingItem>& settings2,
+						const std::vector<std::vector<HWND>>& hCtrlsByTab,
+						const std::wstring& filename) {
+	// The final JSON object will be a simple key-value map.
+	nlohmann::json newConfig;
+	// 开始递归保存
+	saveSettingControlValues(subPages, settings2, hCtrlsByTab, newConfig,false);
+
+	// Convert the JSON object to a formatted string
+	std::string newSettingsText = newConfig.dump(4);
+
+	// Write the string to the user settings file.
+	std::ofstream o(filename);
+	o << newSettingsText << std::endl;
+	o.close();
+	
+	LoadSettingsMap();
+	DestroyWindow(hwnd);
+	PostMessage(g_mainHwnd, WM_CONFIG_SAVED, 1, 0);
+}
+
+	} catch (...) {
+		ShowErrorMsgBox(L"解析用户配置失败，使用默认的设置运行程序！");
+		g_settings_ui = {};
+	}
+
+
+// static std::vector<std::vector<HWND>> hCtrlsByTab; // tab下所有控件句柄
+// static std::vector<HWND> tabContainers;
+
+
+
+// 递归查找设置项的索引，模拟UI创建时的索引分配方式
+// static size_t findSettingIndexInScope(const std::vector<SettingItem>& settings, const std::string& key) {
+// 	for (size_t i = 0; i < settings.size(); ++i) {
+// 		const auto& setting = settings[i];
+// 		if (setting.key == key) {
+// 			return i; // 返回在当前作用域中的索引
+// 		}
+// 	}
+// 	return SIZE_MAX; // 未找到
+// }
+
+// 递归查找设置项，同时返回其在所处作用域中的索引
+// static std::pair<bool, size_t> findSettingRecursive(const std::vector<SettingItem>& settings, const std::string& key,
+// 													const std::wstring& targetSubPage) {
+// 	for (size_t i = 0; i < settings.size(); ++i) {
+// 		const auto& setting = settings[i];
+//
+// 		// 如果找到目标项且在正确的subPage中
+// 		if (setting.key == key && utf8_to_wide(setting.subPage) == targetSubPage) {
+// 			return {true, i};
+// 		}
+//
+// 		// 递归搜索子项
+// 		if (setting.type == "expand" && !setting.children.empty()) {
+// 			std::pair<bool, size_t> result = findSettingRecursive(setting.children, key, targetSubPage);
+// 			if (result.first) {
+// 				return result; // 返回子项中找到的索引
+// 			}
+// 		}
+// 	}
+// 	return {false, SIZE_MAX}; // 未找到
+// }
+
+
+				// 设置为白色
+				//				SetClassLongPtr(hContainer, GCLP_HBRBACKGROUND, (LONG_PTR)(HBRUSH)(COLOR_WINDOW+1));
+
+
+// static HWND getControlHwndForIndex(int index,const std::vector<std::string>& subPages,const std::vector<std::vector<HWND>>&
+// 									hCtrlsByTab,SettingItem& item) {
+// 	for (size_t tabIdx = 0; tabIdx < subPages.size(); ++tabIdx) {
+// 		if (item.subPage == subPages[tabIdx]) {
+// 			// 在对应的tab控件列表中查找控件
+// 			for (const auto& ctrlHwnd : hCtrlsByTab[tabIdx]) {
+// 				if (ctrlHwnd && GetDlgCtrlID(ctrlHwnd) >= 3000) {
+// 					// 通过控件ID匹配来找到对应的控件
+// 					int ctrlId = GetDlgCtrlID(ctrlHwnd) - 3000;
+// 					// 使用递归函数查找设置项索引
+// 					// auto result = findSettingRecursive(g_settings_ui, item.key, subPages[tabIdx]);
+// 					// auto result = g_settings_map[item.key];
+// 					if ( ctrlId == index) {
+// 						return ctrlHwnd;
+// 						break;
+// 					}
+// 				}
+// 			}
+// 			break;
+// 		}
+// 	}
+// 	return nullptr;
+// }
+
+
+if (!IsWindow(hCtrl)) {
+			// 控件已经被销毁或无效
+			ShowErrorMsgBox("控件已经被销毁或无效" + item.key);
+			continue;
+		}
+		
+					ConsolePrintln(item.key + ":" + std::to_string(value));
+
+		if (auto it = std::find(subPages.begin(), subPages.end(), item.subPage); it != subPages.end()) hCtrl = GetDlgItem(
+			tabContainers[std::distance(subPages.begin(), it)], (int)index);
+
+
+
+					// 直接根据索引查找并切换expand状态（在settings_ui数据中）
+					// std::function<bool(std::vector<SettingItem>&, size_t)> toggleExpand =
+					// 	[&](std::vector<SettingItem>& settings, size_t targetIdx) -> bool {
+					// 		for (size_t i = 0; i < settings.size(); ++i) {
+					// 			auto& item = settings[i];
+					// 			if (item.type == "expand" && i == targetIdx) {
+					// 				item.isExpanded = !item.isExpanded;
+					// 				return true;
+					// 			}
+					// 			if (!item.children.empty() && toggleExpand(item.children, targetIdx)) {
+					// 				return true;
+					// 			}
+					// 		}
+					// 		return false;
+					// };
+
+					// 同时更新temp和原始数据的expand状态
+					// if (toggleExpand(g_settings_ui, expandIdx) && toggleExpand(g_settings_ui_last_save, expandIdx)) 
+					
+					
+					
+					// 在expand状态改变前，先同步当前显示的控件值到temp
+					nlohmann::json _unused;
+					saveSettingControlValues(_unused);
+
+
+					// ShowWindow(hCtrl,SW_HIDE);
+
+g_settings_ui_temp.insert(g_settings_ui_temp.end(), g_settings_ui.begin(), g_settings_ui.end());
+
+
+			// SettingItem pluginBool;
+			// pluginBool.key = wide_to_utf8(L"plugin." + pair.plugin->GetPluginPackageName());
+			// pluginBool.type = "expand_bool";
+			// pluginBool.title = wide_to_utf8(L"　　"+pair.plugin->GetPluginName());
+			// pluginBool.subPage = "plugin";
+			// pluginBool.boolValue = true;
+			// pluginSettings.push_back(pluginBool);
+			
+
+			// SettingItem blank;
+			// blank.key = wide_to_utf8(L"blank." +pair.plugin->GetPluginPackageName());
+			// blank.type = "text";
+			// blank.title = "   ";
+			//
+			// blank.subPage = "plugin";
+			// pluginSettings.push_back(blank);

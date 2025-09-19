@@ -4,8 +4,8 @@ project(tests C CXX)
 
 add_executable(SplitWordsTest
         SplitWordsTest.cpp
-        ../PinyinHelper.h
-        ../PinyinHelper.cpp
+        ../util/PinyinHelper.h
+        ../util/PinyinHelper.cpp
 #        ../cli.c
 #        ../everything_ipc.h
         

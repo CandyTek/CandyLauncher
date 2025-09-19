@@ -3,8 +3,7 @@
 #pragma comment(lib, "comctl32.lib")
 
 #include <windows.h>
-#include "framework.h"
-#include "WindowsProject1.h"
+#include "common/framework.h"
 #include "Resource.h"
 #include <vector>
 #include <string>
@@ -15,20 +14,19 @@
 #include <sstream>
 #include <filesystem>
 #include <fstream>
-#include "MainTools.hpp"
-#include "GlassHelper.hpp"
-#include "DataKeeper.hpp"
+#include "util/MainTools.hpp"
+#include "view/GlassHelper.hpp"
+#include "common/DataKeeper.hpp"
 #include <gdiplus.h>
 #include <atomic>
 
 #include "AppTools.hpp"
-#include "DxgiUtils.h"
-#include "EditHelper.hpp"
-#include "SkinHelper.h"
+#include "util/DxgiUtils.h"
+#include "manager/EditManager.hpp"
+#include "manager/SkinHelper.h"
 #include <Richedit.h>
-#include "IndexedManager.hpp"
-#include "PluginRunningApps.hpp"
-#include "Shell32IcoViewer.hpp"
+// #include "plugins/IndexedManager.hpp"
+#include "window/Shell32IcoViewer.hpp"
 
 //    #include "cli.h"
 
@@ -40,7 +38,7 @@ void MainWindowInitInstance(HINSTANCE, int);
 
 LRESULT CALLBACK MainWindowWndProc(HWND, UINT, WPARAM, LPARAM);
 
-Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+GdiplusStartupInput gdiplusStartupInput;
 inline ULONG_PTR gdiplusToken;
 
 // 主进程函数
@@ -51,21 +49,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 {
 	static ULONGLONG g_appStartTick = GetTickCount64();
 	g_hInst = hInstance;
-	Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 	if (needOpenDebugCmd) AttachConsoleForDebug();
 	InitializeCustomButtonResources();
-
 	MainWindowRegisterClass(hInstance);
 	SettingWindowRegisterClass(hInstance);
 	if (needOpenShell32IconViewer) ShowShell32IcoViewer(hInstance);
 	MainWindowInitInstance(hInstance, nCmdShow);
 	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr);
-	if (needOpenIndexedManager) ShowIndexedManagerWindow(g_settingsHwnd);
+	// if (needOpenIndexedManager) ShowIndexedManagerWindow(g_settingsHwnd);
 	g_skinFileWatcherThread = std::thread(watchSkinFile);
-	g_pluginIndexedRunningAppsThread = std::thread(WorkerThreadFunction);
 
 	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSPROJECT1));
 	refreshSkin(g_currectSkinFilePath, !g_settings_map["pref_hide_window_after_run"].boolValue);
@@ -83,7 +79,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		}
 	}
 	// 程序退出前通知线程停止
-	stopThreadPluginRunningApps();
 	stopThreadSkinFileWatcher();
 	CleanupButtonResources();
 	return static_cast<int>(msg.wParam);
@@ -162,7 +157,8 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow)
 	}
 	if (isShow)
 	{
-		UserShowMainWindowSimple();
+		ShowMainWindowSimple();
+		g_pluginManager->OnMainWindowShowNotifi(true);
 	}
 	else
 	{
@@ -182,7 +178,7 @@ static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd)
 	listViewInitialize(hWnd, hInstance, 10, 45, 580, 380);
 	appLaunchActionCallBacks = getAppLaunchActionCallBacks();
 	refreshPluginRunner();
-	EditHelper::Attach(g_editHwnd, 0);
+	EditManager::Attach(g_editHwnd, 0);
 	SetWindowSubclass(g_listViewHwnd, ListViewSubclassProc, 2, 0);
 	// 不要使用透明，和主窗口的透明起冲突了
 	// SetWindowLong(hEdit, GWL_EXSTYLE,GetWindowLong(hEdit, GWL_EXSTYLE) | WS_EX_TRANSPARENT);
@@ -191,7 +187,7 @@ static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd)
 
 	// 不知道怎么回事，现在需要下面这两行才能正确使用ctrl+bs了，不知道是哪个地方干扰了
 	SetFocus(g_editHwnd);
-	EditHelper::EnableSmartEdit(g_editHwnd);
+	EditManager::EnableSmartEdit(g_editHwnd);
 	//SetWindowText(g_editHwnd, L"ffffffffffffffffffffffffffffffff");
 }
 
@@ -199,11 +195,25 @@ static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd)
 // 创建主窗口，初始化
 void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow)
 {
+	// 初始化插件系统
+	if (!g_pluginManager)
+	{
+		g_pluginManager = std::make_unique<PluginManager>();
+		// 暂时禁用回调避免循环调用导致崩溃
+		// g_pluginManager->SetActionsChangedCallback([]() {
+		//     refreshPluginRunner();
+		// });
+		std::wstring pluginDir = (EXE_FOLDER_PATH + L"\\plugins");
+		g_pluginManager->LoadAllPlugins(pluginDir);
+	}
+
 	LoadSettingList();
+
 	CreateMainWindow(hInstance, nCmdShow);
 	InitMainWindowControls(hInstance, g_mainHwnd);
-	TrayMenuManager::Init(g_mainHwnd, hInstance);
+	Init(g_mainHwnd, hInstance);
 	userSettingsAfterTheAppStart();
+	g_pluginManager->RefreshAllActions();
 
 	// 另一种指定透明效果，但是并不太行，有很严重的锯齿，而且没有透明度概念，很生硬
 	// SetLayeredWindowAttributes(s_mainHwnd, RGB(80, 81, 82), 0, LWA_COLORKEY);
@@ -237,7 +247,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			}
 			else if (wmId > TRAY_MENU_ID_BASE && wmId < TRAY_MENU_ID_BASE_END)
 			{
-				TrayMenuManager::TrayMenuClick(wmId, hWnd, g_editHwnd);
+				TrayMenuClick(wmId);
 			}
 		}
 		break;
@@ -367,10 +377,10 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 							int index = pia->iItem;
 							if (index != -1 && filteredActions.size() > static_cast<size_t>(index))
 							{
-								const std::shared_ptr<RunCommandAction>& it = filteredActions[index];
+								const std::shared_ptr<ActionBase>& it = filteredActions[index];
 								if (pref_close_after_open_item)
 									HideWindow();
-								it->Invoke();
+								// it->Invoke();
 							}
 							return TRUE;
 						}
@@ -385,10 +395,10 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 							int index = pia->iItem;
 							if (index != -1 && filteredActions.size() > static_cast<size_t>(index))
 							{
-								const std::shared_ptr<RunCommandAction> it = filteredActions[index];
+								const std::shared_ptr<ActionBase> it = filteredActions[index];
 								if (pref_close_after_open_item)
 									HideWindow();
-								it->Invoke();
+								// it->Invoke();
 								// 你可以通过 index 找到 filteredActions[index]
 								// 比如执行该 action
 								// ExecuteAction(filteredActions[index]);
@@ -413,17 +423,17 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 						{
 							// 选中当前项（可选）
 							// ListView_SetItemState(hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-							std::shared_ptr<RunCommandAction>& it = filteredActions[index];
+							std::shared_ptr<ActionBase>& it = filteredActions[index];
 							const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 							if (shiftDown ^ pref_switch_list_right_click_with_shift_right_click)
 							{
-								UINT cmd = ShowMyContextMenu(hWnd, it->GetTargetPath(), pt);
-								DoMyContextMenuAction(cmd, index, it);
+								// UINT cmd = ShowMyContextMenu(hWnd, it->GetTargetPath(), pt);
+								// DoMyContextMenuAction(cmd, index, it);
 							}
 							else
 							{
 								// 非 Shift：走你原本的 Shell 右键菜单
-								ShowShellContextMenu(hWnd, it->GetTargetPath(), pt);
+								// ShowShellContextMenu(hWnd, it->GetTargetPath(), pt);
 							}
 						}
 						PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
@@ -512,26 +522,24 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			listViewCleanup();
 
 			// 关闭插件系统
-			if (g_pluginManager) {
-				g_pluginManager->UnloadAllPlugins();
-				g_pluginManager.reset();
-			}
+			g_pluginManager->UnloadAllPlugins();
+			g_pluginManager.reset();
 
-			TrayMenuManager::TrayMenuDestroy();
+			TrayMenuDestroy();
 			PostQuitMessage(0);
 			ExitProcess(0);
 		}
 		break;
 	case WM_RBUTTONUP:
 		{
-			TrayMenuManager::TrayMenuShow(hWnd);
+			TrayMenuShow(hWnd);
 			return 0;
 		}
 	case WM_TRAYICON:
 		{
 			if (lParam == WM_RBUTTONUP)
 			{
-				TrayMenuManager::TrayMenuShow(hWnd);
+				TrayMenuShow(hWnd);
 			}
 		}
 		break;

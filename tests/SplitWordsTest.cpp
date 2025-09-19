@@ -2,7 +2,7 @@
 #include <string>
 #include <iostream>
 #include <cassert>
-#include "../PinyinHelper.h"
+#include "../util/PinyinHelper.h"
 #include <fcntl.h>
 #include <io.h>
 
