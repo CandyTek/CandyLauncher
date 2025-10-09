@@ -10,7 +10,7 @@
 // 添加要在此处预编译的标头
 #include "framework.h"
 #include "targetver.h"
-#include "../Resource.h"
+#include "Resource.h"
 
 // 添加常用的标准库
 #include <string>
@@ -20,10 +20,11 @@
 #include <algorithm>
 
 // 添加第三方库
-#include "../util/json.hpp"
+// #include "../util/json.hpp"
 
 // 添加您自己项目中不常变动的核心头文件
-#include "Constants.hpp"
-#include "../util/BaseTools.hpp"
+#include "../util/MathUtil.hpp"
+#include "../util/StringUtil.hpp"
+#include "../util/LogUtil.hpp"
 
 #endif //PCH_H

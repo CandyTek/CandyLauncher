@@ -5,9 +5,6 @@
 #include <vector>
 #include <string>
 #include <commctrl.h>
-#include <gdiplus.h>
-
-#pragma comment(lib, "gdiplus.lib")
 
 // Button styles enumeration
 enum ButtonStyle {
@@ -15,8 +12,8 @@ enum ButtonStyle {
 	BTN_PRIMARY = 1,
 	BTN_SUCCESS = 2,
 	BTN_DANGER = 3,
-	BTN_EXPAND = 4,  // 折叠按钮样式
-	BTN_EXPAND_SWITCH = 5  // 折叠按钮+开关组合样式
+	BTN_EXPAND = 4, // 折叠按钮样式
+	BTN_EXPAND_SWITCH = 5 // 折叠按钮+开关组合样式
 };
 
 // Text alignment enumeration
@@ -33,12 +30,12 @@ struct ButtonInfo {
 	bool isHovered{};
 	bool isPressed{};
 	bool isSelected{};
-	bool isExpanded{};  // 折叠状态
-	bool switchState{};  // 开关状态(用于BTN_EXPAND_SWITCH)
-	bool switchHovered{};  // 开关悬停状态
+	bool isExpanded{}; // 折叠状态
+	bool switchState{}; // 开关状态(用于BTN_EXPAND_SWITCH)
+	bool switchHovered{}; // 开关悬停状态
 	std::wstring text;
-	HICON hIcon{};  // Icon handle for left-side icon display
-	TextAlignment textAlign;  // Text alignment
+	HICON hIcon{}; // Icon handle for left-side icon display
+	TextAlignment textAlign; // Text alignment
 };
 
 // Global button list
@@ -71,31 +68,31 @@ static void InitializeCustomButtonResources() {
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
 			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
 	}
-	
+
 	if (!hFontButton) {
 		hFontButton = CreateFontW(
 			20, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
 			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
 	}
-	
+
 	// Initialize brushes
-	if (!hBrushButtonNormal) hBrushButtonNormal = CreateSolidBrush(RGB(230,230,230));
-	if (!hBrushButtonHover) hBrushButtonHover = CreateSolidBrush(RGB(207,207,207));
-	if (!hBrushButtonPressed) hBrushButtonPressed = CreateSolidBrush(RGB(184,184,184));
-	if (!hBrushButtonSelected) hBrushButtonSelected = CreateSolidBrush(RGB(220, 235, 255));
+	if (!hBrushButtonNormal) hBrushButtonNormal = CreateSolidBrush(RGB(230, 230, 230));
+	if (!hBrushButtonHover) hBrushButtonHover = CreateSolidBrush(RGB(207, 207, 207));
+	if (!hBrushButtonPressed) hBrushButtonPressed = CreateSolidBrush(RGB(184, 184, 184));
+	if (!hBrushButtonSelected) hBrushButtonSelected = CreateSolidBrush(RGB(199,220,251));
 	if (!hBrushButtonPrimary) hBrushButtonPrimary = CreateSolidBrush(RGB(0, 120, 215));
 	if (!hBrushButtonSuccess) hBrushButtonSuccess = CreateSolidBrush(RGB(40, 167, 69));
 	if (!hBrushButtonDanger) hBrushButtonDanger = CreateSolidBrush(RGB(220, 53, 69));
-	if (!hBrushPrimaryHover) hBrushPrimaryHover = CreateSolidBrush(RGB(56,165,250));
+	if (!hBrushPrimaryHover) hBrushPrimaryHover = CreateSolidBrush(RGB(56, 165, 250));
 	if (!hBrushSuccessHover) hBrushSuccessHover = CreateSolidBrush(RGB(20, 147, 49));
 	if (!hBrushDangerHover) hBrushDangerHover = CreateSolidBrush(RGB(200, 33, 49));
-	if (!hBrushButtonExpand) hBrushButtonExpand = CreateSolidBrush(RGB(245, 245, 245));
-	if (!hBrushButtonExpandHover) hBrushButtonExpandHover = CreateSolidBrush(RGB(230, 230, 230));
+	if (!hBrushButtonExpand) hBrushButtonExpand = CreateSolidBrush(RGB(238, 238, 238));
+	if (!hBrushButtonExpandHover) hBrushButtonExpandHover = CreateSolidBrush(RGB(228, 228, 228));
 }
 
 // Get appropriate brush for button state
-static HBRUSH GetButtonBrush(ButtonInfo *btnInfo) {
+static HBRUSH GetButtonBrush(ButtonInfo* btnInfo) {
 	if (!btnInfo) return hBrushButtonNormal;
 
 	if (btnInfo->isPressed) {
@@ -106,25 +103,21 @@ static HBRUSH GetButtonBrush(ButtonInfo *btnInfo) {
 	if (btnInfo->style == BTN_NORMAL && btnInfo->isSelected) {
 		return hBrushButtonSelected;
 	}
-
+	// 按钮样式
 	switch (btnInfo->style) {
-		case BTN_PRIMARY:
-			return btnInfo->isHovered ? hBrushPrimaryHover : hBrushButtonPrimary;
-		case BTN_SUCCESS:
-			return btnInfo->isHovered ? hBrushSuccessHover : hBrushButtonSuccess;
-		case BTN_DANGER:
-			return btnInfo->isHovered ? hBrushDangerHover : hBrushButtonDanger;
-		case BTN_EXPAND:
-			return btnInfo->isHovered ? hBrushButtonExpandHover : hBrushButtonExpand;
-		default:
-			return btnInfo->isHovered ? hBrushButtonHover : hBrushButtonNormal;
+	case BTN_PRIMARY: return btnInfo->isHovered ? hBrushPrimaryHover : hBrushButtonPrimary;
+	case BTN_SUCCESS: return btnInfo->isHovered ? hBrushSuccessHover : hBrushButtonSuccess;
+	case BTN_DANGER: return btnInfo->isHovered ? hBrushDangerHover : hBrushButtonDanger;
+	case BTN_EXPAND: return btnInfo->isHovered ? hBrushButtonExpandHover : hBrushButtonExpand;
+	case BTN_EXPAND_SWITCH: return btnInfo->isHovered ? hBrushButtonExpandHover : hBrushButtonExpand;
+	default: return btnInfo->isHovered ? hBrushButtonHover : hBrushButtonNormal;
 	}
 }
 
 // 绘制折叠箭头
 static void DrawExpandArrow(HDC hdc, RECT rect, bool isExpanded, bool isHovered) {
 	// 计算箭头位置
-	int centerX = rect.left + 12;  // 左侧留12px边距
+	int centerX = rect.left + 12; // 左侧留12px边距
 	int centerY = rect.top + (rect.bottom - rect.top) / 2;
 
 	// 设置画笔和画刷
@@ -149,57 +142,74 @@ static void DrawExpandArrow(HDC hdc, RECT rect, bool isExpanded, bool isHovered)
 	DeleteObject(hPen);
 }
 
-// 绘制简化开关(用于组合控件)
-static void DrawMiniSwitch(HDC hdc, int x, int y, bool isOn, bool isHovered) {
-	// 开关尺寸
-	const int switchWidth = 40;
-	const int switchHeight = 20;
-	const int circleRadius = 8;
+// 绘制简化开关(用于组合控件) - 复用Win8风格
+static void DrawSwitchWin8UI(HDC hdc, int x, int y, bool isOn, bool isHovered) {
+	// Win8.1 风格尺寸（扁平、矩形）
+	constexpr int switchWidth = 48;
+	constexpr int switchHeight = 20;
+	constexpr int thumbW = 12;
+	constexpr int thumbH = 22;
 
 	// 创建双缓冲
 	HDC memDC = CreateCompatibleDC(hdc);
 	HBITMAP memBitmap = CreateCompatibleBitmap(hdc, switchWidth, switchHeight);
 	HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
 
-	// 设置抗锯齿模式
-	SetBkMode(memDC, TRANSPARENT);
+	// 背景透明
+	HBRUSH bgBrush = CreateSolidBrush(RGB(245, 245, 245));
+	RECT bgRect = {0, 0, switchWidth, switchHeight};
+	FillRect(memDC, &bgRect, bgBrush);
+	DeleteObject(bgBrush);
 
-	// 使用GDI+绘制圆角矩形和圆形
-	Gdiplus::Graphics graphics(memDC);
-	graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	// Win8.1 扁平色系
+	const COLORREF trackColorOff = isHovered ? RGB(203, 203, 203) : RGB(173, 173, 173);
+	const COLORREF trackColorOn = isHovered ? RGB(56, 165, 250) : RGB(0, 120, 215);
+	const COLORREF thumbColor = RGB(0, 0, 0); // 黑色滑块
+	const COLORREF borderColorOff = RGB(173, 173, 173);
+	const COLORREF borderColorOn = borderColorOff;
 
-	// 绘制背景轨道
-	COLORREF trackColor = isOn ? RGB(0, 120, 215) : RGB(200, 200, 200);
-	if (isHovered) {
-		trackColor = isOn ? RGB(56, 165, 250) : RGB(180, 180, 180);
-	}
+	const COLORREF currentTrackColor = isOn ? trackColorOn : trackColorOff;
+	const COLORREF currentBorderColor = isOn ? borderColorOn : borderColorOff;
 
-	Gdiplus::Color gdipTrackColor(GetRValue(trackColor), GetGValue(trackColor), GetBValue(trackColor));
-	Gdiplus::SolidBrush trackBrush(gdipTrackColor);
-	Gdiplus::GraphicsPath trackPath;
+	// 计算几何矩形
+	RECT outerRect = {0, 0, switchWidth, switchHeight};
+	RECT trackRect = outerRect;
+	InflateRect(&trackRect, -1, -1);
+	RECT realTrackRect = outerRect;
+	InflateRect(&realTrackRect, -3, -3);
 
-	// 创建圆角矩形路径
-	int radius = switchHeight / 2;
-	trackPath.AddArc(0, 0, radius * 2, radius * 2, 90, 180);
-	trackPath.AddLine(radius, 0, switchWidth - radius, 0);
-	trackPath.AddArc(switchWidth - radius * 2, 0, radius * 2, radius * 2, 270, 180);
-	trackPath.AddLine(switchWidth - radius, switchHeight, radius, switchHeight);
-	trackPath.CloseFigure();
+	// thumb 位置（在 track 内左右平移）
+	const int travel = (trackRect.right - trackRect.left) - thumbW;
+	int thumbX = trackRect.left + (isOn ? travel : 0);
+	int thumbY = trackRect.top + ((trackRect.bottom - trackRect.top) - thumbH) / 2;
 
-	graphics.FillPath(&trackBrush, &trackPath);
 
-	// 绘制滑块圆形
-	int circleX = isOn ? (switchWidth - circleRadius * 2 - 2) : 2;
-	int circleY = (switchHeight - circleRadius * 2) / 2;
+	RECT thumbRect = {thumbX, thumbY, thumbX + thumbW, thumbY + thumbH};
 
-	Gdiplus::Color circleColor(255, 255, 255);
-	Gdiplus::SolidBrush circleBrush(circleColor);
-	graphics.FillEllipse(&circleBrush, circleX, circleY, circleRadius * 2, circleRadius * 2);
+	// 绘制外边框（空心矩形）
+	HPEN borderPen = CreatePen(PS_SOLID, 3, currentBorderColor);
+	HPEN oldPen = (HPEN)SelectObject(memDC, borderPen);
+	HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+	HBRUSH oldBrush = (HBRUSH)SelectObject(memDC, nullBrush);
+	Rectangle(memDC, outerRect.left, outerRect.top, outerRect.right, outerRect.bottom);
+
+	// 填充 track（纯色长矩形）
+	HBRUSH trackBrush = CreateSolidBrush(currentTrackColor);
+	FillRect(memDC, &realTrackRect, trackBrush);
+
+	// 绘制 thumb（纯色小矩形）
+	HBRUSH thumbBrush = CreateSolidBrush(thumbColor);
+	FillRect(memDC, &thumbRect, thumbBrush);
 
 	// 复制到目标DC
 	BitBlt(hdc, x, y, switchWidth, switchHeight, memDC, 0, 0, SRCCOPY);
 
-	// 清理
+	// 清理 GDI 对象
+	SelectObject(memDC, oldPen);
+	SelectObject(memDC, oldBrush);
+	DeleteObject(borderPen);
+	DeleteObject(trackBrush);
+	DeleteObject(thumbBrush);
 	SelectObject(memDC, oldBitmap);
 	DeleteObject(memBitmap);
 	DeleteDC(memDC);
@@ -208,8 +218,8 @@ static void DrawMiniSwitch(HDC hdc, int x, int y, bool isOn, bool isHovered) {
 // 获取开关区域(用于BTN_EXPAND_SWITCH)
 static RECT GetSwitchRect(const RECT& btnRect) {
 	RECT switchRect;
-	const int switchWidth = 40;
-	const int switchHeight = 20;
+	const int switchWidth = 46; // 匹配Win8风格尺寸
+	const int switchHeight = 18;
 	switchRect.right = btnRect.right - 8;
 	switchRect.left = switchRect.right - switchWidth;
 	switchRect.top = btnRect.top + (btnRect.bottom - btnRect.top - switchHeight) / 2;
@@ -223,7 +233,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 	ButtonInfo* btnInfo = reinterpret_cast<ButtonInfo*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
 
 	switch (uMsg) {
-		case WM_MOUSEMOVE: {
+	case WM_MOUSEMOVE:
+		{
 			if (btnInfo && !btnInfo->isHovered) {
 				btnInfo->isHovered = true;
 				InvalidateRect(hWnd, nullptr, TRUE);
@@ -253,7 +264,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			}
 			break;
 		}
-		case WM_MOUSELEAVE: {
+	case WM_MOUSELEAVE:
+		{
 			if (btnInfo) {
 				btnInfo->isHovered = false;
 				btnInfo->switchHovered = false;
@@ -261,7 +273,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			}
 			break;
 		}
-		case WM_LBUTTONDOWN: {
+	case WM_LBUTTONDOWN:
+		{
 			if (btnInfo) {
 				btnInfo->isPressed = true;
 				InvalidateRect(hWnd, nullptr, TRUE);
@@ -269,7 +282,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			}
 			break;
 		}
-		case WM_LBUTTONUP: {
+	case WM_LBUTTONUP:
+		{
 			if (btnInfo) {
 				btnInfo->isPressed = false;
 				ReleaseCapture();
@@ -294,8 +308,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 						HWND hParent = GetParent(hWnd);
 						if (hParent) {
 							SendMessage(hParent, WM_COMMAND,
-									   MAKEWPARAM(GetDlgCtrlID(hWnd), BN_CLICKED),
-									   (LPARAM) hWnd);
+										MAKEWPARAM(GetDlgCtrlID(hWnd), BN_CLICKED),
+										(LPARAM)hWnd);
 						}
 					} else {
 						// 点击在其他区域,切换展开状态
@@ -307,8 +321,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 						if (hParent) {
 							// 使用特殊通知码表示展开/折叠事件
 							SendMessage(hParent, WM_COMMAND,
-									   MAKEWPARAM(GetDlgCtrlID(hWnd), BN_DOUBLECLICKED),
-									   (LPARAM) hWnd);
+										MAKEWPARAM(GetDlgCtrlID(hWnd), BN_DOUBLECLICKED),
+										(LPARAM)hWnd);
 						}
 					}
 				} else {
@@ -317,14 +331,15 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 					HWND hParent = GetParent(hWnd);
 					if (hParent) {
 						SendMessage(hParent, WM_COMMAND,
-								   MAKEWPARAM(GetDlgCtrlID(hWnd), BN_CLICKED),
-								   (LPARAM) hWnd);
+									MAKEWPARAM(GetDlgCtrlID(hWnd), BN_CLICKED),
+									(LPARAM)hWnd);
 					}
 				}
 			}
 			break;
 		}
-		case WM_PAINT: {
+	case WM_PAINT:
+		{
 			PAINTSTRUCT ps;
 			HDC hdc = BeginPaint(hWnd, &ps);
 
@@ -334,7 +349,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			// Use double buffering to reduce flicker
 			HDC memDC = CreateCompatibleDC(hdc);
 			HBITMAP memBitmap = CreateCompatibleBitmap(hdc, rect.right, rect.bottom);
-			HBITMAP oldBitmap = (HBITMAP) SelectObject(memDC, memBitmap);
+			HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
 
 			HBRUSH hBrush = GetButtonBrush(btnInfo);
 			FillRect(memDC, &rect, hBrush);
@@ -348,9 +363,9 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			}
 
 			SetBkMode(memDC, TRANSPARENT);
-			HFONT oldFont = (HFONT) SelectObject(memDC, hFontButton);
-
-			if (btnInfo && btnInfo->style != BTN_NORMAL && btnInfo->style != BTN_EXPAND) {
+			HFONT oldFont = (HFONT)SelectObject(memDC, hFontButton);
+			// 设置字体颜色
+			if (btnInfo && btnInfo->style != BTN_NORMAL && btnInfo->style != BTN_EXPAND && btnInfo->style != BTN_EXPAND_SWITCH) {
 				SetTextColor(memDC, RGB(255, 255, 255));
 			} else {
 				SetTextColor(memDC, RGB(0, 0, 0));
@@ -369,7 +384,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 					GetTextExtentPoint32W(memDC, btnInfo->text.c_str(), static_cast<int>(btnInfo->text.length()), &textSize);
 					totalContentWidth += textSize.cx;
 				}
-				
+
 				// Position based on text alignment
 				if (btnInfo->textAlign == TEXT_LEFT) {
 					// Left align: start from left margin
@@ -385,10 +400,10 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 					iconX = startX;
 					textX = startX + iconSize + iconMargin;
 				}
-				
+
 				// Draw icon
 				int iconY = (rect.bottom - iconSize) / 2;
-				DrawIconEx(memDC, iconX, iconY, btnInfo->hIcon, iconSize, iconSize, 0, NULL, DI_NORMAL);
+				DrawIconEx(memDC, iconX, iconY, btnInfo->hIcon, iconSize, iconSize, 0, nullptr, DI_NORMAL);
 			}
 
 			// 特殊处理折叠按钮
@@ -400,7 +415,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 				if (!btnInfo->text.empty()) {
 					RECT textRect = {28, rect.top, rect.right - 8, rect.bottom}; // 左侧留28px给箭头
 					DrawTextW(memDC, btnInfo->text.c_str(), -1, &textRect,
-							  DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+							DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 				}
 			}
 			// 特殊处理折叠+开关组合按钮
@@ -412,49 +427,45 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 				if (!btnInfo->text.empty()) {
 					RECT textRect = {28, rect.top, rect.right - 56, rect.bottom}; // 左侧留28px给箭头,右侧留56px给开关
 					DrawTextW(memDC, btnInfo->text.c_str(), -1, &textRect,
-							  DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+							DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 				}
 
 				// 绘制开关
 				RECT switchRect = GetSwitchRect(rect);
-				DrawMiniSwitch(memDC, switchRect.left, switchRect.top,
-							   btnInfo->switchState, btnInfo->switchHovered);
-			}
-			else if (btnInfo && !btnInfo->text.empty()) {
+				DrawSwitchWin8UI(memDC, switchRect.left, switchRect.top,
+								btnInfo->switchState, btnInfo->switchHovered);
+			} else if (btnInfo && !btnInfo->text.empty()) {
 				DWORD alignFlag = DT_CENTER; // Default center alignment
 				RECT textRect = rect;
 
 				// Determine alignment flag and text rectangle
 				switch (btnInfo->textAlign) {
-					case TEXT_LEFT:
-						alignFlag = DT_LEFT;
-						if (btnInfo->hIcon) {
-							textRect = {textX, rect.top, rect.right - 8, rect.bottom};
-						} else {
-							textRect = {8, rect.top, rect.right - 8, rect.bottom}; // 8px left margin
-						}
-						break;
-					case TEXT_RIGHT:
-						alignFlag = DT_RIGHT;
-						if (btnInfo->hIcon) {
-							textRect = {textX, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
-						} else {
-							textRect = {rect.left, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
-						}
-						break;
-					case TEXT_CENTER:
-					default:
-						alignFlag = DT_CENTER;
-						if (btnInfo->hIcon) {
-							textRect = {textX, rect.top, rect.right, rect.bottom};
-						} else {
-							textRect = rect; // Full button width for centering
-						}
-						break;
+				case TEXT_LEFT: alignFlag = DT_LEFT;
+					if (btnInfo->hIcon) {
+						textRect = {textX, rect.top, rect.right - 8, rect.bottom};
+					} else {
+						textRect = {8, rect.top, rect.right - 8, rect.bottom}; // 8px left margin
+					}
+					break;
+				case TEXT_RIGHT: alignFlag = DT_RIGHT;
+					if (btnInfo->hIcon) {
+						textRect = {textX, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
+					} else {
+						textRect = {rect.left, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
+					}
+					break;
+				case TEXT_CENTER:
+				default: alignFlag = DT_CENTER;
+					if (btnInfo->hIcon) {
+						textRect = {textX, rect.top, rect.right, rect.bottom};
+					} else {
+						textRect = rect; // Full button width for centering
+					}
+					break;
 				}
-				
+
 				DrawTextW(memDC, btnInfo->text.c_str(), -1, &textRect,
-						  alignFlag | DT_VCENTER | DT_SINGLELINE);
+						alignFlag | DT_VCENTER | DT_SINGLELINE);
 			}
 
 			// Copy to screen in one operation
@@ -468,10 +479,11 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			EndPaint(hWnd, &ps);
 			return 0;
 		}
-		case WM_NCDESTROY: {
+	case WM_NCDESTROY:
+		{
 			ButtonInfo* pBtnInfo = reinterpret_cast<ButtonInfo*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
 			if (pBtnInfo) {
-				delete pBtnInfo;  // 释放内存
+				delete pBtnInfo; // 释放内存
 				SetWindowLongPtr(hWnd, GWLP_USERDATA, 0); // 清掉
 			}
 			RemoveWindowSubclass(hWnd, EnhancedButtonSubclassProc, uIdSubclass);
@@ -483,8 +495,9 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 }
 
 // Create enhanced button
-static HWND CreateEnhancedButton(HWND hParent,size_t uid,const std::wstring &text, int x, int y,
-								int width, int height, HMENU hMenu, ButtonStyle style = BTN_NORMAL, HICON hIcon = nullptr, TextAlignment textAlign = TEXT_CENTER) {
+static HWND CreateEnhancedButton(HWND hParent, size_t uid, const std::wstring& text, int x, int y,
+								int width, int height, HMENU hMenu, ButtonStyle style = BTN_NORMAL, HICON hIcon = nullptr,
+								TextAlignment textAlign = TEXT_CENTER) {
 	HWND hButton = CreateWindowW(L"BUTTON", text.c_str(),
 								WS_CHILD | WS_VISIBLE,
 								x, y, width, height, hParent, hMenu, nullptr, nullptr);
@@ -501,19 +514,19 @@ static HWND CreateEnhancedButton(HWND hParent,size_t uid,const std::wstring &tex
 		pBtnInfo->hIcon = hIcon;
 		pBtnInfo->textAlign = textAlign;
 
-//		ButtonInfo btnInfo;
-//		btnInfo.hwnd = hButton;
-//		btnInfo.style = style;
-//		btnInfo.isHovered = false;
-//		btnInfo.isPressed = false;
-//		btnInfo.isSelected = false;
-//		btnInfo.text = text;
-//		buttons.push_back(*pBtnInfo);
+		//		ButtonInfo btnInfo;
+		//		btnInfo.hwnd = hButton;
+		//		btnInfo.style = style;
+		//		btnInfo.isHovered = false;
+		//		btnInfo.isPressed = false;
+		//		btnInfo.isSelected = false;
+		//		btnInfo.text = text;
+		//		buttons.push_back(*pBtnInfo);
 
 		SetWindowSubclass(hButton, EnhancedButtonSubclassProc,
-						  uid , 0);
+						uid, 0);
 		SetWindowLongPtr(hButton, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pBtnInfo));
-		SendMessage(hButton, WM_SETFONT, (WPARAM) hFontButton, TRUE);
+		SendMessage(hButton, WM_SETFONT, (WPARAM)hFontButton, TRUE);
 	}
 
 	return hButton;
@@ -561,232 +574,67 @@ static void SetExpandSwitchState(HWND hButton, bool state) {
 	}
 }
 
-// ComboBox information structure
-struct ComboBoxInfo {
-	HWND hwnd{};
-	bool isHovered{};
-	bool isDropped{};
-	std::wstring placeholder;
-};
-
-// ComboBox brushes
-inline HBRUSH hBrushComboNormal = nullptr;
-inline HBRUSH hBrushComboHover = nullptr;
-inline HBRUSH hBrushComboFocus = nullptr;
-inline HBRUSH hBrushComboDropped = nullptr;
-
-// Initialize ComboBox resources
-static void InitializeCustomComboBoxResources() {
-	if (!hBrushComboNormal) hBrushComboNormal = CreateSolidBrush(RGB(255, 255, 255));
-	if (!hBrushComboHover) hBrushComboHover = CreateSolidBrush(RGB(240, 240, 240));
-	if (!hBrushComboFocus) hBrushComboFocus = CreateSolidBrush(RGB(255, 255, 255));
-	if (!hBrushComboDropped) hBrushComboDropped = CreateSolidBrush(RGB(230, 243, 255));
-}
-
-// Get appropriate brush for combobox state
-static HBRUSH GetComboBoxBrush(ComboBoxInfo *comboInfo) {
-	if (!comboInfo) return hBrushComboNormal;
-
-	if (comboInfo->isDropped) {
-		return hBrushComboDropped;
-	}
-	if (comboInfo->isHovered) {
-		return hBrushComboHover;
-	}
-	return hBrushComboNormal;
-}
-
-// Draw dropdown arrow
-static void DrawDropdownArrow(HDC hdc, RECT rect, bool isHovered, bool isDropped) {
-	int centerX = rect.right - 20;
-	int centerY = rect.top + (rect.bottom - rect.top) / 2;
-
-	COLORREF arrowColor = isHovered || isDropped ? RGB(0, 120, 215) : RGB(100, 100, 100);
-	HPEN hPen = CreatePen(PS_SOLID, 2, arrowColor);
-	HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
-
-	// Draw down arrow
-	MoveToEx(hdc, centerX - 4, centerY - 2, NULL);
-	LineTo(hdc, centerX, centerY + 2);
-	LineTo(hdc, centerX + 4, centerY - 2);
-
-	SelectObject(hdc, hOldPen);
-	DeleteObject(hPen);
-}
-
-// Enhanced ComboBox subclass procedure
-static LRESULT CALLBACK EnhancedComboBoxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
-													UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
-	ComboBoxInfo* comboInfo = reinterpret_cast<ComboBoxInfo*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-
-	switch (uMsg) {
-		case WM_MOUSEMOVE: {
-			if (comboInfo && !comboInfo->isHovered) {
-				comboInfo->isHovered = true;
-				InvalidateRect(hWnd, nullptr, TRUE);
-
-				TRACKMOUSEEVENT tme = {sizeof(TRACKMOUSEEVENT)};
-				tme.dwFlags = TME_LEAVE;
-				tme.hwndTrack = hWnd;
-				TrackMouseEvent(&tme);
-			}
-			break;
-		}
-		case WM_MOUSELEAVE: {
-			if (comboInfo) {
-				comboInfo->isHovered = false;
-				InvalidateRect(hWnd, nullptr, TRUE);
-			}
-			break;
-		}
-		case WM_COMMAND: {
-			if (HIWORD(wParam) == CBN_DROPDOWN) {
-				if (comboInfo) {
-					comboInfo->isDropped = true;
-					InvalidateRect(hWnd, nullptr, TRUE);
-				}
-			}
-			else if (HIWORD(wParam) == CBN_CLOSEUP) {
-				if (comboInfo) {
-					comboInfo->isDropped = false;
-					InvalidateRect(hWnd, nullptr, TRUE);
-				}
-			}
-			break;
-		}
-		case WM_PAINT: {
-			PAINTSTRUCT ps;
-			HDC hdc = BeginPaint(hWnd, &ps);
-
-			RECT rect;
-			GetClientRect(hWnd, &rect);
-
-			// Use double buffering
-			HDC memDC = CreateCompatibleDC(hdc);
-			HBITMAP memBitmap = CreateCompatibleBitmap(hdc, rect.right, rect.bottom);
-			HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
-
-			// Fill background
-			HBRUSH hBrush = GetComboBoxBrush(comboInfo);
-			FillRect(memDC, &rect, hBrush);
-
-			// Draw border
-			COLORREF borderColor = RGB(180, 180, 180);
-			if (comboInfo) {
-				if (comboInfo->isDropped) {
-					borderColor = RGB(0, 120, 215);
-				} else if (comboInfo->isHovered) {
-					borderColor = RGB(120, 120, 120);
-				}
-			}
-
-			HPEN hPen = CreatePen(PS_SOLID, 1, borderColor);
-			HPEN hOldPen = (HPEN)SelectObject(memDC, hPen);
-			HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, GetStockObject(NULL_BRUSH));
-
-			Rectangle(memDC, rect.left, rect.top, rect.right, rect.bottom);
-
-			SelectObject(memDC, hOldBrush);
-			SelectObject(memDC, hOldPen);
-			DeleteObject(hPen);
-
-			// Draw dropdown arrow
-			if (comboInfo) {
-				DrawDropdownArrow(memDC, rect, comboInfo->isHovered, comboInfo->isDropped);
-			}
-
-			// Get current selection text
-			int curSel = (int)SendMessage(hWnd, CB_GETCURSEL, 0, 0);
-			if (curSel != CB_ERR) {
-				int textLen = (int)SendMessage(hWnd, CB_GETLBTEXTLEN, curSel, 0);
-				if (textLen > 0) {
-					std::wstring text(textLen + 1, L'\0');
-					SendMessage(hWnd, CB_GETLBTEXT, curSel, (LPARAM)text.data());
-					text.resize(textLen);
-
-					SetBkMode(memDC, TRANSPARENT);
-					SetTextColor(memDC, RGB(0, 0, 0));
-					HFONT oldFont = (HFONT)SelectObject(memDC, hFontDefault);
-
-					RECT textRect = {rect.left + 8, rect.top, rect.right - 30, rect.bottom};
-					DrawTextW(memDC, text.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-					SelectObject(memDC, oldFont);
-				}
-			}
-
-			// Copy to screen
-			BitBlt(hdc, 0, 0, rect.right, rect.bottom, memDC, 0, 0, SRCCOPY);
-
-			SelectObject(memDC, oldBitmap);
-			DeleteObject(memBitmap);
-			DeleteDC(memDC);
-
-			EndPaint(hWnd, &ps);
-			return 0;
-		}
-		case WM_NCDESTROY: {
-			ComboBoxInfo* pComboInfo = reinterpret_cast<ComboBoxInfo*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-			if (pComboInfo) {
-				delete pComboInfo;
-				SetWindowLongPtr(hWnd, GWLP_USERDATA, 0);
-			}
-			RemoveWindowSubclass(hWnd, EnhancedComboBoxSubclassProc, uIdSubclass);
-			break;
-		}
-	}
-
-	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-}
-
-// Create enhanced ComboBox
-static HWND CreateEnhancedComboBox(HWND hParent, size_t uid, int x, int y, int width, int height,
-								   HMENU hMenu, const std::wstring& placeholder = L"") {
-	// For CBS_DROPDOWNLIST, height parameter includes dropdown height
-	// Use a reasonable dropdown height (e.g., 200px for dropdown area)
-	int totalHeight = height > 100 ? height : 200;
-	HWND hCombo = CreateWindowW(L"COMBOBOX", L"",
-								WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
-								x, y, width, totalHeight, hParent, hMenu, nullptr, nullptr);
-
-	if (hCombo) {
-		ComboBoxInfo* pComboInfo = new ComboBoxInfo;
-		pComboInfo->hwnd = hCombo;
-		pComboInfo->isHovered = false;
-		pComboInfo->isDropped = false;
-		pComboInfo->placeholder = placeholder;
-
-		SetWindowSubclass(hCombo, EnhancedComboBoxSubclassProc, uid, 0);
-		SetWindowLongPtr(hCombo, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pComboInfo));
-		SendMessage(hCombo, WM_SETFONT, (WPARAM)hFontDefault, TRUE);
-	}
-
-	return hCombo;
-}
 
 // Cleanup button resources
 static void CleanupButtonResources() {
 	// Cleanup fonts
-	if (hFontDefault) { DeleteObject(hFontDefault); hFontDefault = nullptr; }
-	if (hFontButton) { DeleteObject(hFontButton); hFontButton = nullptr; }
+	if (hFontDefault) {
+		DeleteObject(hFontDefault);
+		hFontDefault = nullptr;
+	}
+	if (hFontButton) {
+		DeleteObject(hFontButton);
+		hFontButton = nullptr;
+	}
 
 	// Cleanup brushes
-	if (hBrushButtonNormal) { DeleteObject(hBrushButtonNormal); hBrushButtonNormal = nullptr; }
-	if (hBrushButtonHover) { DeleteObject(hBrushButtonHover); hBrushButtonHover = nullptr; }
-	if (hBrushButtonPressed) { DeleteObject(hBrushButtonPressed); hBrushButtonPressed = nullptr; }
-	if (hBrushButtonSelected) { DeleteObject(hBrushButtonSelected); hBrushButtonSelected = nullptr; }
-	if (hBrushButtonPrimary) { DeleteObject(hBrushButtonPrimary); hBrushButtonPrimary = nullptr; }
-	if (hBrushButtonSuccess) { DeleteObject(hBrushButtonSuccess); hBrushButtonSuccess = nullptr; }
-	if (hBrushButtonDanger) { DeleteObject(hBrushButtonDanger); hBrushButtonDanger = nullptr; }
-	if (hBrushPrimaryHover) { DeleteObject(hBrushPrimaryHover); hBrushPrimaryHover = nullptr; }
-	if (hBrushSuccessHover) { DeleteObject(hBrushSuccessHover); hBrushSuccessHover = nullptr; }
-	if (hBrushDangerHover) { DeleteObject(hBrushDangerHover); hBrushDangerHover = nullptr; }
-	if (hBrushButtonExpand) { DeleteObject(hBrushButtonExpand); hBrushButtonExpand = nullptr; }
-	if (hBrushButtonExpandHover) { DeleteObject(hBrushButtonExpandHover); hBrushButtonExpandHover = nullptr; }
+	if (hBrushButtonNormal) {
+		DeleteObject(hBrushButtonNormal);
+		hBrushButtonNormal = nullptr;
+	}
+	if (hBrushButtonHover) {
+		DeleteObject(hBrushButtonHover);
+		hBrushButtonHover = nullptr;
+	}
+	if (hBrushButtonPressed) {
+		DeleteObject(hBrushButtonPressed);
+		hBrushButtonPressed = nullptr;
+	}
+	if (hBrushButtonSelected) {
+		DeleteObject(hBrushButtonSelected);
+		hBrushButtonSelected = nullptr;
+	}
+	if (hBrushButtonPrimary) {
+		DeleteObject(hBrushButtonPrimary);
+		hBrushButtonPrimary = nullptr;
+	}
+	if (hBrushButtonSuccess) {
+		DeleteObject(hBrushButtonSuccess);
+		hBrushButtonSuccess = nullptr;
+	}
+	if (hBrushButtonDanger) {
+		DeleteObject(hBrushButtonDanger);
+		hBrushButtonDanger = nullptr;
+	}
+	if (hBrushPrimaryHover) {
+		DeleteObject(hBrushPrimaryHover);
+		hBrushPrimaryHover = nullptr;
+	}
+	if (hBrushSuccessHover) {
+		DeleteObject(hBrushSuccessHover);
+		hBrushSuccessHover = nullptr;
+	}
+	if (hBrushDangerHover) {
+		DeleteObject(hBrushDangerHover);
+		hBrushDangerHover = nullptr;
+	}
+	if (hBrushButtonExpand) {
+		DeleteObject(hBrushButtonExpand);
+		hBrushButtonExpand = nullptr;
+	}
+	if (hBrushButtonExpandHover) {
+		DeleteObject(hBrushButtonExpandHover);
+		hBrushButtonExpandHover = nullptr;
+	}
 
-	// Cleanup ComboBox brushes
-	if (hBrushComboNormal) { DeleteObject(hBrushComboNormal); hBrushComboNormal = nullptr; }
-	if (hBrushComboHover) { DeleteObject(hBrushComboHover); hBrushComboHover = nullptr; }
-	if (hBrushComboFocus) { DeleteObject(hBrushComboFocus); hBrushComboFocus = nullptr; }
-	if (hBrushComboDropped) { DeleteObject(hBrushComboDropped); hBrushComboDropped = nullptr; }
 }

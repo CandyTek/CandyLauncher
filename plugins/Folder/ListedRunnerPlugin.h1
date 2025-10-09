@@ -8,7 +8,7 @@
 #include <memory>
 #include <functional>
 
-#include "DataKeeper.hpp"
+#include "GlobalState.hpp"
 #include "actions/ActionNormal.hpp"
 #include "TraverseOptions.h"
 #include "SimplePluginManager.hpp"
@@ -19,7 +19,7 @@
 #pragma comment(lib, "Uuid.lib")
 
 #include "ListedRunnerPlugin.h"
-#include "DataKeeper.hpp"
+#include "GlobalState.hpp"
 #include "TraverseFilesHelper.hpp"
 #include "MainTools.hpp"
 
@@ -43,7 +43,6 @@
 
 // 不能少
 #include <shellapi.h>
-#include <Everything.h>
 
 #ifndef ESI_ALLITEMS
 #define ESI_ALLITEMS 0x00000040

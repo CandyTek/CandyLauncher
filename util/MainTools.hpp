@@ -24,8 +24,8 @@
 #include <fcntl.h>
 
 #include "../common/Constants.hpp"
-#include "../common/DataKeeper.hpp"
-#include "../plugins/ActionBase.hpp"
+#include "../common/GlobalState.hpp"
+#include "../plugins/BaseAction.hpp"
 
 struct MonitorData {
 	HMONITOR hMonitor;
@@ -45,7 +45,7 @@ enum : UINT {
 };
 
 static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
-	std::vector<MonitorData> *monitors = reinterpret_cast<std::vector<MonitorData> *>(dwData);
+	std::vector<MonitorData>* monitors = reinterpret_cast<std::vector<MonitorData>*>(dwData);
 
 	MONITORINFOEX mi{};
 	mi.cbSize = sizeof(mi);
@@ -100,15 +100,15 @@ static void showMainWindowInCursorScreen(HWND hWnd) {
 
 	// 计算位置
 	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-														  window_position_offset_x);
+		window_position_offset_x);
 	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-														 window_position_offset_y);
+		window_position_offset_y);
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY) {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	} else {
 		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
 		lastWindowCenterX = centerX;
 		lastWindowCenterY = centerY;
 	}
@@ -128,10 +128,10 @@ static RECT getWindowRectMainWindowInCursorScreen() {
 
 	// 计算位置
 	const int centerX = static_cast<int>(mi.rcWork.left +
-										 (float) (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-										 window_position_offset_x);
+		(float)(mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
+		window_position_offset_x);
 	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-														 window_position_offset_y);
+		window_position_offset_y);
 	RECT result;
 	result.left = centerX;
 	result.top = centerY;
@@ -148,7 +148,7 @@ static void showMainWindowInIndexScreen(HWND hWnd, int index) {
 	MONITORINFOEX mi;
 	if (monitors.empty()) {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	}
 
 	if (monitors.size() > static_cast<size_t>(index)) {
@@ -158,15 +158,15 @@ static void showMainWindowInIndexScreen(HWND hWnd, int index) {
 	}
 	// 计算位置
 	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-														  window_position_offset_x);
+		window_position_offset_x);
 	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-														 window_position_offset_y);
+		window_position_offset_y);
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY) {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	} else {
 		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
 		lastWindowCenterX = centerX;
 		lastWindowCenterY = centerY;
 	}
@@ -194,10 +194,10 @@ static void showMainWindowInForegroundRect(HWND hWnd) {
 		const int centerY = static_cast<int>(y + (height - MAIN_WINDOW_HEIGHT) * window_position_offset_y);
 		if (centerX == lastWindowCenterX && centerY == lastWindowCenterY) {
 			SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-						 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+						SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 		} else {
 			SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-						 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+						SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
 			lastWindowCenterX = centerX;
 			lastWindowCenterY = centerY;
 		}
@@ -232,7 +232,7 @@ static void showMainWindowInForegroundAppScreen2(HWND hWnd) {
 	} data = {nullptr, 0, fgRect};
 
 	auto MonitorEnumProc = [](HMONITOR hMonitor, HDC, LPRECT, LPARAM lParam) -> BOOL {
-		MonitorData *pData = reinterpret_cast<MonitorData *>(lParam);
+		MonitorData* pData = reinterpret_cast<MonitorData*>(lParam);
 
 		MONITORINFO mi = {};
 		mi.cbSize = sizeof(mi);
@@ -270,16 +270,16 @@ static void showMainWindowInForegroundAppScreen2(HWND hWnd) {
 
 	// 计算位置
 	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-														  window_position_offset_x);
+		window_position_offset_x);
 	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-														 window_position_offset_y);
+		window_position_offset_y);
 
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY) {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	} else {
 		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
 		lastWindowCenterX = centerX;
 		lastWindowCenterY = centerY;
 	}
@@ -311,15 +311,15 @@ static void showMainWindowInForegroundAppScreen(HWND hWnd) {
 
 	// 计算位置
 	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
-														  window_position_offset_x);
+		window_position_offset_x);
 	const int centerY = static_cast<int>(mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - MAIN_WINDOW_HEIGHT) *
-														 window_position_offset_y);
+		window_position_offset_y);
 	if (centerX == lastWindowCenterX && centerY == lastWindowCenterY) {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	} else {
 		SetWindowPos(hWnd, HWND_TOPMOST, centerX, centerY, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER);
 		lastWindowCenterX = centerX;
 		lastWindowCenterY = centerY;
 	}
@@ -332,7 +332,7 @@ static void MyMoveWindow(HWND hWnd) {
 		showMainWindowInCursorScreen(hWnd);
 	} else if (pref_window_popup_position == "last_time_opened_pos") {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-					 SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	} else if (pref_window_popup_position == "currect_window_on_screen") {
 		showMainWindowInForegroundAppScreen(hWnd);
 	} else if (pref_window_popup_position == "within_focus_window") {
@@ -352,13 +352,13 @@ static void MyMoveWindow(HWND hWnd) {
 // 	return filteredActions[selected];
 // }
 
-static const std::shared_ptr<ActionBase> &GetListViewSelectedAction(
-		HWND hListView, std::vector<std::shared_ptr<ActionBase>> &filteredActions) {
+static const std::shared_ptr<BaseAction>& GetListViewSelectedAction(
+	HWND hListView, std::vector<std::shared_ptr<BaseAction>>& filteredActions) {
 	const int selected = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
 	if (selected == -1 || selected < 0 || static_cast<size_t>(selected) >= filteredActions.size()) {
 		// 这里你需要返回一个合法的引用，但当前没选中或者越界了
 		// 可以考虑返回一个静态的空指针，避免崩溃
-		static std::shared_ptr<ActionBase> emptyPtr = nullptr;
+		static std::shared_ptr<BaseAction> emptyPtr = nullptr;
 		return emptyPtr;
 	}
 	return filteredActions[selected];
@@ -371,28 +371,19 @@ static void ReleaseAltKey() {
 	keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
 }
 
-// static std::wstring MyToLower2(const std::wstring& input)
-// 	{
-// 		std::wstring output;
-// 		output.reserve(input.size());
-// 		for (const wchar_t ch : input)
-// 		{
-// 			output.push_back(towlower(ch));
-// 		}
-// 		return output;
-// 	}
-
-
-// };
 struct ComInitGuard {
-	ComInitGuard() { hr = CoInitialize(nullptr); }
+	ComInitGuard() {
+		hr = CoInitialize(nullptr);
+	}
 
-	~ComInitGuard() { if (SUCCEEDED(hr)) CoUninitialize(); }
+	~ComInitGuard() {
+		if (SUCCEEDED(hr)) CoUninitialize();
+	}
 
 	HRESULT hr;
 };
 
-static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const POINT &ptScreen) {
+static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const POINT& ptScreen) {
 	ComInitGuard guard;
 	if (FAILED(guard.hr)) return;
 
@@ -401,7 +392,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const 
 	guard.hr = SHParseDisplayName(filePath.c_str(), nullptr, &pidl, 0, &sfgao);
 	if (FAILED(guard.hr)) return;
 
-	IShellFolder *desktopFolder = nullptr;
+	IShellFolder* desktopFolder = nullptr;
 	guard.hr = SHGetDesktopFolder(&desktopFolder);
 	if (FAILED(guard.hr)) {
 		CoTaskMemFree(pidl);
@@ -417,13 +408,13 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const 
 
 	ILRemoveLastID(pidlParent);
 
-	IShellFolder *parentFolder = nullptr;
+	IShellFolder* parentFolder = nullptr;
 	guard.hr = SHBindToObject(
-			nullptr,
-			pidlParent,
-			nullptr,
-			IID_IShellFolder,
-			(void **) &parentFolder
+		nullptr,
+		pidlParent,
+		nullptr,
+		IID_IShellFolder,
+		(void**)&parentFolder
 	);
 	if (FAILED(guard.hr)) {
 		desktopFolder->Release();
@@ -434,15 +425,15 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const 
 
 	PCUITEMID_CHILD relpidl = ILFindLastID(pidl);
 
-	IContextMenu *contextMenu = nullptr;
-	guard.hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void **) &contextMenu);
+	IContextMenu* contextMenu = nullptr;
+	guard.hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void**)&contextMenu);
 	if (SUCCEEDED(guard.hr)) {
-		IContextMenu2 *contextMenu2 = nullptr;
+		IContextMenu2* contextMenu2 = nullptr;
 		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu2, (void **) &contextMenu2))) {
 			contextMenu2->Release(); // 这步是必要的
 		}
 
-		IContextMenu3 *contextMenu3 = nullptr;
+		IContextMenu3* contextMenu3 = nullptr;
 		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu3, (void **) &contextMenu3))) {
 			contextMenu3->Release(); // 这步是必要的
 		}
@@ -464,7 +455,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const 
 		contextMenu->QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, CMF_NORMAL);
 
 		int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
-								 ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
+								ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
 
 		if (cmd >= static_cast<int>(idCmdFirst) && cmd <= static_cast<int>(idCmdLast)) {
 			CMINVOKECOMMANDINFOEX cmi = {0};
@@ -475,7 +466,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const 
 			cmi.lpVerbW = MAKEINTRESOURCEW(cmd - idCmdFirst);
 
 			cmi.nShow = SW_SHOWNORMAL;
-			contextMenu->InvokeCommand((LPCMINVOKECOMMANDINFO) &cmi);
+			contextMenu->InvokeCommand((LPCMINVOKECOMMANDINFO)&cmi);
 		}
 
 		DestroyMenu(hMenu);
@@ -488,7 +479,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring &filePath, const 
 	CoTaskMemFree(pidlParent);
 }
 
-static void ShowShellContextMenu2(HWND hwnd, const std::wstring &filePath, const POINT &ptScreen) {
+static void ShowShellContextMenu2(HWND hwnd, const std::wstring& filePath, const POINT& ptScreen) {
 	ComInitGuard guard;
 	HRESULT hr = CoInitialize(nullptr);
 	if (FAILED(hr)) return;
@@ -498,7 +489,7 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring &filePath, const
 	hr = SHParseDisplayName(filePath.c_str(), nullptr, &pidl, 0, &sfgao);
 	if (FAILED(hr)) return;
 
-	IShellFolder *desktopFolder = nullptr;
+	IShellFolder* desktopFolder = nullptr;
 	hr = SHGetDesktopFolder(&desktopFolder);
 	if (FAILED(hr)) {
 		CoTaskMemFree(pidl);
@@ -514,13 +505,13 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring &filePath, const
 
 	ILRemoveLastID(pidlParent);
 
-	IShellFolder *parentFolder = nullptr;
+	IShellFolder* parentFolder = nullptr;
 	hr = SHBindToObject(
-			nullptr,
-			pidlParent,
-			nullptr,
-			IID_IShellFolder,
-			(void **) &parentFolder
+		nullptr,
+		pidlParent,
+		nullptr,
+		IID_IShellFolder,
+		(void**)&parentFolder
 	);
 	if (FAILED(hr)) {
 		desktopFolder->Release();
@@ -531,8 +522,8 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring &filePath, const
 
 	PCUITEMID_CHILD relpidl = ILFindLastID(pidl);
 
-	IContextMenu *contextMenu = nullptr;
-	hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void **) &contextMenu);
+	IContextMenu* contextMenu = nullptr;
+	hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void**)&contextMenu);
 	if (FAILED(hr)) {
 		parentFolder->Release();
 		desktopFolder->Release();
@@ -546,7 +537,7 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring &filePath, const
 		contextMenu->QueryContextMenu(hMenu, 0, 1, 0x7FFF, CMF_NORMAL);
 
 		int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
-								 ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
+								ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
 
 		if (cmd >= 1 && cmd <= 0x7FFF) {
 			CMINVOKECOMMANDINFOEX cmi = {0};
@@ -556,7 +547,7 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring &filePath, const
 			cmi.lpVerb = MAKEINTRESOURCEA(cmd - 1);
 			cmi.lpVerbW = MAKEINTRESOURCEW(cmd - 1);
 			cmi.nShow = SW_SHOWNORMAL;
-			contextMenu->InvokeCommand((LPCMINVOKECOMMANDINFO) &cmi);
+			contextMenu->InvokeCommand((LPCMINVOKECOMMANDINFO)&cmi);
 		}
 
 		DestroyMenu(hMenu);
@@ -578,7 +569,7 @@ static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth, HFONT hFon
 	RECT rc = {0, 0, maxWidth, 0};
 
 	// 2. 选择字体到 DC
-	HFONT hOldFont = (HFONT) SelectObject(hdc, hFontD);
+	HFONT hOldFont = (HFONT)SelectObject(hdc, hFontD);
 
 	// 3. 使用 DrawText 测量文本所需高度
 	DrawText(hdc, text.c_str(), -1, &rc, DT_CALCRECT | DT_WORDBREAK);
@@ -593,7 +584,7 @@ static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth, HFONT hFon
 }
 
 inline void SetControlFont(HWND hCtrl, HFONT hFont) {
-	SendMessageW(hCtrl, WM_SETFONT, (WPARAM) hFont, TRUE);
+	SendMessageW(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
 }
 
 static int GetWindowVScrollBarThumbWidth(HWND hwnd, bool bAutoShow) {
@@ -601,11 +592,9 @@ static int GetWindowVScrollBarThumbWidth(HWND hwnd, bool bAutoShow) {
 	sb.cbSize = sizeof(SCROLLBARINFO);
 	GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sb);
 
-	if (!bAutoShow)
-		return sb.dxyLineButton;
+	if (!bAutoShow) return sb.dxyLineButton;
 
-	if (sb.dxyLineButton)
-		return sb.dxyLineButton;
+	if (sb.dxyLineButton) return sb.dxyLineButton;
 
 	::ShowScrollBar(hwnd, SB_VERT, TRUE);
 	sb.cbSize = sizeof(SCROLLBARINFO);
@@ -619,21 +608,21 @@ inline bool IsPointOnAnyMonitor(int lastWindowPositionX, int lastWindowPositionY
 	return MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != nullptr;
 }
 
-inline bool IsRectOnAnyMonitor(const RECT &rc) {
+inline bool IsRectOnAnyMonitor(const RECT& rc) {
 	return MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) != nullptr;
 }
 
-static bool IsShortcutInvalid(const std::wstring &shortcutPath) {
+static bool IsShortcutInvalid(const std::wstring& shortcutPath) {
 	ComInitGuard guard;
 	if (FAILED(guard.hr)) return true;
 
-	IShellLink *pShellLink = nullptr;
+	IShellLink* pShellLink = nullptr;
 	HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
-								  (void **) &pShellLink);
+								(void**)&pShellLink);
 	if (FAILED(hr)) return true;
 
-	IPersistFile *pPersistFile = nullptr;
-	hr = pShellLink->QueryInterface(IID_IPersistFile, (void **) &pPersistFile);
+	IPersistFile* pPersistFile = nullptr;
+	hr = pShellLink->QueryInterface(IID_IPersistFile, (void**)&pPersistFile);
 	if (FAILED(hr)) {
 		pShellLink->Release();
 		return true;
@@ -659,71 +648,31 @@ static bool IsShortcutInvalid(const std::wstring &shortcutPath) {
 	return (attributes == INVALID_FILE_ATTRIBUTES);
 }
 
-// 从 shell32.dll 加载指定索引的图标（16x16）
-static HICON LoadShellIcon(int index, int cx = 16, int cy = 16) {
-	HMODULE hMod = GetModuleHandleW(L"shell32.dll");
-	return (HICON) LoadImageW(hMod, MAKEINTRESOURCEW(index), IMAGE_ICON, cx, cy, LR_SHARED);
-}
-
-// ---- 工具：将 HICON 转换为 32bpp DIB 的 HBITMAP（保留透明度）----
-static HBITMAP IconToBitmap(HICON hIcon, int cx, int cy) {
-	BITMAPINFO bi{};
-	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-	bi.bmiHeader.biWidth = cx;
-	bi.bmiHeader.biHeight = -cy;            // 负数 => top-down DIB，绘制更直接
-	bi.bmiHeader.biPlanes = 1;
-	bi.bmiHeader.biBitCount = 32;
-	bi.bmiHeader.biCompression = BI_RGB;
-
-	void *pBits = nullptr;
-	HDC hdc = GetDC(nullptr);
-	HBITMAP hBmp = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &pBits, nullptr, 0);
-	HDC hMem = CreateCompatibleDC(hdc);
-	HGDIOBJ hOld = SelectObject(hMem, hBmp);
-
-	// 清空为全透明
-	if (pBits) std::memset(pBits, 0, cx * cy * 4);
-
-	DrawIconEx(hMem, 0, 0, hIcon, cx, cy, 0, nullptr, DI_NORMAL);
-
-	SelectObject(hMem, hOld);
-	DeleteDC(hMem);
-	ReleaseDC(nullptr, hdc);
-	return hBmp;
-}
-
-static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd) {
+static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 	TraverseOptions traverseOptions;
 	if (!cmd.is_object()) {
 		std::wcerr << L"配置项不是一个对象，返回。" << std::endl;
 		return traverseOptions;
 	}
 
-	if (cmd.contains("folder") && cmd["folder"].is_string())
-	{
-		std::wstring folderPath = Utf8ToWString(cmd["folder"].get<std::string>());
-		folderPath = ExpandEnvironmentVariables(folderPath, EXE_FOLDER_PATH);
-		traverseOptions.folder = folderPath;
+	if (cmd.contains("folder") && cmd["folder"].is_string()) {
+		traverseOptions.folder = Utf8ToWString(cmd["folder"].get<std::string>());
 	}
-	if (cmd.contains("command") && cmd["command"].is_string())
-	{
+	if (cmd.contains("command") && cmd["command"].is_string()) {
 		traverseOptions.command = Utf8ToWString(cmd["command"].get<std::string>());
 	}
-	if (cmd.contains("type") && cmd["type"].is_string())
-	{
+	if (cmd.contains("type") && cmd["type"].is_string()) {
 		traverseOptions.type = Utf8ToWString(cmd["type"].get<std::string>());
 	}
-	if (cmd.contains("is_contain_subfolder") && cmd["is_contain_subfolder"].is_boolean())
-	{
+	if (cmd.contains("is_contain_subfolder") && cmd["is_contain_subfolder"].is_boolean()) {
 		traverseOptions.recursive = cmd["is_contain_subfolder"].get<bool>();
-	}else{
+	} else {
 		traverseOptions.recursive = true;
 	}
-	
-	
+
 
 	if (cmd.contains("exts") && cmd["exts"].is_array()) {
-		for (const auto &name: cmd["exts"]) {
+		for (const auto& name : cmd["exts"]) {
 			if (name.is_string()) {
 				std::string ext = MyTrim(name.get<std::string>());
 				if (!ext.empty() && ext[0] != '.') {
@@ -732,12 +681,12 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd) {
 				traverseOptions.extensions.push_back(Utf8ToWString(ext));
 			}
 		}
-	}else{
+	} else {
 		traverseOptions.extensions = {L".exe", L".lnk"};
 	}
-	
+
 	if (cmd.contains("excludes") && cmd["excludes"].is_array()) {
-		for (const auto &name: cmd["excludes"]) {
+		for (const auto& name : cmd["excludes"]) {
 			if (name.is_string()) {
 				traverseOptions.excludeNames.push_back(Utf8ToWString(name.get<std::string>()));
 			}
@@ -745,7 +694,7 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd) {
 	}
 
 	if (cmd.contains("exclude_words") && cmd["exclude_words"].is_array()) {
-		for (const auto &word: cmd["exclude_words"]) {
+		for (const auto& word : cmd["exclude_words"]) {
 			if (word.is_string()) {
 				traverseOptions.excludeWords.push_back(Utf8ToWString(MyToLower(word.get<std::string>())));
 			}
@@ -754,8 +703,8 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd) {
 
 	if (cmd.contains("rename_sources") && cmd["rename_sources"].is_array() &&
 		cmd.contains("rename_targets") && cmd["rename_targets"].is_array()) {
-		const auto &sources = cmd["rename_sources"];
-		const auto &targets = cmd["rename_targets"];
+		const auto& sources = cmd["rename_sources"];
+		const auto& targets = cmd["rename_targets"];
 		size_t count = (((sources.size()) < (targets.size())) ? (sources.size()) : (targets.size()));
 
 		for (size_t i = 0; i < count; ++i) {
@@ -772,21 +721,21 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<> &cmd) {
 }
 
 // 需匹配大小写
-static auto shouldExclude = [](const TraverseOptions& options, const std::wstring &name) -> bool {
+static auto shouldExclude = [](const TraverseOptions& options, const std::wstring& name) -> bool {
 	if (std::find(options.excludeNames.begin(),
-				  options.excludeNames.end(),
-				  name) != options.excludeNames.end()) {
+				options.excludeNames.end(),
+				name) != options.excludeNames.end()) {
 		return true;
 	}
 	std::wstring nameLower = name;
 	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
-	for (const auto &word: options.excludeWords) {
+	for (const auto& word : options.excludeWords) {
 		if (nameLower.find(word) != std::wstring::npos) return true;
 	}
 	return false;
 };
 
-inline bool OpenConsoleHere(const std::wstring &targetPath) {
+inline bool OpenConsoleHere(const std::wstring& targetPath) {
 	// 如果是文件，切到其目录；如果是目录，就用目录本身
 	wchar_t dir[MAX_PATH];
 	wcsncpy_s(dir, targetPath.c_str(), _TRUNCATE);
@@ -806,7 +755,7 @@ inline bool OpenConsoleHere(const std::wstring &targetPath) {
 }
 
 // 从类似 "Ctrl+Alt+A(3)(65)" 字符串中提取并注册全局热键
-static bool RegisterHotkeyFromString(HWND hWnd, const std::string &hotkeyStr, int hotkeyId) {
+static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId) {
 	UINT modifiers = 0;
 	UINT vk = 0;
 
@@ -821,8 +770,7 @@ static bool RegisterHotkeyFromString(HWND hWnd, const std::string &hotkeyStr, in
 	std::string vkStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
 	try {
 		vk = std::stoi(vkStr);
-	}
-	catch (...) {
+	} catch (...) {
 		return false;
 	}
 
@@ -836,8 +784,7 @@ static bool RegisterHotkeyFromString(HWND hWnd, const std::string &hotkeyStr, in
 	std::string modStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
 	try {
 		modifiers = std::stoi(modStr);
-	}
-	catch (...) {
+	} catch (...) {
 		return false;
 	}
 
@@ -849,7 +796,7 @@ static bool RegisterHotkeyFromString(HWND hWnd, const std::string &hotkeyStr, in
 }
 
 // 简单按可执行文件路径杀进程（需要管理员权限时自行提权）：
-inline int KillProcessByImagePath(const std::wstring &imagePath) {
+inline int KillProcessByImagePath(const std::wstring& imagePath) {
 	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	if (snap == INVALID_HANDLE_VALUE) return 0;
 
@@ -874,10 +821,10 @@ inline int KillProcessByImagePath(const std::wstring &imagePath) {
 	return killed;
 }
 
-inline std::vector<std::wstring> GetWStringArray(const nlohmann::json &j, const std::string &key) {
+inline std::vector<std::wstring> GetWStringArray(const nlohmann::json& j, const std::string& key) {
 	std::vector<std::wstring> result;
 	if (j.contains(key) && j[key].is_array()) {
-		for (const auto &s: j[key]) {
+		for (const auto& s : j[key]) {
 			result.push_back(utf8_to_wide(s.get<std::string>()));
 		}
 	}
@@ -889,100 +836,7 @@ inline void ShowMainWindowSimple() {
 	SetFocus(g_editHwnd);
 	MyMoveWindow(g_mainHwnd);
 	SetForegroundWindow(g_mainHwnd);
-	if (g_hklIme != nullptr)
-		PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM) g_hklIme);
-}
-
-
-// Helper: 获取 PNG 编码器 CLSID
-static int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
-{
-	UINT num = 0, size = 0;
-	Gdiplus::GetImageEncodersSize(&num, &size);
-	if (size == 0) return -1;
-
-	Gdiplus::ImageCodecInfo* pImageCodecInfo = static_cast<Gdiplus::ImageCodecInfo*>(malloc(size));
-	if (!pImageCodecInfo) return -1;
-
-	Gdiplus::GetImageEncoders(num, size, pImageCodecInfo);
-
-	for (UINT i = 0; i < num; ++i)
-	{
-		if (wcscmp(pImageCodecInfo[i].MimeType, format) == 0)
-		{
-			*pClsid = pImageCodecInfo[i].Clsid;
-			free(pImageCodecInfo);
-			return i;
-		}
-	}
-
-	free(pImageCodecInfo);
-	return -1;
-}
-
-static std::vector<BYTE> HBitmapToByteArray(HBITMAP hBitmap)
-{
-	std::vector<BYTE> buffer;
-	if (!hBitmap) return buffer;
-
-	Gdiplus::Bitmap bmp(hBitmap, nullptr);
-	CLSID pngClsid;
-	GetEncoderClsid(L"image/png", &pngClsid);
-
-	IStream* pStream = nullptr;
-	CreateStreamOnHGlobal(nullptr, TRUE, &pStream);
-
-	bmp.Save(pStream, &pngClsid, nullptr);
-
-	STATSTG stat;
-	pStream->Stat(&stat, STATFLAG_NONAME);
-	const ULONG size = static_cast<ULONG>(stat.cbSize.QuadPart);
-
-	buffer.resize(size);
-	const LARGE_INTEGER liZero = {};
-	pStream->Seek(liZero, STREAM_SEEK_SET, nullptr);
-	ULONG read = 0;
-	pStream->Read(buffer.data(), size, &read);
-	pStream->Release();
-
-	return buffer;
-}
-
-
-// 没有用到这个图标查询方法
-static HICON GetFileIcon(const std::wstring& filePath, const bool largeIcon)
-{
-	SHFILEINFOW sfi = {0};
-	UINT flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
-	flags |= largeIcon ? SHGFI_LARGEICON : SHGFI_SMALLICON;
-
-	SHGetFileInfoW(filePath.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi), flags);
-	return sfi.hIcon;
-}
-
-static HBITMAP IconToBitmap(HICON hIcon)
-{
-	if (!hIcon) return nullptr;
-
-	ICONINFO iconInfo;
-	GetIconInfo(hIcon, &iconInfo);
-
-	return iconInfo.hbmColor;
-}
-
-static HBITMAP GetIconFromPath(const std::wstring& path)
-{
-	std::wstring actualPath = path;
-
-	if (MyEndsWith(path, L".lnk"))
-	{
-		actualPath = GetShortcutTarget(path);
-	}
-
-	HICON hIcon = GetFileIcon(actualPath, true);
-	HBITMAP hBitmap = IconToBitmap(hIcon);
-	DestroyIcon(hIcon);
-	return hBitmap;
+	if (g_hklIme != nullptr) PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM)g_hklIme);
 }
 
 /**
@@ -990,7 +844,7 @@ static HBITMAP GetIconFromPath(const std::wstring& path)
  */
 inline void AttachConsoleForDebug2() {
 	AllocConsole();
-	FILE *fp;
+	FILE* fp;
 	freopen_s(&fp, "CONOUT$", "w", stdout);
 	freopen_s(&fp, "CONOUT$", "w", stderr);
 	std::wcout << "Console attached!" << std::endl;
@@ -1004,20 +858,18 @@ inline void AttachConsoleForDebug() {
 	SetConsoleOutputCP(CP_UTF8);
 	SetConsoleCP(CP_UTF8);
 
-	FILE *fp;
+	FILE* fp;
 	freopen_s(&fp, "CONOUT$", "w", stdout);
 	freopen_s(&fp, "CONOUT$", "w", stderr);
 	freopen_s(&fp, "CONIN$", "r", stdin);
 
 	// 让 C++ 的宽字符流输出 UTF-8y以hb//，// 会崩溃_setmode(_fileno(stdout), _O_U8TEXT);
 	// _setmode(_fileno(stderr), _O_U8TEX////);
-	_setmode(_fileno(stdin),  _O_U8TEXT);
+	_setmode(_fileno(stdin), _O_U8TEXT);
 
 	std::wcout << L"控制台已附加 (UTF-8 模式) 🎉" << std::endl;
 	std::wcout << L"测试中文输出：你好，世界！" << std::endl;
 }
-
-
 
 // 读取窗口位置
 static RECT LoadWindowRectFromRegistry() {
@@ -1025,7 +877,7 @@ static RECT LoadWindowRectFromRegistry() {
 	HKEY hKey;
 	if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
 		DWORD size = sizeof(rect);
-		RegQueryValueExW(hKey, L"WindowRect", nullptr, nullptr, (LPBYTE) &rect, &size);
+		RegQueryValueExW(hKey, L"WindowRect", nullptr, nullptr, (LPBYTE)&rect, &size);
 		RegCloseKey(hKey);
 	}
 	return rect;
@@ -1038,9 +890,9 @@ static void SaveWindowRectToRegistry(HWND hWnd) {
 		HKEY hKey;
 		if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\CandyTek\\CandyLauncher", 0, nullptr, 0, KEY_WRITE, nullptr,
 							&hKey, nullptr) == ERROR_SUCCESS) {
-			RegSetValueExW(hKey, L"WindowRect", 0, REG_BINARY, (const BYTE *) &rect, sizeof(rect));
+			RegSetValueExW(hKey, L"WindowRect", 0, REG_BINARY, (const BYTE*)&rect, sizeof(rect));
 			RegCloseKey(hKey);
-							}
+		}
 	}
 }
 
@@ -1057,21 +909,20 @@ static bool IsRunAsAdmin() {
 	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
 
 	if (AllocateAndInitializeSid(&NtAuthority, 2,
-								 SECURITY_BUILTIN_DOMAIN_RID,
-								 DOMAIN_ALIAS_RID_ADMINS,
-								 0, 0, 0, 0, 0, 0,
-								 &adminGroup)) {
+								SECURITY_BUILTIN_DOMAIN_RID,
+								DOMAIN_ALIAS_RID_ADMINS,
+								0, 0, 0, 0, 0, 0,
+								&adminGroup)) {
 		CheckTokenMembership(NULL, adminGroup, &isAdmin);
 		FreeSid(adminGroup);
-								 }
+	}
 
 	return isAdmin == TRUE;
 }
 
 static bool RelaunchAsAdmin() {
 	WCHAR szPath[MAX_PATH];
-	if (!GetModuleFileNameW(NULL, szPath, MAX_PATH))
-		return false;
+	if (!GetModuleFileNameW(NULL, szPath, MAX_PATH)) return false;
 
 	SHELLEXECUTEINFOW sei = {sizeof(sei)};
 	sei.lpVerb = L"runas"; // 关键点：请求以管理员身份运行
@@ -1082,9 +933,9 @@ static bool RelaunchAsAdmin() {
 	if (!ShellExecuteExW(&sei)) {
 		DWORD dwErr = GetLastError();
 		if (dwErr == ERROR_CANCELLED) {
-			MessageBoxW(NULL, L"用户取消了权限提升。", L"提示", MB_ICONINFORMATION);
+			MessageBoxW(NULL, L"用户取消了权限提升。", L"提示", MB_ICONINFORMATION | MB_TOPMOST);
 		} else {
-			MessageBoxW(NULL, L"无法以管理员身份重新启动程序。", L"错误", MB_ICONERROR);
+			MessageBoxW(NULL, L"无法以管理员身份重新启动程序。", L"错误", MB_ICONERROR | MB_TOPMOST);
 		}
 		return false;
 	}

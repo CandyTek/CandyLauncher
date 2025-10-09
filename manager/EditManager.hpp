@@ -6,7 +6,7 @@
 #include <shlwapi.h>
 
 #include "../common/Constants.hpp"
-#include "EditCustomPaint.hpp"
+#include "EditControlPainter.hpp"
 #include <gdiplus.h>
 
 #pragma comment(lib, "comctl32.lib")
@@ -26,11 +26,15 @@ public:
 	}
 
 	static void EnableSmartEdit(HWND hEdit) {
-		SHAutoComplete(hEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+		HRESULT hr = SHAutoComplete(hEdit, SHACF_AUTOAPPEND_FORCE_OFF | SHACF_AUTOSUGGEST_FORCE_OFF);
+		if (FAILED(hr)) {
+			wchar_t buf[128];
+			swprintf_s(buf, L"SHAutoComplete failed: 0x%08X", hr);
+			Loge(L"EnableSmartEdit", buf);
+		}
 	}
 
 private:
-
 	// static Gdiplus::Image* g_backgroundImage = nullptr;
 
 	static void doNumberAction(UINT vk) {
@@ -46,39 +50,53 @@ private:
 
 		if (relativeIndex < perPage &&
 			realIndex < static_cast<int>(filteredActions.size())) {
-			const std::shared_ptr<ActionBase> action =
-					filteredActions[realIndex];
+			const std::shared_ptr<BaseAction> action =
+				filteredActions[realIndex];
 			if (action) {
-				if (pref_close_after_open_item)
-					HideWindow();
+				if (pref_close_after_open_item) HideWindow();
 				// action->Invoke();
 			}
 		}
-
 	}
 
 
 	// 子类过程函数
 	static LRESULT CALLBACK EditProc(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam,
-									 [[maybe_unused]] UINT_PTR uIdSubclass, const DWORD_PTR dwRefData) {
+									[[maybe_unused]] UINT_PTR uIdSubclass, const DWORD_PTR dwRefData) {
 		switch (msg) {
-			case WM_NCPAINT: {
+		case WM_CREATE:
+			{
+				g_caretInterval = ::GetCaretBlinkTime();
+				if (g_caretInterval == 0 || g_caretInterval == INFINITE) g_caretInterval = 530; // 兜底
+				::SetTimer(hwnd, g_caretTimerId, g_caretInterval, nullptr);
+				g_caretOn = true;
+				break;
+			}
+		case WM_COMMAND:
+			{
+				break;
+			}
+		case WM_NCPAINT:
+			{
 				return 0;
 			}
-			case WM_PAINT: {
+		case WM_PAINT:
+			{
 				PAINTSTRUCT ps;
 				HDC hdc = BeginPaint(hwnd, &ps);
 				PaintEdit(hwnd, hdc);
 				EndPaint(hwnd, &ps);
+				HideCaret(hwnd);
 				return 0; // 拦截默认绘制
 			}
 
-			case WM_PRINTCLIENT:
-				// 父窗口要求直接在提供的 HDC 上画（比如组合绘制/双缓冲）
-				PaintEdit(hwnd, (HDC) wParam);
-				return 0;
+		case WM_PRINTCLIENT:
+			// 父窗口要求直接在提供的 HDC 上画（比如组合绘制/双缓冲）
+			PaintEdit(hwnd, (HDC)wParam);
+			return 0;
 
-			case WM_KEYDOWN: {
+		case WM_KEYDOWN:
+			{
 				// 1. 获取当前按下的虚拟键码
 				UINT vk = static_cast<UINT>(wParam);
 				// 2. 获取当前的修饰符状态
@@ -91,32 +109,34 @@ private:
 				// 未组合修饰键
 				if (currentModifiers == 0)
 					switch (vk) {
-						case VK_RETURN:
-							SendMessage(GetParent(hwnd), WM_EDIT_CONTROL_HOTKEY, HOTKEY_ID_RUN_ITEM,
-										reinterpret_cast<LPARAM>(hwnd));
-							return 0;
-						case VK_ESCAPE: {
+					case VK_RETURN:
+						SendMessage(GetParent(hwnd), WM_EDIT_CONTROL_HOTKEY, HOTKEY_ID_RUN_ITEM,
+									reinterpret_cast<LPARAM>(hwnd));
+						return 0;
+					case VK_ESCAPE:
+						{
 							std::string mode = g_settings_map["pref_esc_key_feature"].stringValue;
 							if (mode == "close") {
 								HideWindow();
 							} else if (mode == "clear") {
 								SetWindowText(hwnd, L"");
-								SendMessage(hwnd, EM_SETSEL, 0, -1);             // 选中全部文本
-								SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM) L""); // 替换为空
+								SendMessage(hwnd, EM_SETSEL, 0, -1); // 选中全部文本
+								SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM)L""); // 替换为空
 							} else if (mode == "clear_and_close") {
 								int length = GetWindowTextLength(hwnd);
 								if (length > 0) {
 									SetWindowText(hwnd, L"");
-									SendMessage(hwnd, EM_SETSEL, 0, -1);             // 选中全部文本
-									SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM) L""); // 替换为空
+									SendMessage(hwnd, EM_SETSEL, 0, -1); // 选中全部文本
+									SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM)L""); // 替换为空
 								} else {
-									HideWindow();  // 否则关闭
+									HideWindow(); // 否则关闭
 								}
 							}
 						}
-							return 0;
-						case VK_UP:
-						case VK_DOWN: {
+						return 0;
+					case VK_UP:
+					case VK_DOWN:
+						{
 							// 上下键导航 ListView（循环）
 							const int count = ListView_GetItemCount(g_listViewHwnd);
 							if (count == 0) return 0;
@@ -138,13 +158,20 @@ private:
 							ListView_SetItemState(g_listViewHwnd, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
 							// 设置新选择
 							ListView_SetItemState(g_listViewHwnd, selected, LVIS_SELECTED | LVIS_FOCUSED,
-												  LVIS_SELECTED | LVIS_FOCUSED);
+												LVIS_SELECTED | LVIS_FOCUSED);
 							ListView_EnsureVisible(g_listViewHwnd, selected, FALSE);
 
 							return 0;
 						}
-						default:
-							break;
+					case VK_PRIOR:
+					case VK_NEXT:
+						{
+							// 转发翻页键给listview
+							SendMessage(g_listViewHwnd, msg, wParam, lParam);
+							return 0;
+						}
+
+					default: break;
 					}
 
 				// 生成一个定义的快捷键值
@@ -171,10 +198,20 @@ private:
 						}
 					}
 				}
+				if (!filteredActions.empty()) {
+					int pluginResult = g_pluginManager->DispatchSendHotKey(filteredActions[0], vk, currentModifiers, wParam);
+					if (pluginResult == 0) {
+						break;
+					} else {
+						return pluginResult;
+					}
+				}
 			}
-				break;
-			case WM_SYSCHAR:
-			case WM_SYSKEYDOWN: {
+			g_caretOn = true;
+			break;
+		case WM_SYSCHAR:
+		case WM_SYSKEYDOWN:
+			{
 				// alt 的快捷键监听只能在这里
 				UINT vk = static_cast<UINT>(wParam);
 				// 2. 获取当前的修饰符状态
@@ -189,28 +226,53 @@ private:
 						doNumberAction(vk);
 					}
 				}
+				if (!filteredActions.empty()) {
+					return g_pluginManager->DispatchSendHotKey(filteredActions[0], vk, currentModifiers, wParam);
+				}
+				g_caretOn = true;
 				return 0; // 屏蔽 ALT 键的干扰和 beep
 			}
-			case WM_SYSKEYUP: {
-
+		case WM_SYSKEYUP:
+			{
 				return 0; // 屏蔽 ALT 键的干扰和 beep
 			}
-
-			case WM_SETFOCUS:
-			case WM_KILLFOCUS: {
+		case WM_TIMER:
+			{
+				if (wParam == g_caretTimerId) {
+					g_caretOn = !g_caretOn;
+					::InvalidateRect(hwnd, nullptr, FALSE);
+					return 0;
+				}
+				break;
+			}
+		case WM_SETFOCUS:
+			{
+				// 获得焦点时确保定时器存在并打开
+				if (g_caretInterval == 0 || g_caretInterval == INFINITE) g_caretInterval = ::GetCaretBlinkTime();
+				::SetTimer(hwnd, g_caretTimerId, g_caretInterval, nullptr);
+				g_caretOn = true;
+				::InvalidateRect(hwnd, nullptr, FALSE);
+				break;
+			}
+		case WM_KILLFOCUS:
+			{
+				// 失焦时不再显示 caret
+				::KillTimer(hwnd, g_caretTimerId);
+				g_caretOn = false;
 				// 焦点变化时重绘，以更新hint文本显示
 				InvalidateRect(hwnd, nullptr, FALSE);
 				break;
 			}
-			case WM_NOTIFY_HEDIT_REFRESH_SKIN:
-				return 1;
-			case WM_ERASEBKGND:
-				return 1; // 阻止默认背景擦除
-			case WM_NCDESTROY:
-				RemoveWindowSubclass(hwnd, EditProc, uIdSubclass);
+		case WM_NOTIFY_HEDIT_REFRESH_SKIN: return 1;
+		case WM_ERASEBKGND: return 1; // 阻止默认背景擦除
+		case WM_NCDESTROY: RemoveWindowSubclass(hwnd, EditProc, uIdSubclass);
+			break;
+		case WM_DESTROY:
+			{
+				::KillTimer(hwnd, g_caretTimerId);
 				break;
-			default:
-				break;
+			}
+		default: break;
 		}
 		// ctrl+o 会发出beep声，解决不了，很多原生程序的编辑框也会这样子
 		return DefSubclassProc(hwnd, msg, wParam, lParam);

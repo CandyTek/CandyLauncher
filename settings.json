@@ -390,66 +390,10 @@
 			"defValue": 0
 		},
 		{
-			"key": "pref_indexed_apps_show_sendto_shortcut",
-			"title": "在右键 \"发送到\" 菜单中显示 \"CandyLauncher 索引文件夹\"",
-			"type": "bool",
-			"subPage": "index",
-			"defValue": true
-		},
-		{
 			"key": "pref_use_everything_sdk_index",
-			"title": "使用第三方 Everything 来建立索引",
+			"title": "使用第三方 Everything 来查找文件",
 			"type": "bool",
-			"subPage": "index",
-			"defValue": true
-		},
-		{
-			"key": "pref_indexed_uwp_apps_enable",
-			"title": "索引UWP应用",
-			"type": "bool",
-			"subPage": "index",
-			"defValue": true
-		},
-		{
-			"key": "pref_indexed_regedit_apps",
-			"title": "索引注册表中注册的应用",
-			"type": "bool",
-			"subPage": "index",
-			"defValue": false
-		},
-		{
-			"key": "pref_indexed_envpath_apps",
-			"title": "索引 %PATH% 中的可执行文件",
-			"type": "bool",
-			"subPage": "index",
-			"defValue": false
-		},
-		{
-			"key": "pref_btn_indexed_manager",
-			"title": "索引查看器",
-			"type": "button",
-			"subPage": "index",
-			"defValue": ""
-		},
-		{
-			"key": "pref_indexed_myapp_base_launch",
-			"title": "索引 CandyLauncher 基础导航",
-			"type": "bool",
-			"subPage": "index",
-			"defValue": true
-		},
-		{
-			"key": "pref_indexed_myapp_extra_launch",
-			"title": "索引 CandyLauncher 扩展导航",
-			"type": "bool",
-			"subPage": "index",
-			"defValue": false
-		},
-		{
-			"key": "pref_indexed_running_app",
-			"title": "索引系统正在运行的程序",
-			"type": "bool",
-			"subPage": "index",
+			"subPage": "feature",
 			"defValue": true
 		},
 		{

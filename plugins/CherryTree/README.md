@@ -1,0 +1,53 @@
+﻿cherrytree 数据库ctb的表结构：
+
+```
+bookmark
+	node_id
+	sequence
+children
+	node_id
+	father_id
+	sequence
+	master_id
+codebox
+	node_id
+	offset
+	justification
+	txt
+	syntax
+	width
+	height
+	is_width_pix
+	do_highl_bra
+	do_show_linenum
+grid
+	node_id
+	offset
+	justification
+	txt
+	col_min
+	col_max
+image
+	node_id
+	offset
+	justification
+	anchor
+	png
+	filename
+	link
+	time
+node
+	node_id
+	name
+	txt
+	syntax
+	tags
+	is_ro
+	is_richtxt
+	has_codebox
+	has_table
+	has_image
+	level
+	ts_creation
+	ts_lastsave
+```

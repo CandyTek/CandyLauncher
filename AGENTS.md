@@ -23,11 +23,11 @@ cmd.exe /c run_debug_test.cmd
 CandyLauncher is a lightweight Windows application launcher written in C++17 with the following core architecture:
 
 ### Core Components
-- **WindowsProject1.cpp**: Main entry point and main seach list window management
+- **CandyLauncher.cpp**: Main entry point and main seach list window management
 - **ListedRunnerPlugin**: Core plugin system for managing searchable items
 - **ListViewManager**: Handles the main list display and selection
 - **TrayMenuManager**: System tray functionality
-- **DataKeeper**: Data persistence and configuration management and global variables
+- **GlobalState**: Data persistence and configuration management and global variables
 
 ### List Indexer
 The application centered around `ListedRunnerPlugin` which:

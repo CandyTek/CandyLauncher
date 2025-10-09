@@ -1,5 +1,7 @@
 ﻿#pragma once
+
 #include <Shobjidl.h>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 
@@ -71,24 +73,24 @@ constexpr const char* SETTINGS_PREF_TYPE_STRING = "string";
 //constexpr int settings_pref_type_ = 2;
 
 constexpr const wchar_t* DEFAULT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
-constexpr const wchar_t* NIGHT_SKIN_PATH =  LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_night.json)";
+constexpr const wchar_t* NIGHT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_night.json)";
 
 const std::unordered_set<std::wstring> systemProcesses = {
-		L"explorer.exe",
-		L"svchost.exe",
-		L"wininit.exe",
-		L"csrss.exe",
-		L"winlogon.exe",
-		L"lsass.exe",
-		L"services.exe",
-		L"smss.exe",
-		L"sihost.exe",
-		L"wmiapsrv.exe",
-		L"dwm.exe",
-		L"dllhost.exe",
-		L"runtimebroker.exe",
-		L"applicationframehost.exe",
-		L"system", // SYSTEM 内核进程
+	L"explorer.exe",
+	L"svchost.exe",
+	L"wininit.exe",
+	L"csrss.exe",
+	L"winlogon.exe",
+	L"lsass.exe",
+	L"services.exe",
+	L"smss.exe",
+	L"sihost.exe",
+	L"wmiapsrv.exe",
+	L"dwm.exe",
+	L"dllhost.exe",
+	L"runtimebroker.exe",
+	L"applicationframehost.exe",
+	L"system", // SYSTEM 内核进程
 };
 
 inline std::string GetAppResourceText(int idr) {

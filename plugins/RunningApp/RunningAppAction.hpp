@@ -3,10 +3,16 @@
 #include <ShlObj.h>
 
 #include "util/BaseTools.hpp"
+#include "PluginData.hpp"
 
-class RunningAppAction final : public ActionBase
+
+class RunningAppAction final : public BaseAction
 {
 public:
+	RunningAppAction() {
+		pluginId = m_pluginId;
+	}
+
 	// 图标，只要是文件就可以
 	std::wstring iconFilePath;
 	std::wstring title;
@@ -14,17 +20,17 @@ public:
 	std::wstring runningAppHwnd;
 	int iconFilePathIndex = -1;
 
-	std::wstring getTitle() override
+	std::wstring& getTitle() override
 	{
 		return title;
 	}
 
-	std::wstring getSubTitle() override
+	std::wstring& getSubTitle() override
 	{
 		return subTitle;
 	}
 
-	std::wstring getIconFilePath() override
+	std::wstring& getIconFilePath() override
 	{
 		return iconFilePath;
 	}

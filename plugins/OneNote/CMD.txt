@@ -1,0 +1,137 @@
+﻿
+
+
+I:\AndroidSdk\platform-tools>reg query "HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\LocalServer32"
+
+HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+I:\AndroidSdk\platform-tools>reg query HKEY_CLASSES_ROOT\OneNote.Application\CLSID
+
+HKEY_CLASSES_ROOT\OneNote.Application\CLSID
+    (默认)    REG_SZ    {DC67E480-C3CB-49F8-8232-60B0C2056C8E}
+
+
+I:\AndroidSdk\platform-tools>reg query HKEY_CLASSES_ROOT\OneNote.Application.15\CLSID
+
+HKEY_CLASSES_ROOT\OneNote.Application.15\CLSID
+    (默认)    REG_SZ    {DC67E480-C3CB-49F8-8232-60B0C2056C8E}
+
+I:\AndroidSdk\platform-tools>reg query "HKEY_CLASSES_ROOT\TypeLib" /s /f "OneNote"
+
+HKEY_CLASSES_ROOT\TypeLib\{0EA692EE-BB50-4E3C-AEF0-356D91732725}\1.0
+    PrimaryInteropAssemblyName    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\TypeLib\{0EA692EE-BB50-4E3C-AEF0-356D91732725}\1.1
+    (默认)    REG_SZ    Microsoft OneNote 15.0 Type Library
+
+HKEY_CLASSES_ROOT\TypeLib\{0EA692EE-BB50-4E3C-AEF0-356D91732725}\1.1\0\Win32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE\3
+
+HKEY_CLASSES_ROOT\TypeLib\{F2A7EE29-8BF6-4a6d-83F1-098E366C709C}\1.0
+    (默认)    REG_SZ    Microsoft OneNote 12.0 Type Library
+    PrimaryInteropAssemblyName    REG_SZ    Microsoft.Office.Interop.OneNote, Version=12.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\TypeLib\{F2A7EE29-8BF6-4a6d-83F1-098E366C709C}\1.0\0\Win32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE\2
+
+搜索结束: 找到 6 匹配。
+
+I:\AndroidSdk\platform-tools>reg query "HKEY_CLASSES_ROOT\CLSID" /s /f "onenote" /t REG_SZ
+
+HKEY_CLASSES_ROOT\CLSID\{0039FFEC-A022-4232-8274-6B34787BFC27}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+HKEY_CLASSES_ROOT\CLSID\{0039FFEC-A022-4232-8274-6B34787BFC27}\ProgID
+    (默认)    REG_SZ    OneNote.Application.12
+
+HKEY_CLASSES_ROOT\CLSID\{0875DCB6-C686-4243-9432-ADCCF0B9F2D7}
+    (默认)    REG_SZ    Microsoft OneNote Namespace Extension for Windows Desktop Search
+
+HKEY_CLASSES_ROOT\CLSID\{1F2FD001-0148-474e-843E-D6D37A848D62}
+    (默认)    REG_SZ    Microsoft OneNote Windows Desktop Search IFilter Base Class ID
+
+HKEY_CLASSES_ROOT\CLSID\{40B783AC-9C9E-4F73-A1C3-E767FC211B2C}
+    (默认)    REG_SZ    Microsoft OneNote Notebook
+
+HKEY_CLASSES_ROOT\CLSID\{40B783AC-9C9E-4F73-A1C3-E767FC211B2C}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+HKEY_CLASSES_ROOT\CLSID\{40B783AC-9C9E-4F73-A1C3-E767FC211B2C}\ProgID
+    (默认)    REG_SZ    OneNote.Folder.1
+
+HKEY_CLASSES_ROOT\CLSID\{40B783AC-9C9E-4F73-A1C3-E767FC211B2C}\VersionIndependentProgID
+    (默认)    REG_SZ    OneNote.Folder
+
+HKEY_CLASSES_ROOT\CLSID\{490D6966-005D-36A5-B7EF-521A24207E7E}\InprocServer32
+    Class    REG_SZ    Microsoft.Office.Interop.OneNote.Application
+    Assembly    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\CLSID\{490D6966-005D-36A5-B7EF-521A24207E7E}\InprocServer32\15.0.0.0
+    Class    REG_SZ    Microsoft.Office.Interop.OneNote.Application
+    Assembly    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\CLSID\{6EE84065-8BA3-4a8a-9542-6EC8B56A3378}
+    (默认)    REG_SZ    Microsoft OneNote Windows Desktop Search IFilter
+
+HKEY_CLASSES_ROOT\CLSID\{72773E1A-B711-4d8d-81FA-B9A43B0650DD}
+    (默认)    REG_SZ    Microsoft OneNote Windows Desktop Search IFilter Persistent handler
+
+HKEY_CLASSES_ROOT\CLSID\{9F4C80DC-A4F1-420C-A0FA-1E1490AA8853}
+    (默认)    REG_SZ    Microsoft OneNote Notebook
+
+HKEY_CLASSES_ROOT\CLSID\{9F4C80DC-A4F1-420C-A0FA-1E1490AA8853}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+HKEY_CLASSES_ROOT\CLSID\{9F4C80DC-A4F1-420C-A0FA-1E1490AA8853}\ProgID
+    (默认)    REG_SZ    OneNote.Notebook.1
+
+HKEY_CLASSES_ROOT\CLSID\{9F4C80DC-A4F1-420C-A0FA-1E1490AA8853}\VersionIndependentProgID
+    (默认)    REG_SZ    OneNote.Notebook
+
+HKEY_CLASSES_ROOT\CLSID\{B8D12492-CE0F-40AD-83EA-099A03D493F1}
+    (默认)    REG_SZ    Microsoft OneNote Indexing Filter
+
+HKEY_CLASSES_ROOT\CLSID\{C7DFFDF1-BD1F-450A-B98D-96B6D30BA4C1}
+    (默认)    REG_SZ    Microsoft OneNote Windows Desktop Search Protocol Handler
+
+HKEY_CLASSES_ROOT\CLSID\{D7FAC39E-7FF1-49AA-98CF-A1DDD316337E}\InprocServer32
+    Class    REG_SZ    Microsoft.Office.Interop.OneNote.ApplicationClass
+    Assembly    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\CLSID\{D7FAC39E-7FF1-49AA-98CF-A1DDD316337E}\InprocServer32\15.0.0.0
+    Class    REG_SZ    Microsoft.Office.Interop.OneNote.ApplicationClass
+    Assembly    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\CLSID\{D7FAC39E-7FF1-49AA-98CF-A1DDD316337E}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+HKEY_CLASSES_ROOT\CLSID\{D7FAC39E-7FF1-49AA-98CF-A1DDD316337E}\ProgID
+    (默认)    REG_SZ    OneNote.Application.14
+
+HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\InprocServer32
+    Class    REG_SZ    Microsoft.Office.Interop.OneNote.Application2Class
+    Assembly    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\InprocServer32\15.0.0.0
+    Class    REG_SZ    Microsoft.Office.Interop.OneNote.Application2Class
+    Assembly    REG_SZ    Microsoft.Office.Interop.OneNote, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71E9BCE111E9429C
+
+HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\ProgID
+    (默认)    REG_SZ    OneNote.Application.15
+
+HKEY_CLASSES_ROOT\CLSID\{DC67E480-C3CB-49F8-8232-60B0C2056C8E}\VersionIndependentProgID
+    (默认)    REG_SZ    OneNote.Application
+
+HKEY_CLASSES_ROOT\CLSID\{E772CEB3-E203-4828-ADF1-765713D981B8}
+    (默认)    REG_SZ    Microsoft OneNote Persistent Handler
+
+HKEY_CLASSES_ROOT\CLSID\{E81752ED-2885-4624-AE89-5A28DB58874B}\LocalServer32
+    (默认)    REG_SZ    C:\Program Files\Microsoft Office\Root\Office16\ONENOTE.EXE
+
+搜索结束: 找到 70 匹配。
+
+I:\AndroidSdk\platform-tools>

@@ -1,4 +1,4 @@
-/WindowsProject1
+/CandyLauncher
 
 # Visual Studio build files
 *.obj
@@ -77,3 +77,9 @@ unuseful/bkcode.txt
 /myskin
 /plugins/CalcExprtk/LibRZ
 /plugins/CalcExprtk/symengine
+/deprecated
+build_runtime_log.txt
+PROJECT_TODO.md
+TODO.md
+/vs2022_build
+log.txt

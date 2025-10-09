@@ -7,3 +7,15 @@
 [submodule "plugins/CalcExprtk/exprtk"]
 	path = plugins/CalcExprtk/exprtk
 	url = https://github.com/ArashPartow/exprtk
+[submodule "3rdparty/cpp-pinyin"]
+	path = 3rdparty/cpp-pinyin
+	url = https://github.com/wolfgitpr/cpp-pinyin
+[submodule "3rdparty/sqlite-amalgamation"]
+	path = 3rdparty/sqlite-amalgamation
+	url = https://github.com/azadkuh/sqlite-amalgamation.git
+[submodule "3rdparty/pugixml"]
+	path = 3rdparty/pugixml
+	url = https://github.com/zeux/pugixml
+[submodule "3rdparty/WinToast"]
+	path = 3rdparty/WinToast
+	url = https://github.com/mohabouje/WinToast

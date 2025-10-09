@@ -7,8 +7,8 @@
 // 不能少
 #include <shellapi.h>
 
-#include "FolderDataKeeper.hpp"
-#include "plugins/ActionBase.hpp"
+#include "FolderPluginData.hpp"
+#include "plugins/BaseAction.hpp"
 #include "util/BaseTools.hpp"
 
 using namespace Microsoft::WRL;
@@ -43,7 +43,7 @@ static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring& path)
 };
 
 
-class FileAction : public ActionBase {
+class FileAction : public BaseAction {
 public:
 	// 被委托的构造函数（原构造函数）会完全执行完毕，才会执行第二个
 	FileAction(
@@ -51,13 +51,14 @@ public:
 		const std::wstring& targetFilePath,
 		const bool isRunAsAdmin = false,
 		const std::wstring& workingDir = L"",
-		std::wstring args = L"") :
+		const std::wstring args = L"") :
 		targetFilePath(targetFilePath),
 		defaultAsAdmin(isRunAsAdmin),
 		workingDirectory(workingDir.empty() ? GetDirectory(targetFilePath) : workingDir),
 		arguments(std::move(args)) {
 		matchText = g_host->GetTheProcessedMatchingText(justName);
 		title = (justName);
+		pluginId=m_pluginId;
 
 		if (!targetFilePath.empty()) subTitle = (targetFilePath + L" " + arguments);
 		else subTitle = (justName + L" " + arguments);
@@ -144,11 +145,11 @@ public:
 
 
 
-	std::wstring getTitle() override {
+	std::wstring& getTitle() override {
 		return title;
 	}
 
-	std::wstring getSubTitle() override {
+	std::wstring& getSubTitle() override {
 		return subTitle;
 	}
 
@@ -157,7 +158,7 @@ public:
 	}
 
 
-	std::wstring getIconFilePath() override {
+	std::wstring& getIconFilePath() override {
 		return targetFilePath;
 	}
 
@@ -174,12 +175,13 @@ public:
 			iconBitmap = nullptr;
 		}
 	}
+	HBITMAP iconBitmap = nullptr;
+	std::wstring uwpSource;
 
 protected:
 	std::wstring targetFilePath;
 	std::wstring title;
 	std::wstring subTitle;
-	HBITMAP iconBitmap = nullptr;
 
 private:
 	bool defaultAsAdmin;

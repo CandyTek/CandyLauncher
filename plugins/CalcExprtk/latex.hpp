@@ -20,25 +20,21 @@
 #define tau  6.283185307179586476925286766559
 #define phi  1.618033988749894848204586834365
 
-class ImprovedLaTeXCalculator
-{
+class ImprovedLaTeXCalculator {
 private:
 	std::map<std::string, double> variables_;
 	exprtk::expression<double> expression_;
 	exprtk::symbol_table<double> symbol_table_;
 
 public:
-	ImprovedLaTeXCalculator()
-	{
+	ImprovedLaTeXCalculator() {
 		setupSymbolTable();
 	}
 
-	static double getRandomNumber(double min, double max)
-	{
+	static double getRandomNumber(double min, double max) {
 		// Initialize random seed
 		static bool initialized = false;
-		if (!initialized)
-		{
+		if (!initialized) {
 			std::srand(static_cast<unsigned int>(std::time(0))); // Seed the random number generator with current time
 			initialized = true;
 		}
@@ -47,18 +43,15 @@ public:
 		return min + (std::rand() / (static_cast<double>(RAND_MAX) + 1)) * (max - min);
 	}
 
-	static double random()
-	{
+	static double random() {
 		return getRandomNumber(0, 1);
 	}
-	
-	static double randomInt()
-	{
+
+	static double randomInt() {
 		return static_cast<int>(getRandomNumber(0, 100.99999999999999999));
 	}
 
-	void setupSymbolTable()
-	{
+	void setupSymbolTable() {
 		symbol_table_.add_constant("pi", M_PI);
 		symbol_table_.add_constant("e", M_E);
 		symbol_table_.add_constant("tau", tau);
@@ -69,10 +62,9 @@ public:
 		expression_.register_symbol_table(symbol_table_);
 	}
 
-	std::mutex mtx_;  // Mutex to protect shared resources
-	
-	void setVariable(const std::string& name, double value)
-	{
+	std::mutex mtx_; // Mutex to protect shared resources
+
+	void setVariable(const std::string& name, double value) {
 		// Lock the mutex to ensure thread-safety
 		std::lock_guard<std::mutex> lock(mtx_);
 
@@ -82,8 +74,7 @@ public:
 		expression_.register_symbol_table(symbol_table_);
 	}
 
-	void addVariable(const std::string& name, double value)
-	{
+	void addVariable(const std::string& name, double value) {
 		// Lock the mutex to ensure thread-safety
 		std::lock_guard<std::mutex> lock(mtx_);
 
@@ -92,8 +83,7 @@ public:
 		expression_.register_symbol_table(symbol_table_);
 	}
 
-	void removeVariable(const std::string& name)
-	{
+	void removeVariable(const std::string& name) {
 		// Lock the mutex to ensure thread-safety
 		std::lock_guard<std::mutex> lock(mtx_);
 		symbol_table_.remove_variable(name);
@@ -101,11 +91,9 @@ public:
 	}
 
 	// TODO! 待封装
-	void setVariables(const std::map<std::string, double>& vars)
-	{
-		std::lock_guard<std::mutex> lock(mtx_);  // Add mutex lock here
-		for (const auto& pair : vars)
-		{
+	void setVariables(const std::map<std::string, double>& vars) {
+		std::lock_guard<std::mutex> lock(mtx_); // Add mutex lock here
+		for (const auto& pair : vars) {
 			variables_[pair.first] = pair.second;
 			symbol_table_.remove_variable(pair.first);
 			symbol_table_.add_variable(pair.first, variables_[pair.first]);
@@ -116,21 +104,15 @@ public:
 	// --- 改进的预处理函数 ---
 
 	// 辅助函数：查找匹配的右括号
-	static size_t findMatchingBrace(const std::string& str, size_t start)
-	{
+	static size_t findMatchingBrace(const std::string& str, size_t start) {
 		if (str[start] != '{') return -1;
 		size_t level = 1;
-		for (size_t i = start + 1; i < str.length(); ++i)
-		{
-			if (str[i] == '{')
-			{
+		for (size_t i = start + 1; i < str.length(); ++i) {
+			if (str[i] == '{') {
 				level++;
-			}
-			else if (str[i] == '}')
-			{
+			} else if (str[i] == '}') {
 				level--;
-				if (level == 0)
-				{
+				if (level == 0) {
 					return i;
 				}
 			}
@@ -139,33 +121,26 @@ public:
 	}
 
 	// 递归处理 \frac
-	std::string processFractions(const std::string& input)
-	{
+	std::string processFractions(const std::string& input) {
 		std::string result;
 		size_t i = 0;
-		while (i < input.length())
-		{
-			if (input.substr(i, 5) == "\\frac")
-			{
+		while (i < input.length()) {
+			if (input.substr(i, 5) == "\\frac") {
 				i += 5;
 				// 跳过可能的空格
 				while (i < input.length() && std::isspace(input[i])) i++;
 
-				if (i < input.length() && input[i] == '{')
-				{
+				if (i < input.length() && input[i] == '{') {
 					size_t end_num = findMatchingBrace(input, i);
-					if (end_num != -1)
-					{
+					if (end_num != -1) {
 						std::string numerator = input.substr(i + 1, end_num - i - 1);
 						i = end_num + 1;
 						// 跳过可能的空格
 						while (i < input.length() && std::isspace(input[i])) i++;
 
-						if (i < input.length() && input[i] == '{')
-						{
+						if (i < input.length() && input[i] == '{') {
 							size_t end_den = findMatchingBrace(input, i);
-							if (end_den != -1)
-							{
+							if (end_den != -1) {
 								std::string denominator = input.substr(i + 1, end_den - i - 1);
 								// 递归处理分子和分母内部可能存在的 \frac
 								numerator = processFractions(numerator);
@@ -179,9 +154,7 @@ public:
 				}
 				// 如果 \frac 格式不正确，保留原样或报错
 				result += "\\frac"; // 或者抛出异常
-			}
-			else
-			{
+			} else {
 				result += input[i];
 				i++;
 			}
@@ -190,26 +163,21 @@ public:
 	}
 
 	// 处理上标 ^
-	std::string processPowers(const std::string& input)
-	{
+	std::string processPowers(const std::string& input) {
 		std::string result;
 		size_t i = 0;
-		while (i < input.length())
-		{
+		while (i < input.length()) {
 			// 查找 ^
-			if (input[i] == '^')
-			{
+			if (input[i] == '^') {
 				i++; // 跳过 ^
 				std::string base; // 我们需要知道底数是什么，这里假设它在 ^ 之前
 				// 为了简化，我们只处理变量或数字后直接跟 ^{...} 或 ^...
 				// 更复杂的逻辑需要重写整个解析器
 
 				// 检查前面是否是函数名，用于处理 sin^2(x)
-				if (result.length() >= 3)
-				{
+				if (result.length() >= 3) {
 					std::string last_chars = result.substr(result.length() - 3);
-					if (last_chars == "sin" || last_chars == "cos" || last_chars == "tan")
-					{
+					if (last_chars == "sin" || last_chars == "cos" || last_chars == "tan") {
 						// 处理 sin^2(x) -> (sin(x))^2
 						// 这需要更复杂的逻辑，这里提供一个简化版
 						// 我们假设函数名是2或3个字符
@@ -218,11 +186,9 @@ public:
 						result.erase(func_start); // 移除函数名
 
 						// 现在 i 指向 ^ 后面
-						if (i < input.length() && input[i] == '{')
-						{
+						if (i < input.length() && input[i] == '{') {
 							size_t end_exp = findMatchingBrace(input, i);
-							if (end_exp != -1)
-							{
+							if (end_exp != -1) {
 								std::string exponent = input.substr(i + 1, end_exp - i - 1);
 								// 现在需要找到函数的参数 (sin^2(x) 中的 x)
 								// 这非常复杂，需要完整的解析器
@@ -232,11 +198,9 @@ public:
 								// i=1, end_exp=3, exponent="2"
 								// 我们需要从 input 中提取 "(x)"
 								size_t arg_start = end_exp + 1;
-								if (arg_start < input.length() && input[arg_start] == '(')
-								{
+								if (arg_start < input.length() && input[arg_start] == '(') {
 									size_t end_arg = findMatchingBrace(input, arg_start);
-									if (end_arg != -1)
-									{
+									if (end_arg != -1) {
 										std::string argument = input.substr(arg_start + 1, end_arg - arg_start - 1);
 										result += "(pow(" + func_name + "(" + argument + ")," + exponent + "))";
 										i = end_arg + 1;
@@ -255,52 +219,39 @@ public:
 				}
 
 				// 处理普通的 x^{...} 或 x^...
-				if (i < input.length() && input[i] == '{')
-				{
+				if (i < input.length() && input[i] == '{') {
 					size_t end_exp = findMatchingBrace(input, i);
-					if (end_exp != -1)
-					{
+					if (end_exp != -1) {
 						std::string exponent = input.substr(i + 1, end_exp - i - 1);
 						// 在 result 中，^ 前面的字符就是底数的一部分
 						// 我们需要取出底数 (这很棘手，因为底数可能是多字符)
 						// 简化：假设底数是前一个非空格字符 (对于 x^2) 或被 () 包围的部分
 						// 更好的方法是重写整个解析逻辑，但我们在此基础上改进
-						if (!result.empty())
-						{
+						if (!result.empty()) {
 							char last_char = result.back();
-							if (std::isalnum(last_char) || last_char == ')')
-							{
+							if (std::isalnum(last_char) || last_char == ')') {
 								std::string base_str;
-								if (last_char == ')')
-								{
+								if (last_char == ')') {
 									// 寻找匹配的 (
 									size_t paren_level = 1;
 									size_t j = result.length() - 2;
-									for (; j >= 0; j--)
-									{
+									for (; j >= 0; j--) {
 										if (result[j] == ')') paren_level++;
-										else if (result[j] == '(')
-											paren_level--;
+										else if (result[j] == '(') paren_level--;
 										if (paren_level == 0) break;
 									}
-									if (j >= 0)
-									{
+									if (j >= 0) {
 										base_str = result.substr(j);
 										result.erase(j);
-									}
-									else
-									{
+									} else {
 										// 不匹配的括号，回退
 										result += '^';
 										continue;
 									}
-								}
-								else
-								{
+								} else {
 									// 简单的变量或数字
 									size_t j = result.length() - 1;
-									while (j >= 0 && (std::isalnum(result[j]) || result[j] == '_'))
-									{
+									while (j >= 0 && (std::isalnum(result[j]) || result[j] == '_')) {
 										j--;
 									}
 									base_str = result.substr(j + 1);
@@ -314,41 +265,29 @@ public:
 							}
 						}
 					}
-				}
-				else if (i < input.length())
-				{
+				} else if (i < input.length()) {
 					// 处理 x^2 这样的简单形式
-					if (std::isalnum(input[i]) || input[i] == '(')
-					{
+					if (std::isalnum(input[i]) || input[i] == '(') {
 						std::string exponent(1, input[i]);
-						if (!result.empty())
-						{
+						if (!result.empty()) {
 							char last_char = result.back();
-							if (std::isalnum(last_char) || last_char == ')')
-							{
+							if (std::isalnum(last_char) || last_char == ')') {
 								std::string base_str;
-								if (last_char == ')')
-								{
+								if (last_char == ')') {
 									size_t paren_level = 1;
 									size_t j = result.length() - 2;
-									for (; j >= 0; j--)
-									{
+									for (; j >= 0; j--) {
 										if (result[j] == ')') paren_level++;
-										else if (result[j] == '(')
-											paren_level--;
+										else if (result[j] == '(') paren_level--;
 										if (paren_level == 0) break;
 									}
-									if (j >= 0)
-									{
+									if (j >= 0) {
 										base_str = result.substr(j);
 										result.erase(j);
 									}
-								}
-								else
-								{
+								} else {
 									size_t j = result.length() - 1;
-									while (j >= 0 && (std::isalnum(result[j]) || result[j] == '_'))
-									{
+									while (j >= 0 && (std::isalnum(result[j]) || result[j] == '_')) {
 										j--;
 									}
 									base_str = result.substr(j + 1);
@@ -363,9 +302,7 @@ public:
 				}
 				// 如果无法处理，保留 ^
 				result += '^';
-			}
-			else
-			{
+			} else {
 				result += input[i];
 				i++;
 			}
@@ -375,19 +312,15 @@ public:
 
 
 	// 主预处理函数
-	std::string preprocessLaTeX(const std::string& latex)
-	{
+	std::string preprocessLaTeX(const std::string& latex) {
 		std::string result = latex;
 
 		// 1. 移除行内数学模式分隔符 $ 和 $$
-		if (!result.empty() && result.front() == '$')
-		{
+		if (!result.empty() && result.front() == '$') {
 			result.erase(0, 1);
-			if (!result.empty() && result.back() == '$')
-			{
+			if (!result.empty() && result.back() == '$') {
 				result.pop_back();
-				if (!result.empty() && result.front() == '$')
-				{
+				if (!result.empty() && result.front() == '$') {
 					result.erase(0, 1);
 				}
 			}
@@ -425,8 +358,7 @@ public:
 			{R"(\\sqrt)", "sqrt"},
 			{R"(\\abs)", "abs"}
 		};
-		for (const auto& pair : func_map)
-		{
+		for (const auto& pair : func_map) {
 			std::regex func_regex(pair.first);
 			result = std::regex_replace(result, func_regex, pair.second);
 		}
@@ -438,17 +370,14 @@ public:
 		return result;
 	}
 
-	std::pair<bool, std::string> evaluate(const std::string& latex_expr)
-	{
-		std::lock_guard<std::mutex> lock(mtx_);  // Add mutex lock here
-		try
-		{
+	std::pair<bool, std::string> evaluate(const std::string& latex_expr) {
+		std::lock_guard<std::mutex> lock(mtx_); // Add mutex lock here
+		try {
 			std::string processed_expr = preprocessLaTeX(latex_expr);
 			// std::cout << "Debug: Processed expr: " << processed_expr << std::endl; // 调试输出
 
 			exprtk::parser<double> parser;
-			if (!parser.compile(processed_expr, expression_))
-			{
+			if (!parser.compile(processed_expr, expression_)) {
 				return {false, "Compilation error: " + parser.error()};
 			}
 
@@ -456,13 +385,10 @@ public:
 
 			// 格式化结果
 			std::ostringstream oss;
-			if (result == std::floor(result))
-			{
+			if (result == std::floor(result)) {
 				// 如果是整数，不显示小数点
 				oss << static_cast<long long>(result);
-			}
-			else
-			{
+			} else {
 				oss << std::fixed << std::setprecision(8) << result;
 				// 移除尾随的0 (简单方法)
 				std::string res_str = oss.str();
@@ -471,9 +397,7 @@ public:
 				return {true, res_str};
 			}
 			return {true, oss.str()};
-		}
-		catch (const std::exception& e)
-		{
+		} catch (const std::exception& e) {
 			return {false, std::string("Evaluation error: ") + e.what()};
 		}
 	}

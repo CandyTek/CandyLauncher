@@ -1,0 +1,167 @@
+﻿#pragma once
+
+#include <functional>
+#include <Shobjidl.h>
+#include <string>
+#include <variant>
+
+#include "../util/json.hpp"
+#include "../util/BaseTools.hpp"
+#include "../model/SettingItem.hpp"
+
+// 将修饰符和虚拟键码打包成一个 64 位键
+#define MAKE_HOTKEY_KEY(modifiers, vk) \
+(static_cast<UINT64>(modifiers) << 32 | static_cast<UINT64>(vk))
+
+// 定义我们的高性能查找“数组” -> 哈希表，键是 UINT64，值是对应的动作
+using HotkeyMap = std::unordered_map<UINT64, UINT64>;
+
+// 全局常驻变量
+extern HWND g_mainHwnd;
+extern HWND g_settingsHwnd;
+extern HWND g_editHwnd;
+extern HWND g_listViewHwnd;
+extern HKL g_hklIme;
+extern UINT_PTR TimerIDSetFocusEdit;
+extern HINSTANCE g_hInst;
+
+extern HotkeyMap g_hotkeyMap;
+// 把 settings.json 里有序的配置项一一转成有序的配置列表，用来实现UI
+extern std::vector<SettingItem> g_settings_ui_last_save;
+// 这个配置数组是设置界面打开时临时存在的，用户临时修改控件的值会保存在这，用来方便折叠功能
+extern std::vector<SettingItem> g_settings_ui;
+// 在任何地方都可以调用这个数组来获取用户配置项
+extern std::unordered_map<std::string, SettingItem> g_settings_map;
+
+extern std::wstring EXE_FOLDER_PATH;
+extern std::wstring USER_SETTINGS_PATH;
+extern std::wstring EDIT_HINT_TEXT;
+extern std::string pref_force_ime_mode;
+extern std::string pref_hotkey_toggle_main_panel;
+
+extern bool pref_show_window_and_release_modifier_key;
+extern bool pref_ctrl_number_launch_item;
+extern bool pref_alt_number_launch_item;
+extern bool pref_switch_list_right_click_with_shift_right_click;
+extern bool pref_run_item_as_admin;
+extern bool pref_hide_in_fullscreen;
+extern bool pref_hide_in_topmost_fullscreen;
+extern bool pref_lock_window_popup_position;
+extern bool pref_preserve_last_search_term;
+extern bool pref_single_click_to_open;
+extern bool pref_fuzzy_match;
+extern bool pref_last_search_term_selected;
+extern bool pref_close_after_open_item;
+
+extern int64_t pref_max_search_results;
+extern int last_open_window_position_x;
+extern int last_open_window_position_y;
+extern int unknown_file_icon_index;
+
+extern float window_position_offset_x;
+extern float window_position_offset_y;
+
+extern int lastWindowCenterX;
+extern int lastWindowCenterY;
+
+
+// const int COLOR_UI_BG_VALUE = 110;
+//const int COLOR_UI_BG_VALUE = 255;
+extern int LISTITEM_ICON_SIZE;
+extern int64_t pref_fuzzy_match_score_threshold;
+extern ULONGLONG APP_STARTUP_TIME;
+
+
+const int COLOR_UI_BG_VALUE = 170;
+const int COLOR_UI_BG_DEEP_VALUE = 130;
+
+const COLORREF COLOR_UI_BG = RGB(COLOR_UI_BG_VALUE, COLOR_UI_BG_VALUE, COLOR_UI_BG_VALUE);
+const COLORREF COLOR_UI_BG_DEEP = RGB(COLOR_UI_BG_DEEP_VALUE, COLOR_UI_BG_DEEP_VALUE, COLOR_UI_BG_DEEP_VALUE);
+const int fontColorGray = 50;
+const int COLOR_UI_BG_GLASS = (0x22 << 24) | (0x00 << 16) | (0x00 << 8) | 0x00;
+// const int COLOR_UI_BG_GLASS = (0xCC << 24) | (0x00 << 16) | (0x00 << 8) | 0x00;
+// const int COLOR_UI_BG_GLASS = (0x22 << 24) | (0x00 << 16) | (0x00 << 8) | 0x00;
+
+
+// 皮肤
+extern nlohmann::json g_skinJson;
+extern Gdiplus::Image* g_BgImage;
+extern Gdiplus::Image* g_editBgImage;
+extern Gdiplus::Image* g_listViewBgImage;
+extern Gdiplus::Image* g_listItemBgImage;
+extern Gdiplus::Image* g_listItemBgImageSelected;
+extern Gdiplus::Color g_listItemBgColor;
+extern Gdiplus::Color g_listItemBgColorSelected;
+
+// extern Gdiplus::Color g_listItemBgColor;
+// extern Gdiplus::Color g_listItemBgColorSelected;
+
+extern std::unique_ptr<Gdiplus::SolidBrush> g_listItemBgColorBrush;
+extern std::unique_ptr<Gdiplus::SolidBrush> g_listItemBgColorBrushSelected;
+
+
+extern std::unique_ptr<Gdiplus::SolidBrush> g_listItemTextColorBrush1;
+extern std::unique_ptr<Gdiplus::SolidBrush> g_listItemTextColorBrush2;
+extern std::unique_ptr<Gdiplus::SolidBrush> g_listItemTextColorBrushSelected1;
+extern std::unique_ptr<Gdiplus::SolidBrush> g_listItemTextColorBrushSelected2;
+
+extern std::unique_ptr<Gdiplus::Font> g_listItemFont1;
+extern std::unique_ptr<Gdiplus::Font> g_listItemFont2;
+extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1;
+extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2;
+extern std::wstring g_currectSkinFilePath;
+
+extern int g_lastWindowOpacity;
+
+extern int g_itemIconX;
+extern int g_itemIconY;
+extern int g_itemIconSelectedX;
+extern int g_itemIconSelectedY;
+
+extern int g_itemTextPosX1;
+extern int g_itemTextPosY1;
+extern int g_itemTextPosX2;
+extern int g_itemTextPosY2;
+extern int g_itemTextPosSelectedX1;
+extern int g_itemTextPosSelectedY1;
+extern int g_itemTextPosSelectedX2;
+extern int g_itemTextPosSelectedY2;
+
+extern int g_itemListWidth;
+extern int g_itemListHeight;
+
+extern double g_item_font_size_1;
+extern double g_item_font_size_2;
+extern double g_item_font_size_selected_1;
+extern double g_item_font_size_selected_2;
+
+extern int MAIN_WINDOW_WIDTH;
+extern int MAIN_WINDOW_HEIGHT;
+
+extern int g_listItemWidth;
+extern int g_listItemHeight;
+
+constexpr int DEFAULT_MAIN_WINDOW_WIDTH = 620;
+constexpr int DEFAULT_MAIN_WINDOW_HEIGHT = 480;
+
+extern std::unordered_map<std::string, std::function<void()>> appLaunchActionCallBacks;
+extern std::wstring currectActionArg;
+extern bool isToastAvailable;
+
+// 所有tab的标签，按json 顺序
+inline std::vector<std::string> subPageTabs;
+
+// 根据tab名称获取uint8_t索引，用于SettingItem.subPageIndex
+static uint8_t GetTabIndexForSetting(const std::string& name) {
+	for (size_t i = 0; i < subPageTabs.size(); ++i) {
+		if (subPageTabs[i] == name) {
+			return static_cast<uint8_t>(i);
+		}
+	}
+	// 如果找不到，添加到subPageTabs并返回新索引
+	subPageTabs.push_back(name);
+	return static_cast<uint8_t>(subPageTabs.size() - 1);
+}
+
+// 编辑框文本缓存
+inline std::wstring editTextBuffer;

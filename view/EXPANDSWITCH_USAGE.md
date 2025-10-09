@@ -81,11 +81,13 @@ SetExpandButtonState(hControl, true); // 设置为展开
 控件会发送两种类型的WM_COMMAND消息:
 
 ### 1. 开关状态改变
+
 - 通知码: `BN_CLICKED`
 - 当用户点击右侧开关时触发
 - 在 `ScrollViewHelper.hpp` 的 `ScrollContainerProc` 中处理
 
 ### 2. 展开/折叠状态改变
+
 - 通知码: `BN_DOUBLECLICKED`
 - 当用户点击左侧区域时触发
 - 会刷新整个设置界面以显示/隐藏子项
@@ -105,22 +107,25 @@ SetExpandButtonState(hControl, true); // 设置为展开
 - `window/SettingWindow.hpp`: 控件创建和初始化
 - `window/SettingsHelper.hpp`: 配置加载和保存
 - `view/ScrollViewHelper.hpp`: 事件处理
-- `common/DataKeeper.hpp`: SettingItem结构定义
+- `common/GlobalState.hpp`: SettingItem结构定义
 
 ## 技术细节
 
 ### 控件结构
+
 - 使用 `ButtonInfo` 结构存储状态
-  - `isExpanded`: 展开状态
-  - `switchState`: 开关状态
-  - `switchHovered`: 开关悬停状态
+    - `isExpanded`: 展开状态
+    - `switchState`: 开关状态
+    - `switchHovered`: 开关悬停状态
 
 ### 绘制技术
+
 - 使用GDI+绘制圆角开关
 - 双缓冲避免闪烁
 - 抗锯齿渲染
 
 ### 区域检测
+
 - `GetSwitchRect()`: 计算开关的矩形区域
 - 根据鼠标点击位置判断是点击开关还是展开区域
 
@@ -134,6 +139,7 @@ SetExpandButtonState(hControl, true); // 设置为展开
 ## 示例场景
 
 ### 场景1: 功能组开关
+
 ```json
 {
   "key": "advanced_features",
@@ -163,6 +169,7 @@ SetExpandButtonState(hControl, true); // 设置为展开
 当"高级功能"开关打开时,整个功能组启用;当展开时,可以看到具体的子功能选项。
 
 ### 场景2: 插件配置
+
 ```json
 {
   "key": "plugin_enabled",

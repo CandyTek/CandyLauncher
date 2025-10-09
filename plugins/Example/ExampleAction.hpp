@@ -1,10 +1,15 @@
 ﻿#pragma once
 #include <string>
 #include <ShlObj.h>
+#include "ExamplePluginData.hpp"
 
-class ExampleAction final : public ActionBase
+class ExampleAction final : public BaseAction
 {
 public:
+	ExampleAction() {
+		pluginId = m_pluginId;
+	}
+
 	// 图标，只要是文件就可以
 	std::wstring iconFilePath;
 	std::wstring title;
@@ -13,17 +18,17 @@ public:
 	int iconFilePathIndex = -1;
 	HBITMAP iconBitmap = nullptr;
 
-	std::wstring getTitle() override
+	std::wstring& getTitle() override
 	{
 		return title;
 	}
 
-	std::wstring getSubTitle() override
+	std::wstring& getSubTitle() override
 	{
 		return subTitle;
 	}
 
-	std::wstring getIconFilePath() override
+	std::wstring& getIconFilePath() override
 	{
 		return iconFilePath;
 	}

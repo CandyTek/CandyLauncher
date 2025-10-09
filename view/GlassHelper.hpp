@@ -2,7 +2,7 @@
 #include <Windows.h>
 #include <dwmapi.h>
 #include <tchar.h>
-#include "../common/DataKeeper.hpp"
+#include "../common/GlobalState.hpp"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "dwmapi.lib")
