@@ -203,6 +203,7 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 	InitMainWindowControls(hInstance, g_mainHwnd);
 	Init(g_mainHwnd, hInstance);
 	userSettingsAfterTheAppStart();
+	g_pluginManager->NotifyUserSettingsLoadDone();
 	g_pluginManager->RefreshAllActions();
 
 	// 另一种指定透明效果，但是并不太行，有很严重的锯齿，而且没有透明度概念，很生硬

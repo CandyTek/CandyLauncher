@@ -241,6 +241,12 @@ static void doPrefChanged() {
 			// ShowErrorMsgBox(L"删除快捷方式" + result);
 		}
 	}
+
+	if (g_pluginManager) {
+		g_pluginManager->SyncPluginsWithSettings();
+		g_pluginManager->NotifyUserSettingsLoadDone();
+		g_pluginManager->RefreshAllActions();
+	}
 }
 
 inline void DoMyContextMenuAction(UINT cmd, int index, std::shared_ptr<BaseAction>& action) {

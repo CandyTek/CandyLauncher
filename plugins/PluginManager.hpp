@@ -241,6 +241,7 @@ public:
 		if (m_plugins.find(pluginId) != m_plugins.end()) {
 			UnloadSinglePlugin(m_plugins[pluginId]);
 			m_plugins.erase(pluginId);
+			RebuildPluginIndices();
 			NotifyActionsChanged();
 			return true;
 		}
@@ -557,6 +558,28 @@ public:
 	}
 
 private:
+	static void RebuildPluginIndices() {
+		std::vector<std::pair<uint16_t, PluginInfo>> pluginList;
+		pluginList.reserve(m_plugins.size());
+		for (auto& pair : m_plugins) {
+			pluginList.emplace_back(pair.first, std::move(pair.second));
+		}
+
+		std::sort(pluginList.begin(), pluginList.end(), [](const auto& lhs, const auto& rhs) {
+			return lhs.first < rhs.first;
+		});
+
+		m_plugins.clear();
+		for (size_t i = 0; i < pluginList.size(); ++i) {
+			PluginInfo& info = pluginList[i].second;
+			info.pluginId = static_cast<uint16_t>(i);
+			if (info.plugin) {
+				info.plugin->OnPluginIdChange(info.pluginId);
+			}
+			m_plugins[info.pluginId] = std::move(info);
+		}
+	}
+
 	static const PluginInfo* FindLoadedPluginByFilePath(const std::wstring& filePath) {
 		for (const auto& [pluginId, info] : m_plugins) {
 			if (info.filePath == filePath) {
