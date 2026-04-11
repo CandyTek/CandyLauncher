@@ -70,6 +70,59 @@ static void TipEditEmpty() {
 	ShowWarnTooltipAtRect(g_folderListView, L"请先填写名称和路径再切换配置项！", rc);
 }
 
+static void SyncCurrentConfigNameToLeftList() {
+	if (index_last_selected < 0 || index_last_selected >= static_cast<int>(runnerConfigs.size())) {
+		return;
+	}
+	if (!g_commandEdit || !g_folderListView) {
+		return;
+	}
+
+	wchar_t buffer[4096];
+	GetWindowTextW(g_commandEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	runnerConfigs[index_last_selected].command = buffer;
+
+	if (index_last_selected >= static_cast<int>(folderItemTexts.size())) {
+		folderItemTexts.resize(runnerConfigs.size());
+	}
+
+	folderItemTexts[index_last_selected] = buffer;
+	ListView_SetItemText(g_folderListView, index_last_selected, 0, folderItemTexts[index_last_selected].data());
+	InvalidateRect(g_folderListView, nullptr, TRUE);
+}
+
+static void NormalizeFolderEditPathOnKillFocus() {
+	if (!g_folderEdit) {
+		return;
+	}
+
+	wchar_t buffer[4096];
+	GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	std::wstring path = buffer;
+	if (path.empty() || path == L"default") {
+		return;
+	}
+
+	std::wstring normalized;
+	normalized.reserve(path.size());
+	bool lastWasSlash = false;
+	for (wchar_t ch : path) {
+		if (ch == L'\\') {
+			if (!lastWasSlash) {
+				normalized.push_back(ch);
+			}
+			lastWasSlash = true;
+		} else {
+			normalized.push_back(ch);
+			lastWasSlash = false;
+		}
+	}
+
+	if (normalized != path) {
+		SetWindowTextW(g_folderEdit, normalized.c_str());
+	}
+}
+
 // 更新配置显示区域
 static void UpdateConfigDisplayText(int selectedIndex) {
 	if (selectedIndex < 0 || selectedIndex >= static_cast<int>(runnerConfigs.size())) {
@@ -178,16 +231,71 @@ static void SaveCurrentConfigItem(int selectedIndex) {
 	}
 }
 
-
-static void UpdateIndexFileList(int selectedIndex) {
-	allFileItems.clear();
-
-	if (selectedIndex < 0 || selectedIndex >= (int) runnerConfigs.size()) {
-		ListView_SetItemCountEx(g_fileListView, 0, LVSICF_NOINVALIDATEALL);
-		return;
+static TraverseOptions BuildCurrentConfigFromControls(int selectedIndex) {
+	TraverseOptions config;
+	if (selectedIndex >= 0 && selectedIndex < static_cast<int>(runnerConfigs.size())) {
+		config = runnerConfigs[selectedIndex];
 	}
 
-	TraverseOptions &config = runnerConfigs[selectedIndex];
+	wchar_t buffer[4096];
+
+	int typeIndex = static_cast<int>(SendMessage(g_typeComboBox, CB_GETCURSEL, 0, 0));
+	switch (typeIndex) {
+		case 0:
+			config.type = L"";
+			break;
+		case 1:
+			config.type = L"uwp";
+			break;
+		case 2:
+			config.type = L"regedit";
+			break;
+		case 3:
+			config.type = L"path";
+			break;
+		default:
+			config.type = L"";
+			break;
+	}
+
+	GetWindowTextW(g_commandEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	config.command = buffer;
+
+	GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	if (typeIndex != 0 && wcscmp(buffer, L"default") == 0) {
+		config.folder = L"";
+	} else {
+		config.folder = buffer;
+	}
+
+	GetWindowTextW(g_excludeWordsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	config.excludeWords = StringToVectorAndLower(buffer);
+
+	GetWindowTextW(g_excludesEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	config.excludeNames = StringToVector(buffer);
+
+	GetWindowTextW(g_renameSourcesEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	config.renameSources = StringToVector(buffer);
+
+	GetWindowTextW(g_renameTargetsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+	config.renameTargets = StringToVector(buffer);
+
+	config.renameMap.clear();
+	const auto& sources = config.renameSources;
+	const auto& targets = config.renameTargets;
+	size_t count = std::min(sources.size(), targets.size());
+	for (size_t i = 0; i < count; ++i) {
+		if (!sources[i].empty() && !targets[i].empty()) {
+			config.renameMap[sources[i]] = targets[i];
+		}
+	}
+
+	return config;
+}
+
+
+static void UpdateIndexFileListFromConfig(TraverseOptions& config) {
+	allFileItems.clear();
 	if (config.type == L"folder" || config.type.empty()) {
 		if (g_host->GetSettingsMap().at("pref_use_everything_sdk_index").boolValue) {
 			g_host->TraverseFilesForEverythingSDK(config.folder, config,
@@ -251,15 +359,24 @@ static void UpdateIndexFileList(int selectedIndex) {
 
 }
 
+static void UpdateIndexFileList(int selectedIndex) {
+	if (selectedIndex < 0 || selectedIndex >= (int) runnerConfigs.size()) {
+		allFileItems.clear();
+		ListView_SetItemCountEx(g_fileListView, 0, LVSICF_NOINVALIDATEALL);
+		return;
+	}
+
+	UpdateIndexFileListFromConfig(runnerConfigs[selectedIndex]);
+}
+
 // 重新索引当前选中的配置
 static void ReindexCurrentConfig(int selectedIndex) {
 	if (selectedIndex < 0 || selectedIndex >= static_cast<int>(runnerConfigs.size())) {
 		return;
 	}
-	// 首先保存当前项的修改
-	SaveCurrentConfigItem(selectedIndex);
-	// 刷新右侧列表
-	UpdateIndexFileList(selectedIndex);
+	TraverseOptions currentConfig = BuildCurrentConfigFromControls(selectedIndex);
+	runnerConfigs[selectedIndex] = currentConfig;
+	UpdateIndexFileListFromConfig(currentConfig);
 }
 
 // 排除文件项
@@ -537,7 +654,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 							GetModuleHandle(nullptr), nullptr);
 			editY += centerPanelLabelHeight;
 			g_commandEdit = CreateWindowExW(0, L"EDIT", L"",
-											WS_CHILD | WS_VISIBLE | WS_BORDER,
+											WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
 											centerPanelX, editY, editWidth - 85, centerPanelEditHeight, hwnd, nullptr,
 											GetModuleHandle(nullptr), nullptr);
 			editY += centerPanelEditHeight + 2;
@@ -568,7 +685,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			editY += centerPanelLabelHeight;
 
 			g_folderEdit = CreateWindowExW(0, L"EDIT", L"",
-										   WS_CHILD | WS_VISIBLE | WS_BORDER,
+										   WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
 										   centerPanelX, editY, editWidth - 85, centerPanelEditHeight, hwnd, nullptr,
 										   GetModuleHandle(nullptr), nullptr);
 			editY += centerPanelEditHeight + 2;
@@ -690,6 +807,12 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				// 保存当前配置项
 				if (index_last_selected >= 0) {
 					SaveCurrentConfigItem(index_last_selected);
+				}
+			} else if (HIWORD(wParam) == EN_KILLFOCUS) {
+				if ((HWND) lParam == g_commandEdit) {
+					SyncCurrentConfigNameToLeftList();
+				} else if ((HWND) lParam == g_folderEdit) {
+					NormalizeFolderEditPathOnKillFocus();
 				}
 			} else if (LOWORD(wParam) == 1001) { // 重新索引按钮
 				// 检查编辑框是否为空

@@ -17,6 +17,14 @@
 #include <memory>
 #include <fstream>
 
+static std::vector<std::string> WideVectorToUtf8Vector(const std::vector<std::wstring>& values) {
+	std::vector<std::string> result;
+	result.reserve(values.size());
+	for (const auto& value : values) {
+		result.push_back(wide_to_utf8(value));
+	}
+	return result;
+}
 
 // 解析 runner.json 文件
 static std::vector<TraverseOptions> ParseRunnerConfig() {
@@ -50,22 +58,25 @@ static std::vector<TraverseOptions> ParseRunnerConfig() {
 // 保存配置到文件，当前先测试，不执行保存
 static void SaveConfigToFile(std::vector<TraverseOptions>& runnerConfigs) {
 	if(true){
-		return;
+		//return;
 	}
 	try {
 		nlohmann::json j;
 		for (const auto &config: runnerConfigs) {
 			nlohmann::json item;
-			item["command"] = config.command;
-			item["folder"] = config.folder;
-			item["exclude_words"] = config.excludeWords;
-			item["excludes"] = config.excludeNames;
-			item["rename_sources"] = config.renameSources;
-			item["rename_targets"] = config.renameTargets;
+			item["command"] = wide_to_utf8(config.command);
+			item["folder"] = wide_to_utf8(config.folder);
+			item["type"] = wide_to_utf8(config.type);
+			item["exclude_words"] = WideVectorToUtf8Vector(config.excludeWords);
+			item["excludes"] = WideVectorToUtf8Vector(config.excludeNames);
+			item["rename_sources"] = WideVectorToUtf8Vector(config.renameSources);
+			item["rename_targets"] = WideVectorToUtf8Vector(config.renameTargets);
 			j.push_back(item);
 		}
 
-		std::ofstream file(RUNNER_CONFIG_PATH2);
+		std::ofstream file(RUNNER_CONFIG_PATH2, std::ios::binary);
+		const char utf8Bom[] = "\xEF\xBB\xBF";
+		file.write(utf8Bom, sizeof(utf8Bom) - 1);
 		file << j.dump(1, '\t');
 		file.close();
 	}
