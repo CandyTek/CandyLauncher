@@ -14,8 +14,8 @@
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
-constexpr bool needOpenSettingWindow = true;
-constexpr bool needMinimizeSettingWindow = true;
+constexpr bool needOpenSettingWindow = false;
+constexpr bool needMinimizeSettingWindow = false;
 
 
 // --- (在此处粘贴上面定义的 MAKE_HOTKEY_KEY, HotkeyMap) ---

@@ -248,6 +248,10 @@ public:
 			ConsolePrintln(TAG, L"Plugin directory does not exist: " + pluginDir);
 			return;
 		}
+		if (!std::filesystem::is_directory(pluginDir)) {
+			ConsolePrintln(TAG, L"Plugin path is not a directory: " + pluginDir);
+			return;
+		}
 
 		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(pluginDir)) {
 			if (entry.is_regular_file() && entry.path().extension() == ".dll") {

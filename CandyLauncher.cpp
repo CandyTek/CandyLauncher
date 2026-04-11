@@ -21,7 +21,7 @@
 #include <atomic>
 
 #include "common/AppController.hpp"
-#include "util/DxgiUtils.h"
+//#include "util/DxgiUtils.h"
 #include "manager/EditManager.hpp"
 #include "manager/SkinHelper.hpp"
 #include <Richedit.h>
@@ -61,7 +61,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	SettingWindowRegisterClass(hInstance);
 	if (needOpenShell32IconViewer) ShowShell32IcoViewer(hInstance);
 	MainWindowInitInstance(hInstance, nCmdShow);
-	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr);
+	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr,true);
 	if (needMinimizeSettingWindow) ShowWindow(g_settingsHwnd, SW_MINIMIZE);
 	g_skinFileWatcherThread = std::thread(watchSkinFile);
 

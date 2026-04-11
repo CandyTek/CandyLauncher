@@ -49,7 +49,7 @@ static void InitializeSettingWindowResources() {
 }
 
 
-static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent) {
+static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent,bool needMinimize = false) {
 	if (g_settingsHwnd != nullptr) {
 		RestoreWindowIfMinimized(g_settingsHwnd);
 		ShowWindow(g_settingsHwnd, SW_SHOW);
@@ -73,12 +73,15 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent) {
 	// 计算居中位置
 	int x = (screenWidth - SETTINGS_WINDOW_WIDTH) / 2;
 	int y = (screenHeight - SETTINGS_WINDOW_HEIGHT) / 2;
-
+	int exStyle = WS_POPUP | WS_CAPTION | WS_SYSMENU;
+	if (needMinimize) {
+		exStyle=exStyle| WS_MINIMIZEBOX;
+	}
 	g_settingsHwnd = CreateWindowExW(
 		WS_EX_ACCEPTFILES, // 扩展样式
 		L"SettingsWndClass", // 窗口类名
 		L"设置", // 窗口标题
-		WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, // 窗口样式
+		exStyle, // 窗口样式
 		x, y, // 初始位置
 		SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT, // 宽度和高度
 		hParent, // 父窗口
@@ -86,9 +89,12 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent) {
 		hInstance, // 实例句柄
 		nullptr // 附加参数
 	);
-
-	// ShowWindow(g_settingsHwnd, SW_SHOW);
-	UpdateWindow(g_settingsHwnd);
+	if (needMinimize) {
+		UpdateWindow(g_settingsHwnd);
+	}
+	else {
+		ShowWindow(g_settingsHwnd, SW_SHOW);
+	}
 }
 
 

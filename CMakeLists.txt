@@ -1,7 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.10)
 project(CandyLauncher)
 #project(CandyLauncher C CXX)
-
 # 用到17的许多特性，filesystem快速搜索文件的功能，方便的内联变量
 set(CMAKE_CXX_STANDARD 17)
 include_directories(.)
@@ -247,26 +246,70 @@ add_subdirectory(plugins/PluginTest)
 # Plugins that are rarely changed can be commented to speed up compilation.
 set(PLUGIN_DEPENDENCIES)
 
-#list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
-#list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
+list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
+list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
+list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES OneNotePlugin)
-#list(APPEND PLUGIN_DEPENDENCIES TextFilePlugin)
-#list(APPEND PLUGIN_DEPENDENCIES ExamplePlugin)
-#list(APPEND PLUGIN_DEPENDENCIES VSCodeWorkspacesPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES JetbrainsWorkspacesPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES FolderPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES CherryTreePlugin)
-#list(APPEND PLUGIN_DEPENDENCIES UnitConverterPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES CalcPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES ValueGeneratorPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES BookmarkPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES RegistryPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES ServicePlugin)
-#list(APPEND PLUGIN_DEPENDENCIES WindowsSearchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES TextFilePlugin)
+list(APPEND PLUGIN_DEPENDENCIES ExamplePlugin)
+list(APPEND PLUGIN_DEPENDENCIES VSCodeWorkspacesPlugin)
+list(APPEND PLUGIN_DEPENDENCIES JetbrainsWorkspacesPlugin)
+list(APPEND PLUGIN_DEPENDENCIES FolderPlugin)
+list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
+list(APPEND PLUGIN_DEPENDENCIES CherryTreePlugin)
+list(APPEND PLUGIN_DEPENDENCIES UnitConverterPlugin)
+list(APPEND PLUGIN_DEPENDENCIES CalcPlugin)
+list(APPEND PLUGIN_DEPENDENCIES ValueGeneratorPlugin)
+list(APPEND PLUGIN_DEPENDENCIES BookmarkPlugin)
+list(APPEND PLUGIN_DEPENDENCIES RegistryPlugin)
+list(APPEND PLUGIN_DEPENDENCIES ServicePlugin)
+list(APPEND PLUGIN_DEPENDENCIES WindowsSearchPlugin)
 
 if (PLUGIN_DEPENDENCIES)
-	add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
+	#add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
+endif ()
+
+if (MSVC)
+	set(PLUGIN_DEPENDENCIES
+		FeatureLaunchPlugin
+		EverNotePlugin
+		VisualStudioPlugin
+		BrowserHistoryPlugin
+		TextFilePlugin
+		ExamplePlugin
+		VSCodeWorkspacesPlugin
+		JetbrainsWorkspacesPlugin
+		FolderPlugin
+		RunningAppPlugin
+		CherryTreePlugin
+		UnitConverterPlugin
+		CalcPlugin
+		ValueGeneratorPlugin
+		BookmarkPlugin
+		RegistryPlugin
+		ServicePlugin
+		WindowsSearchPlugin
+	)
+
+	set(PLUGIN_OUTPUT_DIR $<TARGET_FILE_DIR:CandyLauncher>/plugins)
+
+	if (PLUGIN_DEPENDENCIES)
+		add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
+
+		foreach(plugin_target IN LISTS PLUGIN_DEPENDENCIES)
+			add_custom_command(TARGET CandyLauncher POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E make_directory
+					${PLUGIN_OUTPUT_DIR}
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different
+					$<TARGET_FILE:${plugin_target}>
+					${PLUGIN_OUTPUT_DIR}
+				VERBATIM
+			)
+		endforeach()
+	endif ()
+else ()
+	if (PLUGIN_DEPENDENCIES)
+		add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
+	endif ()
 endif ()
