@@ -322,38 +322,35 @@ static void initGlobalVariable() {
 
 // 程序开始加载所有用户配置项
 static void LoadSettingList() {
+	g_settings_ui_last_save.clear();
 	subPageTabs.clear();
 	const std::string settingsText = GetSettingsJsonText();
 	std::vector<SettingItem> pluginSettings;
 
-	for (auto& pair : m_plugins) {
+	if (g_pluginManager) {
+		for (const auto& pluginCatalog : g_pluginManager->GetPluginCatalog()) {
 		try {
 			SettingItem setting;
-			setting.key = wide_to_utf8(pair.second.plugin->GetPluginPackageName());
+			setting.key = wide_to_utf8(pluginCatalog.pkgName);
 			setting.type = "expandswitch";
-			setting.title = wide_to_utf8(pair.second.plugin->GetPluginName());
+			setting.title = wide_to_utf8(pluginCatalog.name);
 			setting.subPageIndex = GetTabIndexForSetting("plugin");
-			setting.pluginId = pair.second.pluginId;
-			setting.children = ParseConfig(wide_to_utf8(pair.second.plugin->DefaultSettingJson()), pair.second.pluginId);
+			setting.setValue(nlohmann::json(pluginCatalog.enabled));
+
+			if (const PluginInfo* loadedPlugin = g_pluginManager->FindLoadedPluginByPackageName(pluginCatalog.pkgName)) {
+				setting.pluginId = loadedPlugin->pluginId;
+				const std::wstring defaultSettingJson = pluginCatalog.defaultSettingJson.empty()
+					? loadedPlugin->plugin->DefaultSettingJson()
+					: pluginCatalog.defaultSettingJson;
+				setting.children = ParseConfig(wide_to_utf8(defaultSettingJson), loadedPlugin->pluginId);
+			} else if (!pluginCatalog.defaultSettingJson.empty() && pluginCatalog.defaultSettingJson != L"{}") {
+				setting.children = ParseConfig(wide_to_utf8(pluginCatalog.defaultSettingJson), 65535);
+			}
+
 			pluginSettings.push_back(setting);
-
-			// SettingItem pluginBool;
-			// pluginBool.key = wide_to_utf8(L"plugin." + pair.plugin->GetPluginPackageName());
-			// pluginBool.type = "bool";
-			// pluginBool.title = wide_to_utf8(L"　　"+pair.plugin->GetPluginName());
-			// pluginBool.subPage = "plugin";
-			// pluginBool.boolValue = true;
-			// pluginSettings.push_back(pluginBool);
-
-			// SettingItem blank;
-			// blank.key = wide_to_utf8(L"blank." +pair.plugin->GetPluginPackageName());
-			// blank.type = "text";
-			// blank.title = "   ";
-			//
-			// blank.subPage = "plugin";
-			// pluginSettings.push_back(blank);
 		} catch (...) {
-			ConsolePrintln(L"[SettingsManager]注意，该插件的设置json加载失败:" + pair.second.name);
+			ConsolePrintln(L"[SettingsManager]注意，该插件的设置json加载失败:" + pluginCatalog.name);
+		}
 		}
 	}
 

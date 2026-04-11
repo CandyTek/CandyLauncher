@@ -11,6 +11,8 @@
 #include "BaseLaunchAction.hpp"
 #include "Everything.h"
 #include "../util/BaseTools.hpp"
+#include "util/FileUtil.hpp"
+#include "util/json.hpp"
 #include "manager/TextMatchHelper.hpp"
 #include "util/MyToastUtil.hpp"
 #include "util/PinyinHelper.hpp"
@@ -31,7 +33,17 @@ struct PluginInfo {
 	GetPluginApiVersionFunc getVersionFunc = nullptr;
 };
 
+struct PluginCatalogInfo {
+	std::wstring name;
+	std::wstring version;
+	std::wstring pkgName;
+	std::wstring filePath;
+	std::wstring defaultSettingJson;
+	bool enabled = true;
+};
+
 inline std::unordered_map<uint16_t, PluginInfo> m_plugins = {};
+inline std::vector<PluginCatalogInfo> g_pluginCatalog = {};
 inline uint16_t pluginCount = 0;
 static std::wstring TAG = L"PluginManager";
 
@@ -243,6 +255,7 @@ public:
 
 	void LoadAllPlugins(const std::wstring& pluginDir) {
 		ConsolePrintln(TAG, L"LoadAllPlugins start, dir: " + pluginDir);
+		g_pluginCatalog.clear();
 
 		if (!std::filesystem::exists(pluginDir)) {
 			ConsolePrintln(TAG, L"Plugin directory does not exist: " + pluginDir);
@@ -253,9 +266,31 @@ public:
 			return;
 		}
 
+		const nlohmann::json userConfig = LoadUserPluginConfig();
 		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(pluginDir)) {
 			if (entry.is_regular_file() && entry.path().extension() == ".dll") {
+				PluginCatalogInfo catalogInfo;
+				if (!ProbePluginCatalogInfo(entry.path().wstring(), catalogInfo)) {
+					catalogInfo.filePath = entry.path().wstring();
+					catalogInfo.name = entry.path().stem().wstring();
+				}
+				catalogInfo.enabled = IsPluginEnabledByConfig(catalogInfo.pkgName, userConfig);
+				g_pluginCatalog.push_back(catalogInfo);
+
+				if (!catalogInfo.enabled) {
+					ConsolePrintln(TAG, L"Skip disabled plugin: " + catalogInfo.pkgName + L", file: " + entry.path().filename().wstring());
+					continue;
+				}
+
 				bool loadResult = LoadPlugin(entry.path().wstring());
+				if (loadResult && (g_pluginCatalog.back().pkgName.empty() || g_pluginCatalog.back().defaultSettingJson.empty())) {
+					if (const PluginInfo* loadedPlugin = FindLoadedPluginByFilePath(entry.path().wstring())) {
+						g_pluginCatalog.back().name = loadedPlugin->name;
+						g_pluginCatalog.back().version = loadedPlugin->version;
+						g_pluginCatalog.back().pkgName = loadedPlugin->pkgName;
+						g_pluginCatalog.back().defaultSettingJson = loadedPlugin->plugin->DefaultSettingJson();
+					}
+				}
 				ConsolePrintln(TAG, "Load result for " + entry.path().filename().string() + ": " + (loadResult ? "SUCCESS" : "FAILED"));
 			}
 		}
@@ -343,6 +378,69 @@ public:
 			}
 		}
 		return result;
+	}
+
+	const std::vector<PluginCatalogInfo>& GetPluginCatalog() const {
+		return g_pluginCatalog;
+	}
+
+	const PluginInfo* FindLoadedPluginByPackageName(const std::wstring& pkgName) const {
+		for (const auto& [pluginId, info] : m_plugins) {
+			if (info.pkgName == pkgName) {
+				return &info;
+			}
+		}
+		return nullptr;
+	}
+
+	void NotifyUserSettingsLoadDone() {
+		for (auto& [pluginId, info] : m_plugins) {
+			if (info.loaded && info.plugin) {
+				info.plugin->OnUserSettingsLoadDone();
+			}
+		}
+	}
+
+	void SyncPluginsWithSettings() {
+		for (auto& catalogInfo : g_pluginCatalog) {
+			bool shouldEnable = catalogInfo.enabled;
+			if (!catalogInfo.pkgName.empty()) {
+				const auto it = g_settings_map.find(wide_to_utf8(catalogInfo.pkgName));
+				if (it != g_settings_map.end()) {
+					shouldEnable = it->second.boolValue;
+				}
+			}
+
+			const PluginInfo* loadedPlugin = !catalogInfo.pkgName.empty()
+				? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+				: FindLoadedPluginByFilePath(catalogInfo.filePath);
+
+			if (shouldEnable) {
+				if (!loadedPlugin && !catalogInfo.filePath.empty()) {
+					const bool loadResult = LoadPlugin(catalogInfo.filePath);
+					ConsolePrintln(TAG, L"SyncPluginsWithSettings load plugin: " + catalogInfo.filePath +
+						L", result: " + (loadResult ? L"SUCCESS" : L"FAILED"));
+					loadedPlugin = !catalogInfo.pkgName.empty()
+						? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+						: FindLoadedPluginByFilePath(catalogInfo.filePath);
+				}
+
+				if (loadedPlugin) {
+					catalogInfo.enabled = true;
+					catalogInfo.name = loadedPlugin->name;
+					catalogInfo.version = loadedPlugin->version;
+					catalogInfo.pkgName = loadedPlugin->pkgName;
+					if (catalogInfo.defaultSettingJson.empty()) {
+						catalogInfo.defaultSettingJson = loadedPlugin->plugin->DefaultSettingJson();
+					}
+				}
+			} else {
+				if (loadedPlugin) {
+					UnloadPlugin(loadedPlugin->pluginId);
+				}
+				catalogInfo.enabled = false;
+			}
+		}
 	}
 
 	static std::vector<std::shared_ptr<BaseAction>> IsInterceptInputShowResultsDirectly(const std::wstring& input) {
@@ -459,6 +557,82 @@ public:
 	}
 
 private:
+	static const PluginInfo* FindLoadedPluginByFilePath(const std::wstring& filePath) {
+		for (const auto& [pluginId, info] : m_plugins) {
+			if (info.filePath == filePath) {
+				return &info;
+			}
+		}
+		return nullptr;
+	}
+
+	static nlohmann::json LoadUserPluginConfig() {
+		const std::string userConfigText = ReadUtf8File(USER_SETTINGS_PATH);
+		if (userConfigText.empty()) {
+			return {};
+		}
+
+		try {
+			return nlohmann::json::parse(userConfigText);
+		} catch (const std::exception& e) {
+			Loge(TAG, L"LoadUserPluginConfig parse error", e.what());
+			return {};
+		}
+	}
+
+	static bool IsPluginEnabledByConfig(const std::wstring& pkgName, const nlohmann::json& userConfig) {
+		if (pkgName.empty() || userConfig.is_null() || !userConfig.is_object()) {
+			return true;
+		}
+
+		const std::string utf8PkgName = wide_to_utf8(pkgName);
+		if (!userConfig.contains(utf8PkgName)) {
+			return true;
+		}
+
+		try {
+			return JsonValueToBool(userConfig.at(utf8PkgName));
+		} catch (const std::exception& e) {
+			Loge(TAG, L"IsPluginEnabledByConfig parse value error", e.what());
+			return true;
+		}
+	}
+
+	static bool ProbePluginCatalogInfo(const std::wstring& dllPath, PluginCatalogInfo& catalogInfo) {
+		catalogInfo.filePath = dllPath;
+		catalogInfo.name = GetPluginNameFromPathW(dllPath);
+
+		HMODULE handle = LoadLibraryW(dllPath.c_str());
+		if (!handle) {
+			ConsolePrintln(TAG, L"Probe LoadLibraryW failed for: " + dllPath + L", Error: " + std::to_wstring(GetLastError()));
+			return false;
+		}
+
+		const auto createFunc = (CreatePluginFunc)GetProcAddress(handle, "CreatePlugin");
+		const auto destroyFunc = (DestroyPluginFunc)GetProcAddress(handle, "DestroyPlugin");
+		if (!createFunc || !destroyFunc) {
+			ConsolePrintln(TAG, L"Probe GetProcAddress failed for: " + dllPath);
+			FreeLibrary(handle);
+			return false;
+		}
+
+		IPlugin* pluginPtr = createFunc();
+		if (!pluginPtr) {
+			ConsolePrintln(TAG, L"Probe CreatePlugin returned null for: " + dllPath);
+			FreeLibrary(handle);
+			return false;
+		}
+
+		catalogInfo.name = pluginPtr->GetPluginName();
+		catalogInfo.version = pluginPtr->GetPluginVersion();
+		catalogInfo.pkgName = pluginPtr->GetPluginPackageName();
+		catalogInfo.defaultSettingJson = pluginPtr->DefaultSettingJson();
+
+		destroyFunc(pluginPtr);
+		FreeLibrary(handle);
+		return true;
+	}
+
 	bool LoadSinglePlugin(const std::wstring& dllPath, PluginInfo& info) {
 		ConsolePrintln(TAG, L"LoadSinglePlugin start: " + dllPath);
 
