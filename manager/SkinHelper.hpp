@@ -21,7 +21,7 @@ inline size_t g_prefSkinIndex;
 
 
 static void getSkinPictureFile(Gdiplus::Image *&image, const std::string &skinKey, int width, int height) {
-	const std::string picturePath = g_skinJson.value(skinKey, "");
+	const std::string picturePath = MyTrim(g_skinJson.value(skinKey, ""));
 	if (image) {
 		// 删除旧的图片对象
 		delete image;
@@ -226,14 +226,15 @@ static void RefreshSkinFile() {
 // 监听皮肤文件
 static void watchSkinFile() {
 	// 获取程序所在目录
-	wchar_t exePath[MAX_PATH];
-	GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-	std::wstring directory(exePath);
-	size_t lastSlash = directory.find_last_of(L"\\");
+	std::wstring directory = g_currectSkinFilePath;
+	size_t lastSlash = directory.find_last_of(L"\\/");
 	if (lastSlash != std::wstring::npos) {
 		directory = directory.substr(0, lastSlash);
+	} else {
+		std::wcerr << L"皮肤文件路径无效: " << g_currectSkinFilePath << std::endl;
+		return;
 	}
-
+	
 	HANDLE hDir = CreateFileW(
 			directory.c_str(),
 			FILE_LIST_DIRECTORY,
@@ -261,7 +262,7 @@ static void watchSkinFile() {
 				buffer,
 				sizeof(buffer),
 				FALSE, // 不递归
-				FILE_NOTIFY_CHANGE_LAST_WRITE,
+				FILE_NOTIFY_CHANGE_FILE_NAME |FILE_NOTIFY_CHANGE_LAST_WRITE,
 				&bytesReturned,
 				nullptr,
 				nullptr
@@ -296,11 +297,13 @@ static void watchSkinFile() {
 				}
 
 				// 检查变更的文件是否是当前皮肤文件
-				if (changedFile == currentSkinFileName) {
+				if (_wcsicmp(changedFile.c_str(), currentSkinFileName.c_str()) == 0) {
 					std::wcout << L"Skin file modification detected: " << changedFile << std::endl;
 					PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 				}
-
+				std::wcout << L"Action=" << pNotify->Action
+						   << L", File=" << changedFile << std::endl;
+				
 				// 移动到下一个通知记录
 				offset += pNotify->NextEntryOffset;
 			} while (pNotify->NextEntryOffset != 0);

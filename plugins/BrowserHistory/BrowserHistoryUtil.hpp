@@ -217,6 +217,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 				action->subTitle = action->url;
 			} catch (const std::exception& e) {
 				// 转换出错，跳过这条记录
+				Logi(L"BrowserHistory", L"Conversion error, skip this record", e.what());
 				continue;
 			}
 

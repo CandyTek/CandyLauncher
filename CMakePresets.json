@@ -2,11 +2,21 @@
   "version": 6,
   "configurePresets": [
     {
-      "name": "ninja-msvc",
+      "name": "ninja-msvc-debug",
       "generator": "Ninja",
       "binaryDir": "cmake-build-debug-ninja-vs-vsc",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "ninja-msvc-release",
+      "generator": "Ninja",
+      "binaryDir": "cmake-build-release-ninja-vs-vsc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_C_COMPILER": "cl",
         "CMAKE_CXX_COMPILER": "cl"
       }
@@ -33,7 +43,8 @@
     }
   ],
   "buildPresets": [
-    { "name": "build-ninja-msvc", "configurePreset": "ninja-msvc" },
+    { "name": "build-ninja-msvc-Debug", "configurePreset": "ninja-msvc-debug" },
+    { "name": "build-ninja-msvc-Release", "configurePreset": "ninja-msvc-release" },
     { "name": "build-ninja-mingw", "configurePreset": "ninja-mingw" },
     { "name": "build-msvc-x64-Debug", "configurePreset": "msvc-x64", "configuration": "Debug" },
     { "name": "build-msvc-x64-Release", "configurePreset": "msvc-x64", "configuration": "Release" }

@@ -70,6 +70,14 @@ static void Loge(const std::wstring& tag, const std::wstring& msg, char const* e
 	std::wcerr << L"[" + tag + L"]Error: " + msg << errorWhat << std::endl;
 }
 
+static void Logi(const std::wstring& tag, const std::string& msg, char const* errorWhat) {
+	std::wclog << L"[" + tag + L"]Error: " << utf8_to_wide(msg) << errorWhat << std::endl;
+}
+
+static void Logi(const std::wstring& tag, const std::wstring& msg, char const* errorWhat) {
+	std::wclog << L"[" + tag + L"]Error: " + msg << errorWhat << std::endl;
+}
+
 static void Loge(const std::string& tag, const std::string& msg) {
 	std::wcerr << L"[" + utf8_to_wide(tag) + L"]Error: " + utf8_to_wide(msg) << std::endl;
 }
@@ -100,7 +108,6 @@ static void ConsolePrint(const std::wstring& msg) {
 	OutputDebugStringW(ss.str().c_str());
 }
 
-
 static void ShowErrorMsgBox(std::wstring msg) {
 	const DWORD err = GetLastError();
 	wchar_t buf[256];
@@ -120,16 +127,16 @@ static void ShowErrorMsgBox(const std::string& msg) {
 	MessageBoxW(nullptr, buf, L"错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
 }
 
-inline std::chrono::time_point<std::chrono::steady_clock> methodTimerStartTimestamp;
+
+inline std::chrono::steady_clock::time_point methodTimerStartTimestamp;
 
 inline void MethodTimerStart() {
-	methodTimerStartTimestamp = std::chrono::high_resolution_clock::now();
+	methodTimerStartTimestamp = std::chrono::steady_clock::now();
 }
-
 inline void MethodTimerEnd(const std::wstring& label = L"Method") {
 	ConsolePrintln(
 		label + L": " + std::to_wstring(
 			std::chrono::duration_cast<std::chrono::milliseconds>(
-				std::chrono::high_resolution_clock::now() - methodTimerStartTimestamp).
+				std::chrono::steady_clock::now() - methodTimerStartTimestamp).
 			count()) + L" ms\n");
 }

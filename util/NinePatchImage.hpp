@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include <gdiplus.h>
+#include <memory>
 #include <vector>
 #include <numeric>
 #include <algorithm>
@@ -193,14 +194,44 @@ static void ParseContentPadding(Gdiplus::Bitmap* bmp, int cw, int ch, RECT* outP
 	outPadding->bottom = bottomPad;
 }
 
+static Gdiplus::Bitmap* GetBlankBitmap(int targetW, int targetH, RECT* outContentPadding = nullptr)
+{
+	Gdiplus::Bitmap* blank = new Gdiplus::Bitmap(
+	targetW,
+	targetH,
+	PixelFormat32bppARGB
+);
+
+	Gdiplus::Graphics g(blank);
+	g.Clear(Gdiplus::Color(255, 255, 255, 255)); // 透明背景
+
+	if (outContentPadding)
+	{
+		outContentPadding->left = 0;
+		outContentPadding->top = 0;
+		outContentPadding->right = 0;
+		outContentPadding->bottom = 0;
+	}
+	return blank;
+
+}
 
 // -------------------- 核心函数：读取 .9.png 并按目标尺寸绘制 --------------------
 static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, int targetH, RECT* outContentPadding = nullptr) {
 	using namespace Gdiplus;
-	if (!path || targetW <= 0 || targetH <= 0) throw std::invalid_argument("RenderNinePatchToSize: invalid arguments.");
+	if (!path || targetW <= 0 || targetH <= 0)
+	{
+		wprintf(L"RenderNinePatchToSize: invalid arguments.");
+		return GetBlankBitmap(std::max(50,targetW),std::max(50,targetH),outContentPadding);
+	}
 
-	std::unique_ptr<Bitmap> src(new Bitmap(path));
-	if (src->GetLastStatus() != Ok) throw std::runtime_error("Failed to load .9.png");
+	const std::unique_ptr<Bitmap> src = std::make_unique<Bitmap>(path);
+	// 加载失败：打印日志并返回透明空白图
+	if (!src || src->GetLastStatus() != Ok)
+	{
+		wprintf(L"[NinePatch] Failed to load file: %ls\n", path);
+		return GetBlankBitmap(targetW,targetH,outContentPadding);
+	}
 
 	const int W = src->GetWidth();
 	const int H = src->GetHeight();
