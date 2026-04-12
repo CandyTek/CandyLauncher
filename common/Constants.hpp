@@ -5,6 +5,8 @@
 #include <string>
 #include <unordered_set>
 
+#include "util/FileUtil.hpp"
+
 #define WM_EDIT_CONTROL_HOTKEY (WM_USER + 100)
 #define WM_EDIT_OPEN_PATH (WM_USER + 101)
 #define WM_EDIT_OPEN_TARGET_PATH (WM_USER + 102)
@@ -72,7 +74,9 @@ constexpr int SETTINGS_WINDOW_HEIGHT = 470;
 constexpr const char* SETTINGS_PREF_TYPE_STRING = "string";
 //constexpr int settings_pref_type_ = 2;
 
-constexpr const wchar_t* DEFAULT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
+// constexpr const wchar_t* DEFAULT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
+inline std::wstring DEFAULT_SKIN_PATH = GetExecutableFolder() + LR"(\skin_test_bk.json)";
+// constexpr const wchar_t* DEFAULT_SKIN_PATH = LR"(I:\Github\CandyLauncher\cmake-build-debug-visual-studio\skin_test_bk.json)";
 constexpr const wchar_t* NIGHT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_night.json)";
 
 const std::unordered_set<std::wstring> systemProcesses = {
