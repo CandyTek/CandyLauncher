@@ -270,7 +270,8 @@ if (PLUGIN_DEPENDENCIES)
 	#add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
 endif ()
 
-if (MSVC)
+if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
+#	message(WARNING "come here")
 	set(PLUGIN_DEPENDENCIES
 		FeatureLaunchPlugin
 		EverNotePlugin
@@ -313,3 +314,6 @@ else ()
 		add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
 	endif ()
 endif ()
+
+message(STATUS "CMAKE_GENERATOR = ${CMAKE_GENERATOR}")
+message(STATUS "CMAKE_CXX_COMPILER_ID = ${CMAKE_CXX_COMPILER_ID}")

@@ -835,6 +835,10 @@ inline void ShowMainWindowSimple() {
 	RestoreWindowIfMinimized(g_mainHwnd);
 	SetFocus(g_editHwnd);
 	MyMoveWindow(g_mainHwnd);
+	// if (g_BgImage != nullptr) {
+	// 	RedrawWindow(g_mainHwnd, nullptr, nullptr,
+	// 				RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+	// }
 	SetForegroundWindow(g_mainHwnd);
 	if (g_hklIme != nullptr) PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM)g_hklIme);
 }
