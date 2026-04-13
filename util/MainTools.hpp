@@ -22,10 +22,14 @@
 #include <dwmapi.h>
 #include <io.h>
 #include <fcntl.h>
+#include <shlwapi.h>
+#include <tlhelp32.h>
 
+#include "BaseTools.hpp"
 #include "../common/Constants.hpp"
 #include "../common/GlobalState.hpp"
 #include "../plugins/BaseAction.hpp"
+#include "../model/TraverseOptions.hpp"
 
 struct MonitorData {
 	HMONITOR hMonitor;
@@ -656,7 +660,7 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 	}
 
 	if (cmd.contains("folder") && cmd["folder"].is_string()) {
-		traverseOptions.folder = Utf8ToWString(cmd["folder"].get<std::string>());
+		traverseOptions.folder = Utf8ToWString(cmd["folder"].get<std::string>());cmd.value("folder", cmd["folder"].get<std::string>());
 	}
 	if (cmd.contains("command") && cmd["command"].is_string()) {
 		traverseOptions.command = Utf8ToWString(cmd["command"].get<std::string>());
@@ -719,21 +723,6 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 	}
 	return traverseOptions;
 }
-
-// 需匹配大小写
-static auto shouldExclude = [](const TraverseOptions& options, const std::wstring& name) -> bool {
-	if (std::find(options.excludeNames.begin(),
-				options.excludeNames.end(),
-				name) != options.excludeNames.end()) {
-		return true;
-	}
-	std::wstring nameLower = name;
-	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
-	for (const auto& word : options.excludeWords) {
-		if (nameLower.find(word) != std::wstring::npos) return true;
-	}
-	return false;
-};
 
 inline bool OpenConsoleHere(const std::wstring& targetPath) {
 	// 如果是文件，切到其目录；如果是目录，就用目录本身
@@ -945,4 +934,41 @@ static bool RelaunchAsAdmin() {
 	}
 
 	return true;
+}
+
+static void ChangeEditTextArg(const std::wstring& arg2) {
+	std::wstring editTextBuffer2;
+	if (MyStartsWith2(editTextBuffer, LR"({"arg":")")) {
+		if (const size_t end = find_json_end(editTextBuffer); end != std::wstring::npos) {
+			const std::wstring json_part = editTextBuffer.substr(0, end + 1);
+			bool isSuccess = false;
+			try {
+				nlohmann::json j = nlohmann::json::parse(wide_to_utf8(json_part));
+				const std::string arg = j["arg"];
+				currectActionArg = utf8_to_wide(arg);
+				isSuccess = true;
+			} catch (const nlohmann::json::parse_error& e) {
+				std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
+			}
+			if (isSuccess) {
+				editTextBuffer2 = editTextBuffer.substr(end + 1);
+			} else {
+				editTextBuffer2 = (editTextBuffer);
+				currectActionArg = L"";
+			}
+		} else {
+			editTextBuffer2 = (editTextBuffer);
+			currectActionArg = L"";
+		}
+	} else {
+		editTextBuffer2 = (editTextBuffer);
+		currectActionArg = L"";
+	}
+			
+	nlohmann::json j;
+	j["arg"] = wide_to_utf8(arg2);
+	SetWindowTextW(g_editHwnd, (utf8_to_wide(j.dump()) + editTextBuffer2).c_str());
+	const int textLength = GetWindowTextLengthW(g_editHwnd);
+	SendMessageW(g_editHwnd, EM_SETSEL, (WPARAM)textLength, (LPARAM)textLength);
+	SendMessageW(g_editHwnd, EM_SCROLLCARET, 0, 0);
 }

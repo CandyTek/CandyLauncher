@@ -49,7 +49,7 @@ static void InitializeSettingWindowResources() {
 }
 
 
-static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent,bool needMinimize = false) {
+static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = true) {
 	if (g_settingsHwnd != nullptr) {
 		RestoreWindowIfMinimized(g_settingsHwnd);
 		ShowWindow(g_settingsHwnd, SW_SHOW);
@@ -73,15 +73,15 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent,bool needMinimi
 	// 计算居中位置
 	int x = (screenWidth - SETTINGS_WINDOW_WIDTH) / 2;
 	int y = (screenHeight - SETTINGS_WINDOW_HEIGHT) / 2;
-	int exStyle = WS_POPUP | WS_CAPTION | WS_SYSMENU;
-	if (needMinimize) {
-		exStyle=exStyle| WS_MINIMIZEBOX;
-	}
+
+	unsigned long dw_style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+	if (isShow) dw_style |= WS_VISIBLE;
+
 	g_settingsHwnd = CreateWindowExW(
 		WS_EX_ACCEPTFILES, // 扩展样式
 		L"SettingsWndClass", // 窗口类名
 		L"设置", // 窗口标题
-		exStyle, // 窗口样式
+		dw_style, // 窗口样式
 		x, y, // 初始位置
 		SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT, // 宽度和高度
 		hParent, // 父窗口
@@ -89,12 +89,9 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent,bool needMinimi
 		hInstance, // 实例句柄
 		nullptr // 附加参数
 	);
-	if (needMinimize) {
-		UpdateWindow(g_settingsHwnd);
-	}
-	else {
-		ShowWindow(g_settingsHwnd, SW_SHOW);
-	}
+
+	// ShowWindow(g_settingsHwnd, SW_SHOW);
+	UpdateWindow(g_settingsHwnd);
 }
 
 
@@ -416,7 +413,6 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 
 			// 更新tab按钮的选中状态
 			UpdateTabButtonSelection(hTabButtons, newIdx);
-			break;
 		}
 		// --- 保存 ---
 		else if (LOWORD(wParam) == 9999) {
@@ -430,10 +426,9 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			g_settings_ui_last_save = g_settings_ui;
 			// 重新加载设置映射表
 			LoadSettingsMap();
-
 			DestroyWindow(hwnd);
-			PostMessage(g_mainHwnd, WM_CONFIG_SAVED, 1, 0);
-			break;
+			SendMessage(g_mainHwnd, WM_CONFIG_SAVED, 1, 0);
+			SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 		}
 		// --- 取消 ---
 		else if (LOWORD(wParam) == 9995) {
@@ -454,13 +449,12 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			if (result == IDYES) {
 				resetToDefaults(hwnd, subPageTabs, g_settings_ui_last_save, hCtrlsByTab);
 			}
-			break;
 		}
 		// --- 应用 ---
 		else if (LOWORD(wParam) == 9997) {
 			applySettings(hwnd, subPageTabs, g_settings_ui_last_save, hCtrlsByTab);
-			break;
 		}
+		break;
 	// 处理设置功能按钮，在ScrollViewHelper ScrollContainerProc里面处理
 
 	case WM_DESTROY: CleanupSettingWindowResources();

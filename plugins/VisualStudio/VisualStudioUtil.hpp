@@ -18,7 +18,6 @@
 #include "util/BitmapUtil.hpp"
 #include "util/json.hpp"
 
-namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 // 存储 Visual Studio 实例信息
@@ -61,6 +60,7 @@ static std::string ExecuteCommand(const std::wstring& command) {
 
 // 使用 vswhere.exe 获取 Visual Studio 实例列表
 static std::vector<VSInstance> GetVisualStudioInstances() {
+	namespace fs = std::filesystem;
 	std::vector<VSInstance> instances;
 
 	try {
@@ -229,6 +229,7 @@ static std::vector<std::shared_ptr<BaseAction>> ParseCodeContainers(
 	const std::string& jsonStr,
 	const VSInstance& instance,
 	int maxResults = 1000) {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	try {

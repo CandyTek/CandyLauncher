@@ -1,6 +1,5 @@
 ﻿#include "GlobalState.hpp"
 #include "Constants.hpp"
-#include "../util/FileUtil.hpp"
 
 // 全局常驻变量
 HWND g_settingsHwnd = nullptr;
@@ -14,12 +13,20 @@ HKL g_hklIme = nullptr;
 UINT_PTR TimerIDSetFocusEdit = 0;
 ULONGLONG APP_STARTUP_TIME = 0;
 
+// 用于拖放文件时延迟关闭窗口
+HHOOK g_mouseHook = nullptr;
+
 HotkeyMap g_hotkeyMap = {};
+// 下列两变量不展开 expand
 std::vector<SettingItem> g_settings_ui_last_save = {};
 std::vector<SettingItem> g_settings_ui = {};
+// 展开expand了，包含所有的key
 std::unordered_map<std::string, SettingItem> g_settings_map = {};
 std::wstring EXE_FOLDER_PATH = GetExecutableFolder();
-std::wstring USER_SETTINGS_PATH = EXE_FOLDER_PATH + L"\\user_settings.json";
+std::wstring USER_SETTINGS_PATH = EXE_FOLDER_PATH + LR"(\user_settings.json)";
+std::wstring DEFAULT_SKIN_PATH = EXE_FOLDER_PATH+ LR"(\skins\skin_default.json)";
+std::wstring NIGHT_SKIN_PATH = EXE_FOLDER_PATH+ LR"(\skins\skin_night.json)";
+
 std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
 std::string pref_hotkey_toggle_main_panel;

@@ -23,8 +23,10 @@
 // #include "../util/json.hpp"
 
 // 添加您自己项目中不常变动的核心头文件
-#include "../util/MathUtil.hpp"
-#include "../util/StringUtil.hpp"
-#include "../util/LogUtil.hpp"
+#if !defined(__MINGW32__)
+#include "util/MathUtil.hpp"
+#include "util/StringUtil.hpp"
+#include "util/LogUtil.hpp"
+#endif
 
 #endif //PCH_H

@@ -430,7 +430,7 @@ static void RenameFileItem(int itemIndex) {
 	if (runnerConfigs[index_last_selected].type == L"uwp") {
 		originalName = fileInfo.label;
 	} else {
-		originalName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\") + 1);
+		originalName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\/") + 1);
 		// 移除文件扩展名
 		size_t dotPos = originalName.find_last_of(L'.');
 		if (dotPos != std::wstring::npos) {

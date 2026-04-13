@@ -10,7 +10,7 @@
 
 
 inline std::wstring EXE_FOLDER_PATH2 = GetExecutableFolder();
-inline std::wstring RUNNER_CONFIG_PATH2 = EXE_FOLDER_PATH2 + L"\\runner.json";
+inline std::wstring RUNNER_CONFIG_PATH2 = EXE_FOLDER_PATH2 + L"\\plugins\\config_folder_plugin.json";
 
 inline IPluginHost* g_host = nullptr;
 

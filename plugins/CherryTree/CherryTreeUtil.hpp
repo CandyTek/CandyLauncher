@@ -9,6 +9,7 @@
 #include <memory>
 #include "CherryTreeAction.hpp"
 #include "../../util/StringUtil.hpp"
+#include "util/BitmapUtil.hpp"
 #include "util/LogUtil.hpp"
 
 // 结构体定义
@@ -16,12 +17,14 @@ struct NodeRow {
 	int id;
 	std::string name;
 	std::string tags;  // 重命名为 tags，更清晰
+	std::string syntax;
 };
 
 struct NodePath {
 	std::vector<int> father_ids;
 	std::string path;
 	std::string path_file;
+	std::string syntax;
 };
 
 // 执行 SQL 并读取结果
@@ -34,7 +37,7 @@ inline bool GetTable(sqlite3* db, const std::string& sql, std::vector<std::vecto
 		std::vector<std::string> row;
 		for (int i = 0; i < colCount; ++i) {
 			const unsigned char* text = sqlite3_column_text(stmt, i);
-			row.push_back(text ? reinterpret_cast<const char*>(text) : "");
+			row.emplace_back(text ? reinterpret_cast<const char*>(text) : "");
 		}
 		rows.push_back(row);
 	}
@@ -82,7 +85,7 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 	std::wcout << L"[CherryTree] Reading node table..." << std::endl;
 	{
 		std::vector<std::vector<std::string>> result;
-		if (!GetTable(db, "SELECT node_id, name, tags FROM node;", result)) {
+		if (!GetTable(db, "SELECT node_id, name, tags, syntax FROM node;", result)) {
 			std::wcerr << L"[CherryTree] Error reading node table: " << sqlite3_errmsg(db) << std::endl;
 			return;
 		}
@@ -91,13 +94,14 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 		for (auto& row : result) {
 			// 只查询需要的字段：node_id, name, tags
 			// row[0] = node_id, row[1] = name, row[2] = tags
-			if (row.size() < 3) continue;
+			if (row.size() < 4) continue;
 
 			try {
 				NodeRow n;
 				n.id = std::stoi(row[0]);      // node_id
 				n.name = row[1];               // name
 				n.tags = row[2];               // tags
+				n.syntax = row[3];
 				map_node[n.id] = n;
 			} catch (const std::exception& e) {
 				std::wcerr << L"[CherryTree] Error parsing node row: " << e.what()
@@ -141,6 +145,7 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 			} else {
 				np.father_ids.push_back(0);
 				np.path = "[" + std::to_string(child) + "]" + path_string;
+				np.syntax =map_node[child].syntax ;
 
 				std::replace(path_string_file.begin(), path_string_file.end(), ' ', '_');
 				std::replace(path_string_file.begin(), path_string_file.end(), '/', '-');
@@ -171,8 +176,13 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 		action->url = L"cherrytree://node/" + std::to_wstring(id);
 
 		// 设置图标（可以使用 CherryTree 的默认图标或自定义）
-		action->iconFilePath = L""; // 暂时留空，可以后续设置
-		action->iconFilePathIndex = -1;
+		// action->iconFilePath =ICON_FOLDER_PATH+ utf8_to_wide(np.syntax)+L".png"; // 暂时留空，可以后续设置
+		action->iconFilePathIndex = GetSysImageIndex(ICON_FOLDER_PATH+ utf8_to_wide(np.syntax)+L".ico");
+		if (action->iconFilePathIndex == 0) {
+			ConsolePrintln(L"icon", ICON_FOLDER_PATH+ utf8_to_wide(np.syntax)+L".ico");
+			// ConsolePrintln(L"icon", L" " + std::to_wstring(action->iconFilePathIndex));
+
+		}
 		action->matchText = m_host->GetTheProcessedMatchingText(utf8_to_wide(np.path));
 
 		// 添加到 allActions

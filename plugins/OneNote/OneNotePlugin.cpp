@@ -1,6 +1,7 @@
 ﻿#include "../Plugin.hpp"
 #include <memory>
 
+#include "FindOneNoteUtil.hpp"
 #include "OneNoteAction.hpp"
 #include "OneNotePluginData.hpp"
 #include "OneNoteSimple.hpp"  // New #import-based implementation
@@ -11,7 +12,7 @@ class OneNotePlugin : public IPlugin {
 private:
 	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
 	std::wstring startStr = L"one ";
-	std::wstring iconPath = LR"(C:\Program Files\Microsoft Office\root\Office16\ONENOTE.EXE)";
+	std::wstring iconPath;
 
 public:
 	OneNotePlugin() = default;
@@ -47,8 +48,21 @@ public:
 			Loge(L"OneNote Plugin", L"RefreshAllActions: m_host is null");
 			return;
 		}
-
 		ConsolePrintln(L"OneNote Plugin", L"RefreshAllActions start");
+
+		if (const std::string path = m_host->GetSettingsMap().at("com.candytek.onenoteplugin.icon_path").stringValue;path.empty()) {
+			iconPath = FindOneNotePathEnhanced();
+			if (!iconPath.empty()) {
+				std::cout << "Found OneNote: " << wide_to_utf8(iconPath) << "\n";
+			} else {
+				std::cout << "OneNote not found (desktop Office 2013/2016/2019 checks attempted).\n";
+				iconPath = LR"(C:\Program Files\Microsoft Office\root\Office16\ONENOTE.EXE)";
+			}
+		}else {
+			iconPath = utf8_to_wide(path);
+		}
+		
+		
 		allPluginActions.clear();
 
 		try {
@@ -132,7 +146,7 @@ public:
 			"type": "string",
 			"title": "OneNote图标路径",
 			"subPage": "plugin",
-			"defValue": "C:\\Program Files\\Microsoft Office\\root\\Office16\\ONENOTE.EXE"
+			"defValue": ""
 		},
 		{
 			"key": "com.candytek.onenoteplugin.max_results",

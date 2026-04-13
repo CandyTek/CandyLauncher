@@ -20,7 +20,46 @@ inline size_t g_prefSkinIndex;
 //inline std::atomic<bool> g_shouldStop;
 
 
-static void getSkinPictureFile(Gdiplus::Image *&image, const std::string &skinKey, int width, int height) {
+// 判断系统是否启用了深色模式
+static bool IsSystemDarkMode() {
+	HKEY hKey;
+	DWORD value = 0;
+	DWORD dataSize = sizeof(DWORD);
+
+	// 打开注册表键
+	LONG result = RegOpenKeyExW(
+		HKEY_CURRENT_USER,
+		L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+		0,
+		KEY_READ,
+		&hKey
+	);
+
+	if (result != ERROR_SUCCESS) {
+		return false; // 无法打开注册表，默认返回非深色模式
+	}
+
+	// 读取 AppsUseLightTheme 值（0 = 深色模式，1 = 浅色模式）
+	result = RegQueryValueExW(
+		hKey,
+		L"AppsUseLightTheme",
+		nullptr,
+		nullptr,
+		reinterpret_cast<LPBYTE>(&value),
+		&dataSize
+	);
+
+	RegCloseKey(hKey);
+
+	if (result != ERROR_SUCCESS) {
+		return false; // 读取失败，默认返回非深色模式
+	}
+
+	// 返回 true 表示深色模式（value == 0），false 表示浅色模式（value == 1）
+	return value == 0;
+}
+
+static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey, int width, int height) {
 	const std::string picturePath = MyTrim(g_skinJson.value(skinKey, ""));
 	if (image) {
 		// 删除旧的图片对象
@@ -42,7 +81,7 @@ static void getSkinPictureFile(Gdiplus::Image *&image, const std::string &skinKe
 	}
 }
 
-static void getSkinPictureFile(Gdiplus::Image *&image, const std::string &skinKey) {
+static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey) {
 	const std::string picturePath = g_skinJson.value(skinKey, "");
 	if (image) {
 		// 删除旧的图片对象
@@ -59,10 +98,15 @@ static void getSkinPictureFile(Gdiplus::Image *&image, const std::string &skinKe
 	}
 }
 
-static void refreshSkin(std::wstring skinPath, bool isShowWindow = true) {
+static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) {
 	if (skinPath == L"default") {
 		skinPath = DEFAULT_SKIN_PATH;
 	} else if (skinPath == L"night_mode") {
+		skinPath = NIGHT_SKIN_PATH;
+	}
+	// 黑夜模式功能
+	std::string mode = g_settings_map["pref_night_mode"].stringValue;
+	if (mode == "night_mode" || (mode == "auto_recognition" && IsSystemDarkMode())) {
 		skinPath = NIGHT_SKIN_PATH;
 	}
 
@@ -85,8 +129,7 @@ static void refreshSkin(std::wstring skinPath, bool isShowWindow = true) {
 	try {
 		g_skinJson = nlohmann::json::parse(utf8json);
 		in.close();
-	}
-	catch (const nlohmann::json::parse_error &e) {
+	} catch (const nlohmann::json::parse_error& e) {
 		std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
 		return;
 	}
@@ -104,6 +147,9 @@ static void refreshSkin(std::wstring skinPath, bool isShowWindow = true) {
 	}
 
 	// --- 2. 更新编辑框 (hEdit) ---
+	if (g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {
+		EDIT_HINT_TEXT = utf8_to_wide(g_skinJson.value("editbox_hint_text",g_settings_map["pref_search_box_placeholder"].stringValue));
+	}
 	int editX = g_skinJson.value("editbox_x", 10);
 	int editY = g_skinJson.value("editbox_y", 10);
 	int editWidth = g_skinJson.value("editbox_width", 580);
@@ -212,9 +258,9 @@ static void RefreshSkinFile() {
 	prefSkin->entryValues.emplace_back("default");
 	prefSkin->entries.emplace_back("默认");
 	prefSkin->entryValues.emplace_back("night_mode");
-	prefSkin->entries.emplace_back("黑夜模式");
+	prefSkin->entries.emplace_back("夜间模式");
 
-	for (const auto &path: g_skinFilePaths) {
+	for (const auto& path : g_skinFilePaths) {
 		std::filesystem::path p(path);
 		std::wstring fileName = p.stem().wstring();
 		prefSkin->entryValues.emplace_back(wide_to_utf8(path));
@@ -225,16 +271,10 @@ static void RefreshSkinFile() {
 
 // 监听皮肤文件
 static void watchSkinFile() {
-	// 获取程序所在目录
-	std::wstring directory = g_currectSkinFilePath;
-	size_t lastSlash = directory.find_last_of(L"\\/");
-	if (lastSlash != std::wstring::npos) {
-		directory = directory.substr(0, lastSlash);
-	} else {
-		std::wcerr << L"皮肤文件路径无效: " << g_currectSkinFilePath << std::endl;
-		return;
-	}
-	
+	static ULONGLONG lastRefreshTimeTick=0;
+	// 获取皮肤所在目录
+	std::wstring directory(EXE_FOLDER_PATH + LR"(\skins)");
+
 	HANDLE hDir = CreateFileW(
 			directory.c_str(),
 			FILE_LIST_DIRECTORY,
@@ -262,7 +302,7 @@ static void watchSkinFile() {
 				buffer,
 				sizeof(buffer),
 				FALSE, // 不递归
-				FILE_NOTIFY_CHANGE_FILE_NAME |FILE_NOTIFY_CHANGE_LAST_WRITE,
+				FILE_NOTIFY_CHANGE_LAST_WRITE,
 				&bytesReturned,
 				nullptr,
 				nullptr
@@ -270,7 +310,8 @@ static void watchSkinFile() {
 
 		if (!success) {
 			DWORD err = GetLastError();
-			if (err != ERROR_OPERATION_ABORTED) { // 忽略取消操作的错误
+			if (err != ERROR_OPERATION_ABORTED) {
+				// 忽略取消操作的错误
 				std::wcerr << L"ReadDirectoryChangesW 失败，错误代码：" << err << std::endl;
 			}
 			break; // 发生错误，退出循环
@@ -278,28 +319,36 @@ static void watchSkinFile() {
 
 		// 2. (关键修复) 只有当确实返回了数据时才处理
 		if (bytesReturned > 0) {
-			FILE_NOTIFY_INFORMATION *pNotify;
+			FILE_NOTIFY_INFORMATION* pNotify;
 			size_t offset = 0;
 
 			do {
-				pNotify = (FILE_NOTIFY_INFORMATION *) ((BYTE *) buffer + offset);
+				pNotify = (FILE_NOTIFY_INFORMATION*)((BYTE*)buffer + offset);
 
 				// FileNameLength 是以字节为单位的，需要转换为 WCHAR 的数量
 				std::wstring changedFile(pNotify->FileName, pNotify->FileNameLength / sizeof(WCHAR));
 
 				// 从当前皮肤路径中提取文件名
 				std::wstring currentSkinFileName;
-				size_t pos = g_currectSkinFilePath.find_last_of(L"\\/");
-				if (pos != std::wstring::npos) {
-					currentSkinFileName = g_currectSkinFilePath.substr(pos + 1);
+				if (g_currectSkinFilePath == L"default") {
+					currentSkinFileName = DEFAULT_SKIN_PATH;
+				} else if (g_currectSkinFilePath == L"night_mode") {
+					currentSkinFileName = NIGHT_SKIN_PATH;
 				} else {
 					currentSkinFileName = g_currectSkinFilePath;
+				}
+				if (const size_t pos = currentSkinFileName.find_last_of(L"\\/"); pos != std::wstring::npos) {
+					currentSkinFileName = currentSkinFileName.substr(pos + 1);
 				}
 
 				// 检查变更的文件是否是当前皮肤文件
 				if (_wcsicmp(changedFile.c_str(), currentSkinFileName.c_str()) == 0) {
-					std::wcout << L"Skin file modification detected: " << changedFile << std::endl;
-					PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
+					// 时间防抖
+					if (const ULONGLONG now = GetTickCount64(); now - lastRefreshTimeTick > 400) {
+						lastRefreshTimeTick = now;
+						std::wcout << L"Skin file modification detected: " << changedFile << std::endl;
+						PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
+					}
 				}
 				std::wcout << L"Action=" << pNotify->Action
 						   << L", File=" << changedFile << std::endl;

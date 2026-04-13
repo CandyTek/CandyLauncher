@@ -76,15 +76,15 @@
 		},
 		{
 			"key": "pref_night_mode",
-			"title": "夜间模式(未完善)",
+			"title": "夜间模式",
 			"type": "list",
 			"entries": [
 				"总是使用主题",
 				"总是夜间模式",
-				"自动识别"
+				"适应系统"
 			],
 			"entryValues": [
-				"day_mode",
+				"skin_mode",
 				"night_mode",
 				"auto_recognition"
 			],
@@ -201,7 +201,7 @@
 			"title": "失去焦点时关闭窗口",
 			"type": "list",
 			"entries": [
-				"允许拖放文件(未完善)",
+				"允许拖放文件",
 				"立即关闭窗口",
 				"无"
 			],
@@ -322,6 +322,13 @@
 			"defValue": "please input text..."
 		},
 		{
+			"key": "pref_search_box_placeholder_use_theme",
+			"title": "编辑框提示词由主题提供",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": true
+		},
+		{
 			"key": "pref_preserve_last_search_term",
 			"title": "保留上次搜索词",
 			"type": "bool",
@@ -426,7 +433,7 @@
 		},
 		{
 			"key": "pref_about_other1",
-			"title": "",
+			"title": "本次应用启动完成耗时(动态更改)",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""

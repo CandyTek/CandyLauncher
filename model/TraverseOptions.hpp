@@ -23,3 +23,18 @@ struct TraverseOptions {
 	std::wstring command;
 	bool recursive = false;
 };
+
+// 需匹配大小写
+static auto shouldExclude = [](const TraverseOptions& options, const std::wstring& name) -> bool {
+	if (std::find(options.excludeNames.begin(),
+				options.excludeNames.end(),
+				name) != options.excludeNames.end()) {
+		return true;
+				}
+	std::wstring nameLower = name;
+	std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
+	for (const auto& word : options.excludeWords) {
+		if (nameLower.find(word) != std::wstring::npos) return true;
+	}
+	return false;
+};

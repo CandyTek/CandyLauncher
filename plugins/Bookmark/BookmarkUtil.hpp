@@ -16,7 +16,6 @@
 #include "util/BitmapUtil.hpp"
 #include "util/StringUtil.hpp"
 
-namespace fs = std::filesystem;
 using nlohmann::json;
 
 // 递归收集节点中的书签
@@ -77,6 +76,7 @@ static void CollectBookmarksFromNode(const json& node,
 
 // 返回第一个找到的 .ico 文件路径（非递归）
 static std::string findFirstIcoFile(const std::string& folderPath) {
+	namespace fs = std::filesystem;
 	try {
 		const fs::path dir(folderPath);
 		if (!fs::exists(dir) || !fs::is_directory(dir)) {
@@ -97,6 +97,7 @@ static std::string findFirstIcoFile(const std::string& folderPath) {
 // 解析指定基目录 + profile 下的 Chromium 书签（Chrome/Edge 通用）
 // 如果你在多 Profile 环境（比如同时有 "Profile 1"、"Profile 2"），用 GetChromeBookmarksFromBaseDir(baseDir, "Profile 1") 指定即可。
 static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(const std::string& baseDir, const std::string& profile) {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 
@@ -161,6 +162,7 @@ inline std::string getLocalAppData() {
 
 
 static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarks() {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	const std::string localAppData = getLocalAppData();
@@ -182,6 +184,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetEdgeBookmarksFromBaseDir(cons
 }
 
 static std::vector<std::shared_ptr<BaseAction>> GetEdgeBookmarks() {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	const std::string localAppData = getLocalAppData();

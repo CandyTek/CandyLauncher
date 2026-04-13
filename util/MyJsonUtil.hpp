@@ -59,5 +59,7 @@ inline std::vector<SettingItem> ParseConfig(const std::string& configStr, uint16
 	};
 
 	parseItems(j["prefList"], settings);
+	std::cout<<"ParseConfig"<<"当前settings数量"<<settings.size()<<std::endl;
+
 	return settings;
 }

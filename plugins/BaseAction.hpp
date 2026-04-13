@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <ShlObj.h>
+#include <cstdint>
 
 class BaseAction {
 public:

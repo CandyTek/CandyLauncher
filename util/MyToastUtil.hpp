@@ -1,5 +1,5 @@
 ﻿#pragma once
-
+#if !defined(__MINGW32__)
 #include <wintoastlib.h>
 
 #include "LogUtil.hpp"
@@ -96,3 +96,4 @@ static INT64 MyShowSimpleToast(const std::wstring& title, const std::wstring& me
 	// ConsolePrintln(L"WinToast", L"通知已显示,ID: " + std::to_wstring(toast_id));
 	return toast_id;
 }
+#endif

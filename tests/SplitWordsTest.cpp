@@ -11,6 +11,7 @@
 #include <cpp-pinyin/Pinyin.h>
 #include <pugixml.hpp>
 
+#include "plugins/OneNote/FindOneNoteUtil.hpp"
 #include "util/json.hpp"
 
 
@@ -227,6 +228,8 @@ static void TestPugixmlParsing() {
 }
 
 
+
+
 int main() {
 	_setmode(_fileno(stdout), _O_U8TEXT); // 设置 wcout 输出为 UTF-8
 
@@ -267,6 +270,16 @@ int main() {
 
 	std::wcout << "path = " << utf8_to_wide(arg) << "\n";
 	std::wcout << "tail = " << utf8_to_wide(tail_part) << "\n";
+
+
+	std::wstring path = FindOneNotePathEnhanced();
+	if (!path.empty()) {
+		std::wcout << L"Found OneNote: " << path << L"\n";
+		return 0;
+	} else {
+		std::wcout << L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).\n";
+		return 1;
+	}
 
 
 	return 0;

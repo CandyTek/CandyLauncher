@@ -10,12 +10,11 @@
 #include <filesystem>
 #include "../../common/Constants.hpp"
 #include "../../model/TraverseOptions.hpp"
-#include "../../util/MainTools.hpp"
 #include "util/FileSystemTraverser.hpp"
 #include "util/RegistryAppsTraverser.hpp"
 #include <psapi.h>
 
-#include "plugins/Folder/FileAction.hpp"
+#include "FileAction.hpp"
 #pragma comment(lib, "Psapi.lib")
 
 

@@ -1,0 +1,70 @@
+{
+	"version": 1,
+	"window_width": 500,
+	"window_height": 500,
+	"window_bg_picture": "",
+	"window_bg_color": "#1E1E1E",
+	"window_opacity": 255,
+
+	"editbox_width": 437,
+	"editbox_height": 40,
+	"editbox_x": 50,
+	"editbox_y": 10,
+	"editbox_font_size": 20.0,
+	"editbox_font_family": "Microsoft YaHei UI",
+	"editbox_font_color": "#DDDDDD",
+	"editbox_bg_color": "#2A2A2A",
+	"editbox_hint_color": "#777777",
+	"editbox_bg_picture": "",
+
+	"listview_bg_color": "#252525",
+	"listview_bg_picture": "",
+
+	"item_font_color_1": "#FFFFFF",
+	"item_font_color_2": "#BBBBBB",
+	"item_font_color_selected_1": "#FFFFFF",
+	"item_font_color_selected_2": "#AAAAAA",
+
+	"item_bg_color": "#252525",
+	"item_bg_color_selected": "#333355",
+	"item_bg_picture": "",
+	"item_bg_picture_selected": "",
+
+	"item_text_selected_x_1": 55,
+	"item_text_selected_y_1": 4,
+	"item_text_selected_x_2": 55,
+	"item_text_selected_y_2": 30,
+
+	"item_font_family_1": "微软雅黑",
+	"item_font_family_2": "微软雅黑",
+	"item_font_family_selected_1": "微软雅黑",
+	"item_font_family_selected_2": "微软雅黑",
+
+	"item_font_size_1": 16,
+	"item_font_size_2": 10,
+	"item_font_size_selected_1": 18,
+	"item_font_size_selected_2": 12,
+
+	"item_width": 462,
+	"item_height": 60,
+
+	"item_icon_selected_x": 6,
+	"item_icon_selected_y": 4,
+	"item_icon_x": 6,
+	"item_icon_y": 4,
+
+	"item_text_x_1": 60,
+	"item_text_y_1": 4,
+	"item_text_x_2": 60,
+	"item_text_y_2": 22,
+
+	"listview_width": 484,
+	"listview_height": 427,
+	"listview_x": 8,
+	"listview_y": 65,
+
+	"listview_padding_left": 20,
+	"listview_padding_right": 20,
+	"listview_padding_top": 11,
+	"listview_padding_bottom": -1
+}

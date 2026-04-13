@@ -19,6 +19,8 @@
 #define TIMER_SETFOCUS_EDIT  109
 #define TIMER_SET_GLOBAL_HOTKEY  110
 #define TIMER_SHOW_WINDOW  111
+#define TIMER_DELAY_HIDE_WINDOW 112
+#define TIMER_DETERMINE_FILE_DRAG_AND_DROP 113
 
 
 #define HOTKEY_ID_TOGGLE_MAIN_PANEL (100)
@@ -71,9 +73,6 @@ constexpr int SETTINGS_WINDOW_HEIGHT = 470;
 
 constexpr const char* SETTINGS_PREF_TYPE_STRING = "string";
 //constexpr int settings_pref_type_ = 2;
-
-constexpr const wchar_t* DEFAULT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_test.json)";
-constexpr const wchar_t* NIGHT_SKIN_PATH = LR"(C:\Users\Administrator\source\repos\WindowsProject1\skin_night.json)";
 
 const std::unordered_set<std::wstring> systemProcesses = {
 	L"explorer.exe",

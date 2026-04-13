@@ -37,8 +37,12 @@ void MainWindowInitInstance(HINSTANCE, int);
 
 LRESULT CALLBACK MainWindowWndProc(HWND, UINT, WPARAM, LPARAM);
 
+// 鼠标钩子回调函数，用于检测拖放操作
+LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam);
+
 Gdiplus::GdiplusStartupInput gdiplusStartupInput;
 inline ULONG_PTR gdiplusToken;
+static ULONGLONG lastDragAndDropTime;
 
 // 主进程函数
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -51,7 +55,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	g_hInst = hInstance;
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+#if !defined(__MINGW32__)
 	isToastAvailable = InitializeWinToast();
+#endif
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 	if (needOpenDebugCmd) AttachConsoleForDebug();
@@ -61,16 +67,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	SettingWindowRegisterClass(hInstance);
 	if (needOpenShell32IconViewer) ShowShell32IcoViewer(hInstance);
 	MainWindowInitInstance(hInstance, nCmdShow);
-	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr,true);
+	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr, false);
 	if (needMinimizeSettingWindow) ShowWindow(g_settingsHwnd, SW_MINIMIZE);
 	g_skinFileWatcherThread = std::thread(watchSkinFile);
 
 	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_CANDYLAUNCHER));
 	refreshSkin(g_currectSkinFilePath, !g_settings_map["pref_hide_window_after_run"].boolValue);
 	APP_STARTUP_TIME = GetTickCount64() - g_appStartTick; // 记录程序耗费时
-	ConsolePrintln(L"WinMain",L"程序初始化完成");
+	ConsolePrintln(L"WinMain", L"程序初始化完成");
 	// MyShowSimpleToast(L"CandyLauncher 已启动", L"程序初始化完成,按 Alt+K 呼出启动器");
-	
+
 	MSG msg;
 
 	// 主消息循环:
@@ -219,6 +225,33 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 	// Println(L"Windows inited.");
 }
 
+// 安装鼠标钩子，用于监听鼠标释放
+static void InstallMouseHook() {
+	if (g_mouseHook == nullptr) {
+		g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, g_hInst, 0);
+	}
+}
+
+// 卸载鼠标钩子
+static void UninstallMouseHook() {
+	if (g_mouseHook != nullptr) {
+		UnhookWindowsHookEx(g_mouseHook);
+		g_mouseHook = nullptr;
+	}
+}
+
+// 鼠标钩子回调函数
+LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+	if (nCode >= 0) {
+		if (wParam == WM_LBUTTONUP) {
+			// 鼠标左键释放，启动延迟定时器检查是否收到拖放事件
+			UninstallMouseHook();
+			SetTimer(g_mainHwnd, TIMER_DELAY_HIDE_WINDOW, 100, nullptr);
+		}
+	}
+	return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+}
+
 // 处理主窗口的消息。
 LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam) {
 	switch (message) {
@@ -301,7 +334,14 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		{
 			// 如果是 WA_INACTIVE，说明窗口从激活变为非激活状态（失去焦点）
 			if (LOWORD(wParam) == WA_INACTIVE) {
-				if (g_settings_map["pref_close_on_dismiss_focus"].stringValue == "close_immediate") HideWindow();
+				if (hWnd == g_mainHwnd) {
+					std::string closeMode = g_settings_map["pref_close_on_dismiss_focus"].stringValue;
+					if (closeMode == "close_immediate") {
+						HideWindow();
+					} else if (closeMode == "allow_drag_file") {
+						SetTimer(g_mainHwnd, TIMER_DETERMINE_FILE_DRAG_AND_DROP, 50, nullptr);
+					}
+				}
 			}
 		}
 		break;
@@ -411,20 +451,55 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			}
 			break;
 		}
-	case WM_TIMER: if (wParam == TIMER_SETFOCUS_EDIT) {
-			if (TimerIDSetFocusEdit != 0) {
-				KillTimer(hWnd, TimerIDSetFocusEdit);
+	case WM_TIMER:
+		{
+			if (wParam == TIMER_SETFOCUS_EDIT) {
+				if (TimerIDSetFocusEdit != 0) {
+					KillTimer(hWnd, TimerIDSetFocusEdit);
+				}
+				SetFocus(g_editHwnd);
+			} else if (wParam == TIMER_SET_GLOBAL_HOTKEY) {
+				KillTimer(hWnd, TIMER_SET_GLOBAL_HOTKEY);
+				RegisterHotkeyFromString(g_mainHwnd, pref_hotkey_toggle_main_panel, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+			} else if (wParam == TIMER_SHOW_WINDOW) {
+				KillTimer(hWnd, TIMER_SHOW_WINDOW);
+				ShowMainWindowSimple();
+			} else if (wParam == TIMER_DELAY_HIDE_WINDOW) {
+				KillTimer(hWnd, TIMER_DELAY_HIDE_WINDOW);
+				// 延迟后如果没有收到拖放事件，则隐藏窗口
+				if (GetTickCount64() - lastDragAndDropTime >= 70) {
+					HideWindow();
+				}
+			} else if (wParam == TIMER_DETERMINE_FILE_DRAG_AND_DROP) {
+				KillTimer(hWnd, TIMER_DETERMINE_FILE_DRAG_AND_DROP);
+				// 检查鼠标左键是否按下（正在拖动）
+				if (GetKeyState(VK_LBUTTON) & 0x8000) {
+					// 正在拖动，安装钩子等待释放
+					InstallMouseHook();
+				} else {
+					// 没有拖动，直接隐藏
+					HideWindow();
+				}
 			}
-			SetFocus(g_editHwnd);
-		} else if (wParam == TIMER_SET_GLOBAL_HOTKEY) {
-			KillTimer(hWnd, TIMER_SET_GLOBAL_HOTKEY);
-			RegisterHotkeyFromString(g_mainHwnd, pref_hotkey_toggle_main_panel, HOTKEY_ID_TOGGLE_MAIN_PANEL);
-		} else if (wParam == TIMER_SHOW_WINDOW) {
-			KillTimer(hWnd, TIMER_SHOW_WINDOW);
-			ShowMainWindowSimple();
 		}
 		break;
 	case WM_FOCUS_EDIT: SetFocus(g_editHwnd);
+		break;
+	case WM_DROPFILES:
+		{
+			// 收到拖放事件，取消延迟隐藏
+			KillTimer(hWnd, TIMER_DELAY_HIDE_WINDOW);
+			lastDragAndDropTime = GetTickCount64();
+			UninstallMouseHook();
+			const HDROP hDrop = (HDROP)wParam;
+			if (DragQueryFile(hDrop, 0xFFFFFFFF, nullptr, 0) > 0) {
+				const UINT pathLen = DragQueryFile(hDrop, 0, NULL, 0) + 1;
+				std::vector<wchar_t> filePath(pathLen);
+				DragQueryFile(hDrop, 0, filePath.data(), pathLen);
+				ChangeEditTextArg(filePath.data());
+			}
+			DragFinish(hDrop);
+		}
 		break;
 	case WM_REFRESH_SKIN:
 		{
@@ -469,7 +544,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				delete g_BgImage;
 				g_BgImage = nullptr;
 			}
-
+			UninstallMouseHook();
 			SaveWindowRectToRegistry(hWnd);
 			ListView_DeleteAllItems(g_listViewHwnd);
 			listViewCleanup();

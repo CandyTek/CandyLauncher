@@ -57,9 +57,22 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	// 绘制背景
 	drawBackground(hwnd, graphics, rc);
 
-	// 准备绘制文本
+	// 如果文本末尾有空格的话，MeasureCharacterRanges 计算会有问题，使用这种办法来解决
+	TCHAR buffer2[1024];
+	const int textLength = GetWindowText(hwnd, buffer2, std::size(buffer2));
 	TCHAR buffer[1024];
-	const int textLength = GetWindowText(hwnd, buffer, std::size(buffer));
+	_tcscpy_s(buffer, std::size(buffer), buffer2);
+	const int len = lstrlen(buffer);  // 获取字符串长度（不含 '\0'）
+	// 替换空格为 'a'
+	for (int i = len - 1; i >= 0; --i)
+	{
+		if (buffer[i] == _T(' '))
+			buffer[i] = _T('i');
+		else {
+			break;
+		}
+	}
+
 
 	// 计算绘制位置（考虑滚动位置）
 	// 获取第一个字符（索引0）的位置，它会告诉我们当前的滚动偏移
@@ -108,8 +121,8 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 										static_cast<Gdiplus::REAL>(rc.bottom));
 
 			// 1) 先把整段文字按普通颜色画一次（非选中状态）
-			const std::wstring text(buffer);
-			graphics.DrawString(buffer, -1, &font, layout, &format, &fontBrush);
+			const std::wstring text(buffer2);
+			graphics.DrawString(buffer2, -1, &font, layout, &format, &fontBrush);
 
 			// 2) 用 CharacterRanges 测到“选中区”在同一 layout 下的真实边界
 			const Gdiplus::CharacterRange range((INT)selStart, (INT)(selEnd - selStart));
@@ -138,7 +151,7 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 			const Gdiplus::RectF layout((Gdiplus::REAL)layoutX, 0,
 										static_cast<Gdiplus::REAL>(layoutWidth),
 										static_cast<Gdiplus::REAL>(rc.bottom));
-			graphics.DrawString(buffer, -1, &font, layout, &format, &fontBrush);
+			graphics.DrawString(buffer2, -1, &font, layout, &format, &fontBrush);
 
 			// 绘制光标（复用选区的测量逻辑）
 			if (GetFocus() == hwnd && g_caretOn) {

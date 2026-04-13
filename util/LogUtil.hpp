@@ -10,13 +10,13 @@
 
 
 // 标准打印输出方法
-static void Println(const std::wstring& msg) {
+static void MyPrintln(const std::wstring& msg) {
 	std::wstringstream ss;
 	ss << L"" << msg << L"\n";
 	OutputDebugStringW(ss.str().c_str());
 }
 
-static void Print(const std::wstring& msg) {
+static void MyPrint(const std::wstring& msg) {
 	std::wstringstream ss;
 	ss << L"" << msg;
 	OutputDebugStringW(ss.str().c_str());

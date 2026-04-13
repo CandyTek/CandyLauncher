@@ -172,7 +172,7 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 	case WM_COMMAND:
 		{
 			int ctrlId = LOWORD(wParam);
-			if (ctrlId >= 3000 && ctrlId < static_cast<int>(3000 + g_settings_ui.size())) {
+			if (ctrlId >= 3000 && ctrlId < static_cast<int>(3000 + g_settings_map.size())) {
 				// 從ID計算出在 settings 中的索引
 				SettingItem* setting = getSettingItemForCtrlSubId(ctrlId - 3000, g_settings_ui);
 				if (setting == nullptr) {
