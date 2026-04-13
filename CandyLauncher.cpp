@@ -111,7 +111,7 @@ ATOM MainWindowRegisterClass(HINSTANCE hInstance) {
 	wcex.lpszClassName = L"CandyLauncherClass";
 	wcex.hbrBackground = nullptr;
 
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_CANDYLAUNCHER));
 
 	return RegisterClassExW(&wcex);
 }
