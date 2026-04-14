@@ -37,10 +37,10 @@ extern std::vector<SettingItem> g_settings_ui;
 // 在任何地方都可以调用这个数组来获取用户配置项
 extern std::unordered_map<std::string, SettingItem> g_settings_map;
 
-extern std::wstring EXE_FOLDER_PATH;
+extern const std::wstring EXE_FOLDER_PATH;
 extern std::wstring USER_SETTINGS_PATH;
-extern std::wstring DEFAULT_SKIN_PATH;
-extern std::wstring NIGHT_SKIN_PATH;
+extern const std::wstring DEFAULT_SKIN_PATH;
+extern const std::wstring NIGHT_SKIN_PATH;
 extern std::wstring EDIT_HINT_TEXT;
 extern std::string pref_force_ime_mode;
 extern std::string pref_hotkey_toggle_main_panel;

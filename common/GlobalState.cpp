@@ -22,10 +22,10 @@ std::vector<SettingItem> g_settings_ui_last_save = {};
 std::vector<SettingItem> g_settings_ui = {};
 // 展开expand了，包含所有的key
 std::unordered_map<std::string, SettingItem> g_settings_map = {};
-std::wstring EXE_FOLDER_PATH = GetExecutableFolder();
+const std::wstring EXE_FOLDER_PATH = GetExecutableFolder();
+const std::wstring DEFAULT_SKIN_PATH = EXE_FOLDER_PATH + LR"(\skins\skin_default.json)";
+const std::wstring NIGHT_SKIN_PATH = EXE_FOLDER_PATH + LR"(\skins\skin_night.json)";
 std::wstring USER_SETTINGS_PATH = EXE_FOLDER_PATH + LR"(\user_settings.json)";
-std::wstring DEFAULT_SKIN_PATH = EXE_FOLDER_PATH+ LR"(\skins\skin_default.json)";
-std::wstring NIGHT_SKIN_PATH = EXE_FOLDER_PATH+ LR"(\skins\skin_night.json)";
 
 std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
