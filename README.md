@@ -13,7 +13,7 @@ CandyLauncher 是一个用 C++ 编写的轻量级 Windows 快捷启动器，仿 
 
 - 主面板可通过自定义热键呼出或隐藏
 - 在列表中快速执行项目、以管理员权限运行或打开文件夹
-- 支持读取 `runner.json` 扫描目录
+- 支持读取 `config_folder_plugin.json` 扫描目录
 - 主题皮肤及窗口特效可通过配置文件调整
 
 ## note

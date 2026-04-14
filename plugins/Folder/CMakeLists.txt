@@ -4,7 +4,7 @@ project(FolderPlugin)
 # 插件源文件
 set(PLUGIN_SOURCES
 		FolderPlugin.cpp
-		RunnerConfigUtils.hpp
+		FolderPluginConfigUtils.hpp
 		FileAction.hpp
 		../Plugin.hpp
 		FolderPluginData.hpp
@@ -21,9 +21,13 @@ include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)
 # 链接 Shlwapi 库（PathFileExistsW 等 API）
 target_link_libraries(${PROJECT_NAME} PRIVATE Shlwapi)
 
-# 复制
+# 每次都初始化构建程序的用户配置
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		${CMAKE_SOURCE_DIR}/plugins/Folder/config_folder_plugin.json
-		$<TARGET_FILE_DIR:${PROJECT_NAME}>
+		COMMAND $<$<NOT:$<CONFIG:Release>>:${CMAKE_COMMAND}>
+		$<$<NOT:$<CONFIG:Release>>:-E>
+		$<$<NOT:$<CONFIG:Release>>:copy_if_different>
+		$<$<NOT:$<CONFIG:Release>>:${CMAKE_SOURCE_DIR}/plugins/Folder/config_folder_plugin.json>
+		$<$<NOT:$<CONFIG:Release>>:$<TARGET_FILE_DIR:${PROJECT_NAME}>>
+		COMMAND_EXPAND_LISTS
+		VERBATIM
 )

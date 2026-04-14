@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "CalcAction.hpp"
-#include "PluginData.hpp"
+#include "CalcPluginData.hpp"
 #include "ExprtkWrapper.hpp"
 #include "latex.hpp"
 #include "util/BaseTools.hpp"

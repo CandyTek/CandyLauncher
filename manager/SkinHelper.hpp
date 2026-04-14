@@ -60,18 +60,22 @@ static bool IsSystemDarkMode() {
 }
 
 static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey, int width, int height) {
-	const std::string picturePath = MyTrim(g_skinJson.value(skinKey, ""));
+	std::wstring picturePath = utf8_to_wide(MyTrim(g_skinJson.value(skinKey, "")));
+	if (MyStartsWith2(picturePath, L"\\\\")) {
+	} else if (MyStartsWith2(picturePath, L"\\")) {
+		picturePath = utf8_to_wide(g_skinJson["skin_folder"]) + picturePath;
+	}
 	if (image) {
 		// 删除旧的图片对象
 		delete image;
 		image = nullptr;
 	}
 	if (!picturePath.empty()) {
-		if (MyEndsWith(utf8_to_wide(picturePath), L".9.png")) {
-			image = RenderNinePatchToSize(utf8_to_wide(picturePath).c_str(), width, height);
+		if (MyEndsWith(picturePath, L".9.png")) {
+			image = RenderNinePatchToSize(picturePath.c_str(), width, height);
 			//image =CreateNinePatchBitmap(utf8_to_wide(picturePath).c_str(),MAIN_WINDOW_WIDTH,MAIN_WINDOW_HEIGHT);
 		} else {
-			image = new Gdiplus::Image(utf8_to_wide(picturePath).c_str());
+			image = new Gdiplus::Image(picturePath.c_str());
 		}
 		if (image->GetLastStatus() != Gdiplus::Ok) {
 			delete image;
@@ -129,6 +133,11 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	try {
 		g_skinJson = nlohmann::json::parse(utf8json);
 		in.close();
+		// 转路径
+		std::filesystem::path fullPath(skinPath);
+		// 存进 json
+		g_skinJson["skin_path"] = std::filesystem::absolute(fullPath).u8string();
+		g_skinJson["skin_folder"] = std::filesystem::absolute(fullPath.parent_path()).u8string();
 	} catch (const nlohmann::json::parse_error& e) {
 		std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
 		return;
@@ -148,7 +157,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 
 	// --- 2. 更新编辑框 (hEdit) ---
 	if (g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {
-		EDIT_HINT_TEXT = utf8_to_wide(g_skinJson.value("editbox_hint_text",g_settings_map["pref_search_box_placeholder"].stringValue));
+		EDIT_HINT_TEXT = utf8_to_wide(g_skinJson.value("editbox_hint_text", g_settings_map["pref_search_box_placeholder"].stringValue));
 	}
 	int editX = g_skinJson.value("editbox_x", 10);
 	int editY = g_skinJson.value("editbox_y", 10);
@@ -168,10 +177,10 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	double editFontSize = g_skinJson.value("editbox_font_size", 12.0);
 	HDC hdc = GetDC(g_editHwnd);
 	HFONT hEditFont = CreateFontW(
-			-MulDiv(static_cast<int>(editFontSize), GetDeviceCaps(hdc, LOGPIXELSY), 72),
-			0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-			OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-			DEFAULT_PITCH | FF_DONTCARE, editFontFamily.c_str()
+		-MulDiv(static_cast<int>(editFontSize), GetDeviceCaps(hdc, LOGPIXELSY), 72),
+		0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+		DEFAULT_PITCH | FF_DONTCARE, editFontFamily.c_str()
 	);
 	ReleaseDC(g_editHwnd, hdc);
 
@@ -234,10 +243,10 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 		GetWindowRect(g_mainHwnd, &rc);
 		// 临时缩小窗口
 		SetWindowPos(g_mainHwnd, nullptr, rc.left, rc.top, rc.left + 1, rc.top + 1,
-					 SWP_NOZORDER);
+					SWP_NOZORDER);
 		// 恢复原大小
 		SetWindowPos(g_mainHwnd, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
-					 SWP_NOZORDER);
+					SWP_NOZORDER);
 		ShowWindow(g_mainHwnd, SW_FORCEMINIMIZE);
 		SetTimer(g_mainHwnd, TIMER_SHOW_WINDOW, 50, nullptr);
 	}
@@ -245,7 +254,9 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 
 static void RefreshSkinFile() {
 	auto prefSkin = std::find_if(g_settings_ui_last_save.rbegin(), g_settings_ui_last_save.rend(),
-								 [](const SettingItem &item) { return item.key == "pref_skin"; });
+								[](const SettingItem& item) {
+									return item.key == "pref_skin";
+								});
 	if (prefSkin == g_settings_ui_last_save.rend()) {
 		return;
 	}
@@ -271,18 +282,18 @@ static void RefreshSkinFile() {
 
 // 监听皮肤文件
 static void watchSkinFile() {
-	static ULONGLONG lastRefreshTimeTick=0;
+	static ULONGLONG lastRefreshTimeTick = 0;
 	// 获取皮肤所在目录
 	std::wstring directory(EXE_FOLDER_PATH + LR"(\skins)");
 
 	HANDLE hDir = CreateFileW(
-			directory.c_str(),
-			FILE_LIST_DIRECTORY,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-			nullptr,
-			OPEN_EXISTING,
-			FILE_FLAG_BACKUP_SEMANTICS,
-			nullptr
+		directory.c_str(),
+		FILE_LIST_DIRECTORY,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		nullptr,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		nullptr
 	);
 
 	if (hDir == INVALID_HANDLE_VALUE) {
@@ -298,14 +309,14 @@ static void watchSkinFile() {
 	while (!g_shouldStop) // 线程将在此循环，检查停止标志
 	{
 		BOOL success = ReadDirectoryChangesW(
-				hDir,
-				buffer,
-				sizeof(buffer),
-				FALSE, // 不递归
-				FILE_NOTIFY_CHANGE_LAST_WRITE,
-				&bytesReturned,
-				nullptr,
-				nullptr
+			hDir,
+			buffer,
+			sizeof(buffer),
+			FALSE, // 不递归
+			FILE_NOTIFY_CHANGE_LAST_WRITE,
+			&bytesReturned,
+			nullptr,
+			nullptr
 		);
 
 		if (!success) {
@@ -351,8 +362,8 @@ static void watchSkinFile() {
 					}
 				}
 				std::wcout << L"Action=" << pNotify->Action
-						   << L", File=" << changedFile << std::endl;
-				
+					<< L", File=" << changedFile << std::endl;
+
 				// 移动到下一个通知记录
 				offset += pNotify->NextEntryOffset;
 			} while (pNotify->NextEntryOffset != 0);
@@ -361,7 +372,6 @@ static void watchSkinFile() {
 
 	CloseHandle(hDir);
 }
-
 
 
 static void stopThreadSkinFileWatcher() {

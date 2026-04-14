@@ -157,6 +157,29 @@ static HBITMAP IconToBitmap(HICON hIcon) {
 	return iconInfo.hbmColor;
 }
 
+static HICON BitmapToIcon(HBITMAP hBitmap) {
+	if (!hBitmap) return nullptr;
+
+	ICONINFO ii = {};
+	ii.fIcon = TRUE;
+	ii.hbmColor = hBitmap;
+
+	// 创建一个透明遮罩（1位黑白位图）
+	BITMAP bm = {};
+	GetObject(hBitmap, sizeof(BITMAP), &bm);
+
+	ii.hbmMask = CreateBitmap(bm.bmWidth, bm.bmHeight, 1, 1, nullptr);
+
+	HICON hIcon = CreateIconIndirect(&ii);
+
+	// 清理 mask，color 位图由外部管理，不要删除
+	if (ii.hbmMask) {
+		DeleteObject(ii.hbmMask);
+	}
+
+	return hIcon;
+}
+
 static HBITMAP GetIconFromPathAsBitmap(const std::wstring& path) {
 	std::wstring actualPath = path;
 

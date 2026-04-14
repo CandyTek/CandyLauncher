@@ -11,6 +11,8 @@
 #include <set>
 #include <filesystem>
 
+#include "../common/I18n.hpp"
+#include "../common/I18nResource.h"
 #include "../common/Resource.h"
 #include "../util/BaseTools.hpp"
 #include "../util/MainTools.hpp"
@@ -22,26 +24,36 @@
 #include "../view/CustomBgColorView.hpp"
 #include "../manager/SkinHelper.hpp"
 #include "view/CustomComboBox.hpp"
+#include "view/CustomEdit.hpp"
 
 static int tabBtnWidth = 120;
 static HWND blankBelowTabBelow = nullptr;
 inline HFONT pref_edit_hfont = nullptr;
+inline bool isSettingsWindowClosingWithoutSave = false;
 
-static std::map<std::string, std::string> tabNameMap = {
-	{"plugin", "插件"},
-	{"normal", "常规"},
-	{"feature", "功能"},
-	{"skin", "皮肤"},
-	{"other", "其他"},
-	{"hotkey", "快捷键"},
-	{"about", "关于"}
+static std::map<std::string, UINT> tabNameMap = {
+	{"plugin", IDS_I18N_TAB_PLUGIN},
+	{"normal", IDS_I18N_TAB_NORMAL},
+	{"feature", IDS_I18N_TAB_FEATURE},
+	{"skin", IDS_I18N_TAB_SKIN},
+	{"other", IDS_I18N_TAB_OTHER},
+	{"hotkey", IDS_I18N_TAB_HOTKEY},
+	{"about", IDS_I18N_TAB_ABOUT}
 };
-
+static std::map<std::wstring, UINT> tabIconMap = {
+	{L"plugin", IDI_SETTINGS_TAB_PLUGIN},
+	{L"normal", IDI_SETTINGS_TAB_NORMAL},
+	{L"feature", IDI_SETTINGS_TAB_FEATURE},
+	{L"skin", IDI_SETTINGS_TAB_SKIN},
+	{L"other", IDI_SETTINGS_TAB_OTHER},
+	{L"hotkey", IDI_SETTINGS_TAB_HOTKEY},
+	{L"about", IDI_SETTINGS_TAB_ABOUT}
+};
 
 static void InitializeSettingWindowResources() {
 	if (!pref_edit_hfont) {
 		pref_edit_hfont = CreateFontW(
-			-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+			-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
 			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
 	}
@@ -52,10 +64,12 @@ static void InitializeSettingWindowResources() {
 static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = true) {
 	if (g_settingsHwnd != nullptr) {
 		RestoreWindowIfMinimized(g_settingsHwnd);
-		ShowWindow(g_settingsHwnd, SW_SHOW);
 		SetForegroundWindow(g_settingsHwnd);
+		// ShowWindow(g_settingsHwnd, SW_SHOWNOACTIVATE);
+		ShowWindow(g_settingsHwnd, SW_SHOW);
 		return;
 	}
+	LoadSettingList();
 
 	// 清理静态变量，防止重复创建控件
 	hTabButtons.clear();
@@ -80,7 +94,7 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = 
 	g_settingsHwnd = CreateWindowExW(
 		WS_EX_ACCEPTFILES, // 扩展样式
 		L"SettingsWndClass", // 窗口类名
-		L"设置", // 窗口标题
+		LoadI18nString(IDS_I18N_SETTINGS_WINDOW_TITLE, L"Settings").c_str(), // 窗口标题
 		dw_style, // 窗口样式
 		x, y, // 初始位置
 		SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT, // 宽度和高度
@@ -100,6 +114,26 @@ static void CleanupSettingWindowResources() {
 	if (pref_edit_hfont) {
 		DeleteObject(pref_edit_hfont);
 		pref_edit_hfont = nullptr;
+	}
+}
+
+static void setCustomEdit(HWND hEdit, bool isNumber=false) {
+	auto* data = new EditBorderData;
+	if (isNumber) {
+		data->oldProc = (WNDPROC)SetWindowLongPtrW(hEdit, GWLP_WNDPROC, (LONG_PTR)NumberEditBorder2pxProc);
+	} else {
+		data->oldProc = (WNDPROC)SetWindowLongPtrW(hEdit, GWLP_WNDPROC, (LONG_PTR)EditBorder2pxProc);
+	}
+	SetWindowLongPtrW(hEdit, GWLP_USERDATA, (LONG_PTR)data);
+	
+	SendMessageW(hEdit, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
+	// 文本区域左右内缩
+	SendMessageW(hEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+}
+
+static void RestoreSavedToggleMainPanelHotkey() {
+	if (!pref_hotkey_toggle_main_panel.empty()) {
+		RegisterHotkeyFromString(g_mainHwnd, pref_hotkey_toggle_main_panel, HOTKEY_ID_TOGGLE_MAIN_PANEL);
 	}
 }
 
@@ -207,18 +241,19 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 			} else if (item.type == "string") {
 				hCtrl = CreateWindowW(L"EDIT",
 									utf8_to_wide(item.stringValue).c_str(),
-									WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
+									WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_LEFT |WS_BORDER,
 									contorlX, currentY, 200, 25, hParent, (HMENU)currentCtrlSubId, nullptr,
 									nullptr);
-				SendMessageW(hCtrl, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
+				setCustomEdit(hCtrl);
 			} else if (item.type == "stringArr") {
 				std::wstring defVal;
 				for (auto& s : item.stringArr) defVal += utf8_to_wide(s) + L"\r\n";
 				hCtrl = CreateWindowW(L"EDIT",
 									defVal.c_str(),
-									WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | ES_MULTILINE | WS_VSCROLL,
+									WS_CHILD | WS_VISIBLE | ES_LEFT | ES_MULTILINE | WS_VSCROLL| ES_AUTOHSCROLL|ES_AUTOVSCROLL|WS_BORDER,
 									contorlX, currentY, 200, 50, hParent, (HMENU)currentCtrlSubId, nullptr,
 									nullptr);
+				setCustomEdit(hCtrl);
 				if (isExpand) currentY += 30;
 			} else if (item.type == "list") {
 				hCtrl = CreateEnhancedComboBox(hParent, currentCtrlSubId, contorlX, currentY, 200, 300, (HMENU)currentCtrlSubId);
@@ -229,7 +264,6 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				{
 					SetWindowSubclass(cbi.hwndCombo, ComboBoxListSubclassProc, 1, (DWORD_PTR)hParent);
 				}
-
 				const auto& entries = item.entries;
 				const auto& entryValues = item.entryValues;
 				int selIndex = 0;
@@ -244,20 +278,19 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 			} else if (item.type == "long") {
 				hCtrl = CreateWindowW(L"EDIT",
 									std::to_wstring(item.intValue).c_str(),
-									WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | ES_NUMBER,
-									contorlX, currentY, 100, 25, hParent, (HMENU)currentCtrlSubId,
-									nullptr, nullptr);
-			} else if (item.type == "hotkeystring") {
-				// 在堆上创建副本
-				std::string pItemData = item.stringValue;
-
-				hCtrl = CreateWindowW(L"EDIT",
-									utf8_to_wide(item.stringValue).c_str(),
-									WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
+									WS_CHILD | WS_VISIBLE | ES_LEFT | ES_NUMBER | ES_AUTOHSCROLL|WS_BORDER,
 									contorlX, currentY, 200, 25, hParent, (HMENU)currentCtrlSubId,
 									nullptr, nullptr);
-
-				SetWindowSubclass(hCtrl, HotkeyEditSubclassProc, 3, (DWORD_PTR)&pItemData); // 注册子类以处理按键
+				setCustomEdit(hCtrl);
+			} else if (item.type == "hotkeystring") {
+				hCtrl = CreateWindowW(L"EDIT",
+									utf8_to_wide(item.stringValue).c_str(),
+									WS_CHILD | WS_VISIBLE | ES_LEFT| ES_AUTOHSCROLL|WS_BORDER,
+									contorlX, currentY, 200, 25, hParent, (HMENU)currentCtrlSubId,
+									nullptr, nullptr);
+				SendMessageW(hCtrl, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
+				InstallHotkeySubclass(hCtrl, hwnd, utf8_to_wide(item.key));
+				SendMessageW(hCtrl, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
 			} else if (item.type == "button") {
 				ButtonStyle btnStyle = BTN_NORMAL;
 				if (item.key == "pref_backup_settings") {
@@ -310,6 +343,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 	switch (msg) {
 	case WM_CREATE:
 		{
+			isSettingsWindowClosingWithoutSave = false;
 			SendMessage(g_settingsHwnd, WM_SETREDRAW, FALSE, 0);
 			RefreshSkinFile();
 			AddAppStartupTime();
@@ -322,10 +356,16 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			// 创建Tab按钮（左侧）
 			int tabY = 0;
 			for (size_t i = 0; i < subPageTabs.size(); ++i) {
-				std::string label = tabNameMap.count(subPageTabs[i]) ? tabNameMap[subPageTabs[i]] : subPageTabs[i];
-				HICON myIcon = (HICON)LoadImage(g_hInst,MAKEINTRESOURCE(IDI_SMALL),IMAGE_ICON, 16, 16,LR_DEFAULTCOLOR);
-				HWND hTabBtn = CreateEnhancedButton(hwnd, (2000 + i), utf8_to_wide(label), 0, tabY, tabBtnWidth, 48,
-													(HMENU)(2000 + i), BTN_NORMAL, myIcon, TEXT_LEFT);
+				std::wstring key = utf8_to_wide(subPageTabs[i]);
+				std::wstring label;
+				if (auto it = tabNameMap.find(subPageTabs[i]); it != tabNameMap.end()) {
+					label = LoadI18nString(it->second, label);
+				}
+				// 用 key 查图标资源ID
+				const UINT iconId = tabIconMap[key];
+				const HICON hIcon = (HICON)LoadImage(g_hInst,MAKEINTRESOURCE(iconId),IMAGE_ICON, 16, 16,LR_DEFAULTCOLOR);
+				HWND hTabBtn = CreateEnhancedButton(hwnd, (2000 + i), label, 0, tabY, tabBtnWidth, 48,
+													(HMENU)(2000 + i), BTN_NORMAL, hIcon, TEXT_LEFT);
 				hTabButtons.push_back(hTabBtn);
 				tabY += 48;
 			}
@@ -364,11 +404,13 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			UpdateTabButtonSelection(hTabButtons, 0);
 
 			// 保存按钮
-			CreateEnhancedButton(hwnd, 1, L"保存", SETTINGS_WINDOW_WIDTH - 200, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
+			CreateEnhancedButton(hwnd, 1, LoadI18nString(IDS_I18N_BTN_SAVE, L"Save"),
+								SETTINGS_WINDOW_WIDTH - 200, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
 								(HMENU)9999, BTN_PRIMARY);
 
 			// 取消按钮
-			CreateEnhancedButton(hwnd, 1, L"取消", SETTINGS_WINDOW_WIDTH - 110, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
+			CreateEnhancedButton(hwnd, 1, LoadI18nString(IDS_I18N_BTN_CANCEL, L"Cancel"),
+								SETTINGS_WINDOW_WIDTH - 110, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
 								(HMENU)9995, BTN_NORMAL);
 
 			//			CreateWindowW(...); // Reset button - removed
@@ -424,17 +466,19 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			saveConfigToFile(USER_SETTINGS_PATH, newConfig);
 			// 将temp数据复制回原始数据
 			g_settings_ui_last_save = g_settings_ui;
-			// 重新加载设置映射表
-			LoadSettingsMap();
+			// 重新加载设置和当前语言
+			LoadSettingList();
 			DestroyWindow(hwnd);
 			SendMessage(g_mainHwnd, WM_CONFIG_SAVED, 1, 0);
 			SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 		}
 		// --- 取消 ---
 		else if (LOWORD(wParam) == 9995) {
+			isSettingsWindowClosingWithoutSave = true;
 			// 取消时不保存temp数据，直接恢复原始皮肤路径并销毁窗口
 			g_currectSkinFilePath = originalSkinPath;
 			SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
+			RestoreSavedToggleMainPanelHotkey();
 
 			// 清理temp数据（可选，因为下次打开设置窗口时会重新初始化）
 			g_settings_ui.clear();
@@ -444,8 +488,11 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 		}
 		// --- 重置 ---
 		else if (LOWORD(wParam) == 9998) {
-			int result = MessageBoxW(hwnd, L"确定要重置所有设置为默认值吗？", L"确认重置",
-									MB_YESNO | MB_ICONQUESTION);
+			int result = MessageBoxW(
+				hwnd,
+				LoadI18nString(IDS_I18N_RESET_CONFIRM_TEXT, L"Reset all settings to their default values?").c_str(),
+				LoadI18nString(IDS_I18N_RESET_CONFIRM_TITLE, L"Confirm Reset").c_str(),
+				MB_YESNO | MB_ICONQUESTION);
 			if (result == IDYES) {
 				resetToDefaults(hwnd, subPageTabs, g_settings_ui_last_save, hCtrlsByTab);
 			}
@@ -465,13 +512,16 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 		currentSubPageIndex = 0;
 		g_settingsHwnd = nullptr;
 		blankBelowTabBelow = nullptr;
+		isSettingsWindowClosingWithoutSave = false;
 		// 清理临时设置数据
 		g_settings_ui.clear();
 		break;
 	case WM_CLOSE:
 		{
+			isSettingsWindowClosingWithoutSave = true;
 			g_currectSkinFilePath = originalSkinPath;
 			SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
+			RestoreSavedToggleMainPanelHotkey();
 			// 清理临时设置数据
 			g_settings_ui.clear();
 			DestroyWindow(hwnd);
@@ -502,14 +552,17 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 		}
 	case WM_APP_HOTKEY_COMMIT:
 		{
-			std::unique_ptr<std::wstring> key((std::wstring*)wParam);
-			std::unique_ptr<std::wstring> value((std::wstring*)lParam);
+			const auto* key = reinterpret_cast<const wchar_t*>(wParam);
+			const auto* value = reinterpret_cast<const wchar_t*>(lParam);
 
-			// 统一用 UTF-8 存储
-			std::string utf8 = wide_to_utf8(*value);
+			if (isSettingsWindowClosingWithoutSave) {
+				RestoreSavedToggleMainPanelHotkey();
+				return 0;
+			}
 
-			// 注册全局热键（顺序上也更合理）
-			RegisterHotkeyFromString(g_mainHwnd, utf8, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+			if (key && value && std::wstring(key) == L"pref_hotkey_toggle_main_panel") {
+				RegisterHotkeyFromString(g_mainHwnd, wide_to_utf8(value), HOTKEY_ID_TOGGLE_MAIN_PANEL);
+			}
 
 			return 0;
 		}
@@ -530,7 +583,8 @@ inline ATOM SettingWindowRegisterClass(HINSTANCE hInstance) {
 	//wc.cbClsExtra = 0;
 	//wc.cbWndExtra = 0;
 	wc.hbrBackground = reinterpret_cast<HBRUSH>((COLOR_WINDOW + 1));
-
+	wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_CANDYLAUNCHER));
+	wc.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_CANDYLAUNCHER));
 	wc.lpszClassName = L"SettingsWndClass";
 	return RegisterClassExW(&wc);
 }

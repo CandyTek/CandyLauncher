@@ -3,9 +3,9 @@
 #include <memory>
 #include <string>
 
-#include "PluginAction.hpp"
-#include "PluginData.hpp"
-#include "PluginUtil.hpp"
+#include "ToolBoxAction.hpp"
+#include "ToolBoxPluginData.hpp"
+#include "ToolBoxUtil.hpp"
 
 class SmallToolBoxPlugin : public IPlugin {
 private:

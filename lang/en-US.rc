@@ -1,0 +1,30 @@
+﻿#include <winres.h>
+#include "../common/I18nResource.h"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+STRINGTABLE
+BEGIN
+	IDS_I18N_MAIN_WINDOW_TITLE "CandyLauncher"
+	IDS_I18N_SETTINGS_WINDOW_TITLE "CandyLauncher Settings"
+	IDS_I18N_BTN_SAVE "Save"
+	IDS_I18N_BTN_CANCEL "Cancel"
+	IDS_I18N_TAB_PLUGIN "Plugins"
+	IDS_I18N_TAB_NORMAL "General"
+	IDS_I18N_TAB_FEATURE "Features"
+	IDS_I18N_TAB_SKIN "Skins"
+	IDS_I18N_TAB_OTHER "Other"
+	IDS_I18N_TAB_HOTKEY "Hotkeys"
+	IDS_I18N_TAB_ABOUT "About"
+	IDS_I18N_RESET_CONFIRM_TEXT "Reset all settings to their default values?"
+	IDS_I18N_RESET_CONFIRM_TITLE "Confirm Reset"
+	IDS_I18N_CONFIG_LOAD_ERROR_TITLE "Config Load Error"
+	IDS_I18N_GENERIC_ERROR_TITLE "Error"
+	IDS_I18N_BACKUP_SUCCESS_TITLE "Backup Created"
+	IDS_I18N_BACKUP_SUCCESS_PREFIX "Settings backed up to: "
+	IDS_I18N_BACKUP_FAIL_TEXT "Backup failed"
+	IDS_I18N_RESTORE_SUCCESS_TITLE "Restore Completed"
+	IDS_I18N_RESTORE_SUCCESS_TEXT "Settings restored. Restart the app to apply them."
+	IDS_I18N_RESTORE_FAIL_TEXT "Restore failed"
+	IDS_I18N_STARTUP_TIME_PREFIX "Startup completed in "
+END

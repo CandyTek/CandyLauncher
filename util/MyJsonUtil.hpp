@@ -2,6 +2,7 @@
 #include <string>
 
 #include "json.hpp"
+#include "common/I18n.hpp"
 #include "common/GlobalState.hpp"
 
 inline std::string makeCompactJsonWithoutBraces(const std::string& path) {
@@ -32,14 +33,12 @@ inline std::vector<SettingItem> ParseConfig(const std::string& configStr, uint16
 				SettingItem setting;
 				setting.key = item["key"].get<std::string>();
 				setting.type = item["type"].get<std::string>();
-				setting.title = item["title"].get<std::string>();
+				setting.title = GetLocalizedJsonString(item, "title");
 				setting.pluginId = pluginId;
 				setting.subPageIndex = GetTabIndexForSetting(item["subPage"].get<std::string>());
 
 				// 如果存在 entries，就解析；否则设为空
-				if (item.contains("entries")) {
-					setting.entries = item["entries"].get<std::vector<std::string>>();
-				}
+				setting.entries = GetLocalizedJsonStringArray(item, "entries");
 
 				if (item.contains("entryValues")) {
 					setting.entryValues = item["entryValues"].get<std::vector<std::string>>();

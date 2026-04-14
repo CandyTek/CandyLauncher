@@ -31,6 +31,13 @@ IDI_CANDYLAUNCHER       ICON         "icons/CandyLauncher.ico"
 IDI_CLOSE       ICON         "icons/close.ico"
 IDI_REFRESH       ICON         "icons/refresh.ico"
 IDI_SMALL               ICON         "icons/small.ico"
+IDI_SETTINGS_TAB_PLUGIN               ICON         "icons/tab_plugin.ico"
+IDI_SETTINGS_TAB_NORMAL               ICON         "icons/tab_normal.ico"
+IDI_SETTINGS_TAB_FEATURE               ICON         "icons/tab_feature.ico"
+IDI_SETTINGS_TAB_SKIN               ICON         "icons/tab_skin.ico"
+IDI_SETTINGS_TAB_OTHER               ICON         "icons/tab_other.ico"
+IDI_SETTINGS_TAB_HOTKEY               ICON         "icons/tab_hotkey.ico"
+IDI_SETTINGS_TAB_ABOUT               ICON         "icons/tab_about.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //

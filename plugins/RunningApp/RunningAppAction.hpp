@@ -3,7 +3,7 @@
 #include <ShlObj.h>
 
 #include "util/BaseTools.hpp"
-#include "PluginData.hpp"
+#include "RunningAppPluginData.hpp"
 
 
 class RunningAppAction final : public BaseAction

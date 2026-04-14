@@ -686,7 +686,7 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 			}
 		}
 	} else {
-		traverseOptions.extensions = {L".exe", L".lnk"};
+		traverseOptions.extensions = DEFAULT_EXTENSIONS;
 	}
 
 	if (cmd.contains("excludes") && cmd["excludes"].is_array()) {

@@ -2,67 +2,33 @@
 	"version": 1,
 	"prefList": [
 		{
-			"key": "expand_test1",
-			"type": "expand",
-			"title": "测试折叠",
+			"key": "pref_auto_start",
+			"title": "开机自动启动",
+			"title_en": "Launch at startup",
+			"type": "bool",
 			"subPage": "normal",
-			"children": [
-				{
-					"key": "pref_auto_start",
-					"title": "开机自动启动",
-					"type": "bool",
-					"subPage": "normal",
-					"defValue": false
-				},
-				{
-					"key": "expand_test2",
-					"type": "expand",
-					"title": "测试折叠2",
-					"subPage": "normal",
-					"children": [
-						{
-							"key": "pref_show_tray_icon",
-							"title": "显示托盘图标",
-							"type": "bool",
-							"subPage": "normal",
-							"defValue": true
-						},
-						{
-							"key": "pref_acknowledgements2",
-							"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
-							"type": "text",
-							"subPage": "normal",
-							"defValue": ""
-						}
-					]
-				}
-			]
+			"defValue": false
 		},
 		{
-			"key": "expand_test3",
-			"type": "expand",
-			"title": "测试折叠3",
+			"key": "pref_show_tray_icon",
+			"title": "显示托盘图标",
+			"title_en": "Show tray icon",
+			"type": "bool",
 			"subPage": "normal",
-			"children": [
-				{
-					"key": "pref_run_app_as_admin",
-					"title": "以管理员身份启动本程序",
-					"type": "bool",
-					"subPage": "normal",
-					"defValue": true
-				},
-				{
-					"key": "pref_acknowledgements3",
-					"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
-					"type": "text",
-					"subPage": "normal",
-					"defValue": ""
-				}
-			]
+			"defValue": true
+		},
+		{
+			"key": "pref_run_app_as_admin",
+			"title": "以管理员身份启动本程序",
+			"title_en": "Run this app as administrator",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": true
 		},
 		{
 			"key": "pref_hide_window_after_run",
 			"title": "静默启动本程序",
+			"title_en": "Start hidden",
 			"type": "bool",
 			"subPage": "normal",
 			"defValue": true
@@ -70,18 +36,48 @@
 		{
 			"key": "pref_check_app_version",
 			"title": "自动检查更新(未完善)",
+			"title_en": "Automatically check for updates (unfinished)",
 			"type": "bool",
 			"subPage": "normal",
 			"defValue": true
 		},
 		{
+			"key": "pref_ui_language",
+			"title": "界面语言",
+			"title_en": "UI language",
+			"type": "list",
+			"entries": [
+				"跟随系统",
+				"中文",
+				"English"
+			],
+			"entries_en": [
+				"Follow system",
+				"Chinese",
+				"English"
+			],
+			"entryValues": [
+				"system",
+				"zh",
+				"en"
+			],
+			"subPage": "normal",
+			"defValue": "system"
+		},
+		{
 			"key": "pref_night_mode",
 			"title": "夜间模式",
+			"title_en": "Theme mode",
 			"type": "list",
 			"entries": [
 				"总是使用主题",
 				"总是夜间模式",
 				"适应系统"
+			],
+			"entries_en": [
+				"Always use theme",
+				"Always dark mode",
+				"Follow system"
 			],
 			"entryValues": [
 				"skin_mode",
@@ -94,6 +90,7 @@
 		{
 			"key": "pref_hotkey_toggle_main_panel",
 			"title": "主面板显示、隐藏",
+			"title_en": "Toggle main panel",
 			"type": "hotkeystring",
 			"subPage": "hotkey",
 			"defValue": ""
@@ -101,41 +98,15 @@
 		{
 			"key": "pref_show_window_and_release_modifier_key",
 			"title": "主面板显示后松开修饰键",
+			"title_en": "Release modifier key after showing main panel",
 			"type": "bool",
 			"subPage": "hotkey",
 			"defValue": true
 		},
 		{
-			"key": "pref_hotkey_open_file_location",
-			"title": "打开项目文件所在位置",
-			"type": "hotkeystring",
-			"subPage": "hotkey",
-			"defValue": ""
-		},
-		{
-			"key": "pref_hotkey_open_target_location",
-			"title": "打开项目目标所在位置",
-			"type": "hotkeystring",
-			"subPage": "hotkey",
-			"defValue": ""
-		},
-		{
-			"key": "pref_hotkey_open_with_clipboard_params",
-			"title": "打开附带剪贴板参数",
-			"type": "hotkeystring",
-			"subPage": "hotkey",
-			"defValue": ""
-		},
-		{
-			"key": "pref_hotkey_run_item_as_admin",
-			"title": "以管理员身份运行项目",
-			"type": "hotkeystring",
-			"subPage": "hotkey",
-			"defValue": ""
-		},
-		{
 			"key": "pref_ctrl_number_launch_item",
 			"title": "Ctrl + 数字键启动列表项目",
+			"title_en": "Launch result with Ctrl + number",
 			"type": "bool",
 			"subPage": "hotkey",
 			"defValue": false
@@ -143,6 +114,7 @@
 		{
 			"key": "pref_alt_number_launch_item",
 			"title": "Alt + 数字键启动列表项目",
+			"title_en": "Launch result with Alt + number",
 			"type": "bool",
 			"subPage": "hotkey",
 			"defValue": true
@@ -150,20 +122,15 @@
 		{
 			"key": "pref_hotkey_show_setting",
 			"title": "显示软件设置界面",
+			"title_en": "Open settings window",
 			"type": "hotkeystring",
 			"subPage": "hotkey",
 			"defValue": ""
 		},
 		{
-			"key": "pref_run_item_as_admin",
-			"title": "以管理员身份运行项目",
-			"type": "bool",
-			"subPage": "feature",
-			"defValue": false
-		},
-		{
 			"key": "pref_hide_in_fullscreen",
 			"title": "全屏应用时不弹出窗口",
+			"title_en": "Do not show window over fullscreen apps",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -171,6 +138,7 @@
 		{
 			"key": "pref_hide_in_topmost_fullscreen",
 			"title": "置顶全屏应用时不弹出窗口",
+			"title_en": "Do not show over topmost fullscreen apps",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
@@ -178,6 +146,7 @@
 		{
 			"key": "pref_window_always_on_top",
 			"title": "主窗口置于顶层",
+			"title_en": "Keep main window on top",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
@@ -185,6 +154,7 @@
 		{
 			"key": "pref_window_mouse_penetration",
 			"title": "主窗口鼠标穿透",
+			"title_en": "Enable mouse click-through",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -192,6 +162,7 @@
 		{
 			"key": "pref_close_after_open_item",
 			"title": "打开项目后关闭窗口",
+			"title_en": "Close window after opening item",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
@@ -199,11 +170,17 @@
 		{
 			"key": "pref_close_on_dismiss_focus",
 			"title": "失去焦点时关闭窗口",
+			"title_en": "When the window loses focus",
 			"type": "list",
 			"entries": [
 				"允许拖放文件",
 				"立即关闭窗口",
 				"无"
+			],
+			"entries_en": [
+				"Allow dragging files",
+				"Close immediately",
+				"Do nothing"
 			],
 			"entryValues": [
 				"allow_drag_file",
@@ -216,6 +193,7 @@
 		{
 			"key": "pref_window_popup_position",
 			"title": "窗口弹出位置",
+			"title_en": "Window popup position",
 			"type": "list",
 			"subPage": "feature",
 			"entries": [
@@ -226,6 +204,15 @@
 				"固定主屏幕",
 				"固定屏幕二",
 				"固定屏幕三"
+			],
+			"entries_en": [
+				"Last opened position",
+				"Screen under current cursor",
+				"Screen of foreground window",
+				"Inside foreground window",
+				"Fixed primary screen",
+				"Fixed second screen",
+				"Fixed third screen"
 			],
 			"entryValues": [
 				"last_time_opened_pos",
@@ -241,6 +228,7 @@
 		{
 			"key": "pref_window_popup_position_offset_x",
 			"title": "窗口弹出位置水平偏移",
+			"title_en": "Popup horizontal offset",
 			"type": "long",
 			"subPage": "feature",
 			"defValue": 50
@@ -248,6 +236,7 @@
 		{
 			"key": "pref_window_popup_position_offset_y",
 			"title": "窗口弹出位置垂直偏移",
+			"title_en": "Popup vertical offset",
 			"type": "long",
 			"subPage": "feature",
 			"defValue": 40
@@ -255,6 +244,7 @@
 		{
 			"key": "pref_lock_window_popup_position",
 			"title": "锁定窗口位置",
+			"title_en": "Lock window position",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -262,6 +252,7 @@
 		{
 			"key": "pref_pinyin_mode",
 			"title": "使用双拼",
+			"title_en": "Pinyin scheme",
 			"type": "list",
 			"subPage": "feature",
 			"entries": [
@@ -274,6 +265,17 @@
 				"搜狗双拼",
 				"微软双拼",
 				"自然码双拼"
+			],
+			"entries_en": [
+				"Full pinyin",
+				"Xiaohe",
+				"Guobiao",
+				"Ziguang",
+				"Pinyin++",
+				"Smart ABC",
+				"Sogou",
+				"Microsoft",
+				"Ziranma"
 			],
 			"entryValues": [
 				"normal",
@@ -291,6 +293,7 @@
 		{
 			"key": "pref_force_ime_mode",
 			"title": "总是切换到输入法",
+			"title_en": "Always switch IME mode",
 			"type": "list",
 			"subPage": "feature",
 			"entries": [
@@ -298,6 +301,12 @@
 				"英文",
 				"中文",
 				"自定义"
+			],
+			"entries_en": [
+				"None",
+				"English",
+				"Chinese",
+				"Custom"
 			],
 			"entryValues": [
 				"null",
@@ -310,6 +319,7 @@
 		{
 			"key": "pref_custom_ime_id",
 			"title": "自定义切换输入法",
+			"title_en": "Custom IME ID",
 			"type": "string",
 			"subPage": "feature",
 			"defValue": ""
@@ -317,6 +327,7 @@
 		{
 			"key": "pref_search_box_placeholder",
 			"title": "搜索编辑框提示词",
+			"title_en": "Search box placeholder",
 			"type": "string",
 			"subPage": "feature",
 			"defValue": "please input text..."
@@ -324,6 +335,7 @@
 		{
 			"key": "pref_search_box_placeholder_use_theme",
 			"title": "编辑框提示词由主题提供",
+			"title_en": "Use placeholder from theme",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
@@ -331,6 +343,7 @@
 		{
 			"key": "pref_preserve_last_search_term",
 			"title": "保留上次搜索词",
+			"title_en": "Preserve last search term",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -338,6 +351,7 @@
 		{
 			"key": "pref_last_search_term_selected",
 			"title": "选中上次搜索词",
+			"title_en": "Select last search term",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
@@ -345,6 +359,7 @@
 		{
 			"key": "pref_esc_key_feature",
 			"title": "ESC 按键功能",
+			"title_en": "ESC key behavior",
 			"type": "list",
 			"subPage": "feature",
 			"entries": [
@@ -352,6 +367,12 @@
 				"清除输入",
 				"清除输入，再次按下关闭窗口",
 				"无"
+			],
+			"entries_en": [
+				"Close main window",
+				"Clear input",
+				"Clear input, then close on next press",
+				"Do nothing"
 			],
 			"entryValues": [
 				"close",
@@ -364,6 +385,7 @@
 		{
 			"key": "pref_single_click_to_open",
 			"title": "单击直接打开项目",
+			"title_en": "Open item on single click",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -371,6 +393,7 @@
 		{
 			"key": "pref_switch_list_right_click_with_shift_right_click",
 			"title": "调换项目右键 与 Shift + 右键功能",
+			"title_en": "Swap right click and Shift + right click",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -378,6 +401,7 @@
 		{
 			"key": "pref_fuzzy_match",
 			"title": "模糊匹配",
+			"title_en": "Fuzzy match",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": false
@@ -385,6 +409,7 @@
 		{
 			"key": "pref_fuzzy_match_score_threshold",
 			"title": "模糊匹配分数阈值",
+			"title_en": "Fuzzy match score threshold",
 			"type": "long",
 			"subPage": "feature",
 			"defValue": 60
@@ -392,6 +417,7 @@
 		{
 			"key": "pref_max_search_results",
 			"title": "列表结果数量",
+			"title_en": "Maximum result count",
 			"type": "long",
 			"subPage": "feature",
 			"defValue": 0
@@ -399,6 +425,7 @@
 		{
 			"key": "pref_use_everything_sdk_index",
 			"title": "使用第三方 Everything 来查找文件",
+			"title_en": "Use Everything SDK for file search",
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
@@ -406,13 +433,15 @@
 		{
 			"key": "pref_app_name",
 			"title": "CandyLauncher",
+			"title_en": "CandyLauncher",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""
 		},
 		{
 			"key": "pref_version_name",
-			"title": "版本 V1.0(x64)",
+			"title": "版本 V1.0.20260414(x64)",
+			"title_en": "Version V1.0 (x64)",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""
@@ -420,6 +449,7 @@
 		{
 			"key": "pref_check_version_update",
 			"title": "检查更新",
+			"title_en": "Check for updates",
 			"type": "button",
 			"subPage": "about",
 			"defValue": ""
@@ -427,6 +457,7 @@
 		{
 			"key": "pref_acknowledgements",
 			"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
+			"title_en": "Open source licenses & acknowledgements: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""
@@ -434,13 +465,39 @@
 		{
 			"key": "pref_about_other1",
 			"title": "本次应用启动完成耗时(动态更改)",
+			"title_en": "Startup timing (dynamic)",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""
 		},
 		{
+			"key": "pref_project_help",
+			"title": "软件帮助",
+			"title_en": "Project URL",
+			"type": "button",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
 			"key": "pref_project_url",
-			"title": "项目地址: https://github.com/CandyTek/CandyLauncher",
+			"title": "项目地址",
+			"title_en": "Project URL",
+			"type": "button",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_project_discuss",
+			"title": "参与讨论",
+			"title_en": "Project discussions",
+			"type": "button",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_project_issues",
+			"title": "反馈问题",
+			"title_en": "Project issues",
 			"type": "button",
 			"subPage": "about",
 			"defValue": ""
@@ -448,6 +505,7 @@
 		{
 			"key": "pref_open_config_folder",
 			"title": "打开配置文件夹",
+			"title_en": "Open config folder",
 			"type": "button",
 			"subPage": "other",
 			"defValue": "open_config_folder"
@@ -455,6 +513,7 @@
 		{
 			"key": "pref_backup_settings",
 			"title": "备份设置",
+			"title_en": "Backup settings",
 			"type": "button",
 			"subPage": "other",
 			"defValue": "backup_settings"
@@ -462,6 +521,7 @@
 		{
 			"key": "pref_restore_settings",
 			"title": "恢复设置",
+			"title_en": "Restore settings",
 			"type": "button",
 			"subPage": "other",
 			"defValue": "restore_settings"
@@ -469,6 +529,7 @@
 		{
 			"key": "pref_skin",
 			"title": "选择皮肤",
+			"title_en": "Select skin",
 			"type": "list",
 			"subPage": "skin",
 			"entries": [

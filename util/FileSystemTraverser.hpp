@@ -154,12 +154,6 @@ template <typename Callback>
 static void TraversePATHExecutables(Callback&& callback, TraverseOptions& options) {
 	// 获取PATH中的所有目录
 	std::vector<std::wstring> pathDirs = GetPATHDirectories();
-
-	// 默认的可执行文件索引选项
-	if (options.extensions == std::vector<std::wstring>{L".exe", L".lnk"}) {
-		options.extensions = {L".exe", L".bat", L".cmd", L".lnk"};
-	}
-
 	options.recursive = false; // PATH目录通常不需要递归搜索
 
 	// 遍历每个PATH目录
@@ -180,12 +174,6 @@ template <typename Callback>
 static void TraversePATHExecutables2(Callback&& callback, TraverseOptions& options, const std::wstring& exeFolderPath) {
 	// 获取PATH中的所有目录
 	std::vector<std::wstring> pathDirs = GetPATHDirectories();
-
-	// 默认的可执行文件索引选项
-	if (options.extensions == std::vector<std::wstring>{L".exe", L".lnk"}) {
-		options.extensions = {L".exe", L".bat", L".cmd", L".lnk"};
-	}
-
 	options.recursive = false; // PATH目录通常不需要递归搜索
 
 
@@ -203,7 +191,7 @@ static void TraversePATHExecutables2(Callback&& callback, TraverseOptions& optio
 // 创建默认的可执行文件索引选项
 inline TraverseOptions CreateDefaultPathTraverseOptions() {
 	TraverseOptions options;
-	options.extensions = {L".exe", L".bat", L".cmd", L".lnk"};
+	options.extensions = DEFAULT_EXTENSIONS;
 	options.recursive = false; // PATH目录通常不需要递归搜索
 	return options;
 }

@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "RunningAppAction.hpp"
-#include "PluginData.hpp"
+#include "RunningAppPluginData.hpp"
 
 
 #include "../../util/MainTools.hpp"

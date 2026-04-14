@@ -12,7 +12,7 @@
 
 #include "FileAction.hpp"
 #include "IndexManager.hpp"
-#include "RunnerConfigUtils.hpp"
+#include "FolderPluginConfigUtils.hpp"
 #include "util/BitmapUtil.hpp"
 #include "util/FileSystemTraverser.hpp"
 #include "util/FileUtil.hpp"
@@ -296,12 +296,53 @@ public:
 			"defValue": true
 		},
 		{
+			"key": "com.candytek.folderplugin.run_item_as_admin",
+			"title": "以管理员身份运行项目",
+			"title_en": "Run item as administrator",
+			"type": "bool",
+			"subPage": "plugin",
+			"defValue": false
+		},
+		{
 			"key": "com.candytek.folderplugin.indexed_manager",
 			"title": "索引查看器",
 			"type": "button",
 			"subPage": "plugin",
 			"defValue": ""
+		},
+		{
+			"key": "com.candytek.folderplugin.hotkey_open_file_location",
+			"title": "打开项目文件所在位置",
+			"title_en": "Open item file location",
+			"type": "hotkeystring",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.folderplugin.hotkey_open_target_location",
+			"title": "打开项目目标所在位置",
+			"title_en": "Open item target location",
+			"type": "hotkeystring",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.folderplugin.open_with_clipboard_params",
+			"title": "打开附带剪贴板参数",
+			"title_en": "Open with clipboard parameters",
+			"type": "hotkeystring",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.folderplugin.hotkey_run_item_as_admin",
+			"title": "以管理员身份运行项目",
+			"title_en": "Run item as administrator",
+			"type": "hotkeystring",
+			"subPage": "plugin",
+			"defValue": ""
 		}
+
 	]
 }
 
@@ -340,10 +381,10 @@ public:
 
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!g_host) return false;
-		auto exampleAction = std::dynamic_pointer_cast<FileAction>(action);
-		if (!exampleAction) return false;
+		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
+		if (!fileAction) return false;
 
-		exampleAction->Invoke();
+		fileAction->Invoke();
 		return true;
 	}
 

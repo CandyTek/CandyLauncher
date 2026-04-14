@@ -4,9 +4,9 @@
 #include <iomanip>
 #include <sstream>
 
-#include "PluginAction.hpp"
-#include "PluginData.hpp"
-#include "PluginUtil.hpp"
+#include "ValueGeneratorAction.hpp"
+#include "ValueGeneratorPluginData.hpp"
+#include "ValueGeneratorUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
 inline std::vector<std::shared_ptr<BaseAction>> allPluginActions;
@@ -53,7 +53,7 @@ public:
 
 		// UUID 生成器
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"UUID v1";
 			action->subTitle = L"生成基于时间的 UUID";
 			action->iconFilePath = L"shell32.dll";
@@ -62,7 +62,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"UUID v3";
 			action->subTitle = L"生成基于 MD5 的命名空间 UUID (需要命名空间和名称)";
 			action->iconFilePath = L"shell32.dll";
@@ -71,7 +71,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"UUID v4";
 			action->subTitle = L"生成随机 UUID";
 			action->iconFilePath = L"shell32.dll";
@@ -80,7 +80,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"UUID v5";
 			action->subTitle = L"生成基于 SHA1 的命名空间 UUID (需要命名空间和名称)";
 			action->iconFilePath = L"shell32.dll";
@@ -89,7 +89,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"UUID v7";
 			action->subTitle = L"生成基于时间排序的 UUID";
 			action->iconFilePath = L"shell32.dll";
@@ -100,7 +100,7 @@ public:
 
 		// 哈希计算
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"MD5";
 			action->subTitle = L"计算字符串的 MD5 哈希值";
 			action->iconFilePath = L"shell32.dll";
@@ -109,7 +109,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"SHA1";
 			action->subTitle = L"计算字符串的 SHA1 哈希值";
 			action->iconFilePath = L"shell32.dll";
@@ -118,7 +118,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"SHA256";
 			action->subTitle = L"计算字符串的 SHA256 哈希值";
 			action->iconFilePath = L"shell32.dll";
@@ -127,7 +127,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"SHA384";
 			action->subTitle = L"计算字符串的 SHA384 哈希值";
 			action->iconFilePath = L"shell32.dll";
@@ -136,7 +136,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"SHA512";
 			action->subTitle = L"计算字符串的 SHA512 哈希值";
 			action->iconFilePath = L"shell32.dll";
@@ -147,7 +147,7 @@ public:
 
 		// Base64 编码/解码
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"Base64 Encode";
 			action->subTitle = L"将字符串编码为 Base64";
 			action->iconFilePath = L"shell32.dll";
@@ -156,7 +156,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"Base64 Decode";
 			action->subTitle = L"将 Base64 字符串解码";
 			action->iconFilePath = L"shell32.dll";
@@ -167,7 +167,7 @@ public:
 
 		// URL 编码/解码
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"URL Encode";
 			action->subTitle = L"将字符串编码为 URL 格式";
 			action->iconFilePath = L"shell32.dll";
@@ -176,7 +176,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"URL Decode";
 			action->subTitle = L"将 URL 编码的字符串解码";
 			action->iconFilePath = L"shell32.dll";
@@ -187,7 +187,7 @@ public:
 
 		// Data Escape/Unescape
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"Data Escape";
 			action->subTitle = L"转义数据字符串 (Uri.EscapeDataString)";
 			action->iconFilePath = L"shell32.dll";
@@ -196,7 +196,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"Data Unescape";
 			action->subTitle = L"解除数据字符串转义 (Uri.UnescapeDataString)";
 			action->iconFilePath = L"shell32.dll";
@@ -207,7 +207,7 @@ public:
 
 		// Hex Escape/Unescape
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"Hex Escape";
 			action->subTitle = L"将单个字符转换为十六进制转义 (Uri.HexEscape)";
 			action->iconFilePath = L"shell32.dll";
@@ -216,7 +216,7 @@ public:
 			allPluginActions.push_back(action);
 		}
 		{
-			const auto action = std::make_shared<PluginAction>();
+			const auto action = std::make_shared<ValueGeneratorAction>();
 			action->title = L"Hex Unescape";
 			action->subTitle = L"解除十六进制转义为字符 (Uri.HexUnescape)";
 			action->iconFilePath = L"shell32.dll";
@@ -291,10 +291,10 @@ public:
 					if (!dataToProcess.empty()) {
 						// 查找对应的action
 						for (const auto& action : allPluginActions) {
-							const auto pluginAction = std::dynamic_pointer_cast<PluginAction>(action);
+							const auto pluginAction = std::dynamic_pointer_cast<ValueGeneratorAction>(action);
 							if (pluginAction && pluginAction->title == actionTitle) {
 								// 创建一个新的action显示计算结果
-								auto resultAction = std::make_shared<PluginAction>();
+								auto resultAction = std::make_shared<ValueGeneratorAction>();
 								resultAction->title = pluginAction->title;
 								resultAction->iconFilePath = pluginAction->iconFilePath;
 								resultAction->iconFilePathIndex = pluginAction->iconFilePathIndex;
@@ -354,7 +354,7 @@ public:
 
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
-		const std::shared_ptr<PluginAction> workspaceAction = std::dynamic_pointer_cast<PluginAction>(action);
+		const std::shared_ptr<ValueGeneratorAction> workspaceAction = std::dynamic_pointer_cast<ValueGeneratorAction>(action);
 		if (!workspaceAction) return false;
 
 		std::shared_ptr<IComputeRequest> request;

@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-#include "PluginAction.hpp"
-#include "PluginData.hpp"
+#include "JbAction.hpp"
+#include "JbPluginData.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -22,10 +22,10 @@ struct JetBrainsIDE {
 };
 
 // Parse a single recentProjects.xml file
-inline std::vector<std::shared_ptr<PluginAction>> ParseRecentProjectsXml(
+inline std::vector<std::shared_ptr<JbAction>> ParseRecentProjectsXml(
 	const std::wstring& xmlPath,
 	const JetBrainsIDE& ide) {
-	std::vector<std::shared_ptr<PluginAction>> result;
+	std::vector<std::shared_ptr<JbAction>> result;
 
 	// Load XML document using pugixml (char-based interface)
 	pugi::xml_document doc;
@@ -72,7 +72,7 @@ inline std::vector<std::shared_ptr<PluginAction>> ParseRecentProjectsXml(
 		}
 
 		// Create action
-		auto action = std::make_shared<PluginAction>();
+		auto action = std::make_shared<JbAction>();
 		action->title = ide.name + L" - " + projectName;
 		action->subTitle = projectPath;
 		action->iconFilePath = ide.exePath;
@@ -210,8 +210,8 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 }
 
 // Get all JetBrains workspace actions
-inline std::vector<std::shared_ptr<PluginAction>> GetAllJetBrainsWorkspaces() {
-	std::vector<std::shared_ptr<PluginAction>> result;
+inline std::vector<std::shared_ptr<JbAction>> GetAllJetBrainsWorkspaces() {
+	std::vector<std::shared_ptr<JbAction>> result;
 
 	if (!m_host) {
 		return result;

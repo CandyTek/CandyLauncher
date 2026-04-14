@@ -17,6 +17,8 @@
 #include "util/MainTools.hpp"
 #include "view/GlassHelper.hpp"
 #include "common/GlobalState.hpp"
+#include "common/I18n.hpp"
+#include "common/I18nResource.h"
 #include <gdiplus.h>
 #include <atomic>
 
@@ -27,6 +29,7 @@
 #include <Richedit.h>
 
 #include "util/MyToastUtil.hpp"
+#include "util/UpdateManager.hpp"
 #include "view/CustomComboBox.hpp"
 #include "window/Shell32IconViewer.hpp"
 
@@ -67,7 +70,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	SettingWindowRegisterClass(hInstance);
 	if (needOpenShell32IconViewer) ShowShell32IcoViewer(hInstance);
 	MainWindowInitInstance(hInstance, nCmdShow);
-	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr, false);
+	if (needOpenSettingWindow) ShowSettingsWindow(hInstance, nullptr, true);
 	if (needMinimizeSettingWindow) ShowWindow(g_settingsHwnd, SW_MINIMIZE);
 	g_skinFileWatcherThread = std::thread(watchSkinFile);
 
@@ -75,6 +78,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	refreshSkin(g_currectSkinFilePath, !g_settings_map["pref_hide_window_after_run"].boolValue);
 	APP_STARTUP_TIME = GetTickCount64() - g_appStartTick; // 记录程序耗费时
 	ConsolePrintln(L"WinMain", L"程序初始化完成");
+	AppUpdate::ScheduleStartupUpdateCheck();
 	// MyShowSimpleToast(L"CandyLauncher 已启动", L"程序初始化完成,按 Alt+K 呼出启动器");
 
 	MSG msg;
@@ -142,7 +146,7 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow) {
 		// WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, // 扩展样式
 		dw_ex_style,
 		L"CandyLauncherClass",
-		L"CandyLauncher",
+		LoadI18nString(IDS_I18N_MAIN_WINDOW_TITLE, L"CandyLauncher").c_str(),
 		// WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		dw_style,
 		// WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_BORDER,
@@ -485,6 +489,12 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		break;
 	case WM_FOCUS_EDIT: SetFocus(g_editHwnd);
 		break;
+	case WM_APP_UPDATE_AVAILABLE:
+		return AppUpdate::HandleUpdateAvailableMessage(lParam);
+	case WM_APP_UPDATE_ERROR:
+		return AppUpdate::HandleUpdateErrorMessage(lParam);
+	case WM_APP_UPDATE_DOWNLOAD_FINISHED:
+		return AppUpdate::HandleUpdateDownloadFinishedMessage(lParam);
 	case WM_DROPFILES:
 		{
 			// 收到拖放事件，取消延迟隐藏

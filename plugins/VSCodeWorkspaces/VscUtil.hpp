@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-#include "PluginAction.hpp"
-#include "PluginData.hpp"
+#include "VscAction.hpp"
+#include "VscPluginData.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -140,7 +140,7 @@ inline bool DoesPathExist(const std::wstring& path, WorkspaceEnvironment env) {
 }
 
 // Parse VSCode URI to extract workspace information
-inline std::shared_ptr<PluginAction> ParseVSCodeUri(
+inline std::shared_ptr<VscAction> ParseVSCodeUri(
 	const std::string& uri,
 	const std::string& authority,
 	const VSCodeInstance& instance,
@@ -190,7 +190,7 @@ inline std::shared_ptr<PluginAction> ParseVSCodeUri(
 	}
 
 	// Create action
-	auto action = std::make_shared<PluginAction>();
+	auto action = std::make_shared<VscAction>();
 
 	// Build title
 	std::wstring title = folderName;
@@ -243,10 +243,10 @@ inline std::shared_ptr<PluginAction> ParseVSCodeUri(
 }
 
 // Parse storage.json file
-inline std::vector<std::shared_ptr<PluginAction>> ParseStorageJson(
+inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 	const std::wstring& jsonPath,
 	const VSCodeInstance& instance) {
-	std::vector<std::shared_ptr<PluginAction>> results;
+	std::vector<std::shared_ptr<VscAction>> results;
 
 	try {
 		int iconFilePathIndex = GetSysImageIndex(instance.executablePath);
@@ -336,10 +336,10 @@ inline std::vector<std::shared_ptr<PluginAction>> ParseStorageJson(
 }
 
 // Parse state.vscdb SQLite database
-inline std::vector<std::shared_ptr<PluginAction>> ParseStateVscdb(
+inline std::vector<std::shared_ptr<VscAction>> ParseStateVscdb(
 	const std::wstring& dbPath,
 	const VSCodeInstance& instance) {
-	std::vector<std::shared_ptr<PluginAction>> results;
+	std::vector<std::shared_ptr<VscAction>> results;
 
 	// Note: This would require SQLite library integration
 	// For now, we'll skip this and rely on storage.json

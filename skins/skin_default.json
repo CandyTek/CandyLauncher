@@ -2,7 +2,7 @@
 	"version":1,
 	"window_width":500,
 	"window_height":500,
-	"window_bg_picture":"C:\\Users\\Administrator\\source\\repos\\WindowsProject1\\myskin\\bg.9.png",
+	"window_bg_picture":"\\myskin\\bg.9.png",
 	"window_bg_color":"#888888",
 	"window_opacity":255,
 
@@ -65,5 +65,5 @@
 	"item_bg_color":"#F9F9F9",
 	"item_bg_color_selected":"#E9E9FF",
 	"item_bg_picture":"",
-	"item_bg_picture_selected":"C:\\Users\\Administrator\\source\\repos\\WindowsProject1\\myskin\\item.9.png"
+	"item_bg_picture_selected":"\\myskin\\item.9.png"
 }

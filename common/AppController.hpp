@@ -7,16 +7,26 @@
 #include "dwmapi.h"
 #include "../window/SettingsWindow.hpp"
 #include "../util/ShortcutUtil.hpp"
+#include "../util/UpdateManager.hpp"
 // #include "ListedRunnerPlugin.h"
 #include "../manager/ListViewManager.hpp"
 #include <atomic>
 
+#include "util/FullScreenDetectUtil.hpp"
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+constexpr bool needOpenDebugCmd = false;
+constexpr bool needOpenShell32IconViewer = false;
+constexpr bool needOpenIndexedManager = false;
+constexpr bool needOpenSettingWindow = true;
+constexpr bool needMinimizeSettingWindow = false;
+#else
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
 constexpr bool needOpenSettingWindow = false;
 constexpr bool needMinimizeSettingWindow = false;
-
+#endif
 
 // --- (在此处粘贴上面定义的 MAKE_HOTKEY_KEY, HotkeyMap) ---
 #define MAKE_HOTKEY_KEY(modifiers, vk) (static_cast<UINT64>(modifiers) << 32 | static_cast<UINT64>(vk))
@@ -67,93 +77,6 @@ static bool AddHotkey(const std::wstring& hotkeyStr, UINT64 action) {
 
 static bool AddHotkey(const std::string& hotkeyStr, UINT64 action) {
 	return AddHotkey(utf8_to_wide(hotkeyStr), action);
-}
-
-static bool shouldShowInCurrentWindowMode(HWND hwnd) {
-	if (hwnd == nullptr) {
-		return true;
-	}
-	// 获取窗口样式
-	const LONG style = GetWindowLong(hwnd, GWL_STYLE);
-	const LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-	if (style & WS_CAPTION || style & WS_THICKFRAME || exStyle & WS_EX_WINDOWEDGE) {
-		// 如果有这些样式，基本可以确定不是全屏
-		return true;
-	}
-
-	// 获取窗口所在屏幕
-	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-	MONITORINFO monitorInfo = {};
-	monitorInfo.cbSize = sizeof(monitorInfo);
-	GetMonitorInfo(hMonitor, &monitorInfo);
-	RECT screenRect = monitorInfo.rcMonitor;
-
-	// 获取窗口位置
-	RECT windowRect;
-	// 获取失败，默认窗口模式
-	if (!GetWindowRect(hwnd, &windowRect)) return true;
-
-	// 检查是否为无边框全屏
-	if ((style & WS_BORDER) == 0 &&
-		windowRect.left == screenRect.left &&
-		windowRect.top == screenRect.top &&
-		windowRect.right == screenRect.right &&
-		windowRect.bottom == screenRect.bottom) {
-		// 检查是否是桌面（类名为 "Progman"）
-		char className[256];
-		GetClassNameA(hwnd, className, sizeof(className));
-		if (std::string(className) == "Progman") {
-			return true;
-		}
-		return false;
-	}
-
-	// 检查是否全屏（隐藏任务栏等）
-	if ((style & WS_CAPTION) == 0 &&
-		windowRect.left == screenRect.left &&
-		windowRect.top == screenRect.top &&
-		windowRect.right == screenRect.right &&
-		windowRect.bottom == screenRect.bottom) {
-		return false;
-	}
-
-	return true;
-}
-
-static bool shouldShowInCurrentWindowTopmostMode(HWND hwnd) {
-	if (hwnd == nullptr) {
-		return true;
-	}
-	// 获取窗口样式
-	const LONG style = GetWindowLong(hwnd, GWL_STYLE);
-	const LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-	if (style & WS_CAPTION || style & WS_THICKFRAME || exStyle & WS_EX_WINDOWEDGE) {
-		// 如果有这些样式，基本可以确定不是全屏
-		return true;
-	}
-
-	// 获取窗口所在屏幕
-	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-	MONITORINFO monitorInfo = {};
-	monitorInfo.cbSize = sizeof(monitorInfo);
-	GetMonitorInfo(hMonitor, &monitorInfo);
-	RECT screenRect = monitorInfo.rcMonitor;
-
-	// 获取窗口位置
-	RECT windowRect;
-	// 获取失败，默认窗口模式
-	if (!GetWindowRect(hwnd, &windowRect)) return true;
-
-	// 检查是否为无边框全屏
-	if (exStyle & WS_EX_TOPMOST &&
-		windowRect.left == screenRect.left &&
-		windowRect.top == screenRect.top &&
-		windowRect.right == screenRect.right &&
-		windowRect.bottom == screenRect.bottom) {
-		return false;
-	}
-
-	return true;
 }
 
 static void userSettingsAfterTheAppStart() {
@@ -378,10 +301,16 @@ static void TrayMenuClick(const int position) {
 		}
 		break;
 	case TRAY_MENU_ID_HELP: // 打开 Github wiki 页面
-		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki", nullptr, nullptr, SW_SHOW);
+		if (g_uiLanguageCode == L"zh-CN") {
+			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/%E4%B8%AD%E6%96%87", nullptr, nullptr, SW_SHOW);
+		} else {
+			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/English", nullptr, nullptr, SW_SHOW);
+		}
 		break;
 	case TRAY_MENU_ID_GITHUB: // 打开 Github 页面
 		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher", nullptr, nullptr, SW_SHOW);
+		break;
+	case TRAY_MENU_ID_CHECK_UPDATE: AppUpdate::StartCheckForUpdates(true);
 		break;
 	case TRAY_MENU_ID_RESTART: // 重启
 		{
@@ -455,9 +384,7 @@ inline std::unordered_map<std::string, std::function<void()>> getAppLaunchAction
 	};
 
 	callbacks["checkUpdate"] = []() {
-		// 打开项目主页检查更新
-		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/releases", nullptr, nullptr,
-					SW_SHOW);
+		AppUpdate::StartCheckForUpdates(true);
 	};
 
 	callbacks["feedback"] = []() {
@@ -521,14 +448,14 @@ inline int mainWindowHotkey(WPARAM wParam) {
 	switch (wParam) {
 	case HOTKEY_ID_TOGGLE_MAIN_PANEL:
 		{
-			ConsolePrintln(L"Hotkey Alt + K");
+			ConsolePrintln(L"Hotkey 切换主面板");
 			if (IsWindowVisible(g_mainHwnd)) {
 				HideWindow();
 			} else {
 				// 判断全屏应用模式
 				bool shouldShow = true;
 				if (pref_hide_in_fullscreen) shouldShow = shouldShowInCurrentWindowMode(GetForegroundWindow());
-				else if (pref_hide_in_topmost_fullscreen) shouldShow = shouldShowInCurrentWindowTopmostMode(GetForegroundWindow());
+				else if (pref_hide_in_topmost_fullscreen) shouldShow = !isLikelyFullscreenGame(GetForegroundWindow());
 
 				if (shouldShow) {
 					if (pref_show_window_and_release_modifier_key) ReleaseAltKey();

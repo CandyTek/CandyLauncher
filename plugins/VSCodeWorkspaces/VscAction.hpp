@@ -1,10 +1,10 @@
 ﻿#pragma once
 #include "plugins/BaseAction.hpp"
-#include "PluginData.hpp"
+#include "VscPluginData.hpp"
 
-class PluginAction final : public BaseAction {
+class VscAction final : public BaseAction {
 public:
-	PluginAction() {
+	VscAction() {
 		pluginId = m_pluginId;
 	}
 
@@ -13,8 +13,12 @@ public:
 	std::wstring title;
 	std::wstring subTitle;
 	int iconFilePathIndex = -1;
-	std::wstring arg;  // 存储执行时需要的参数
-	
+
+	// Additional data for workspace
+	std::wstring projectPath; // Full path to the project
+	std::wstring originalUri; // Original VSCode URI for launching
+	bool isWorkspaceFile = false; // Whether it's a .code-workspace file
+
 	std::wstring& getTitle() override {
 		return title;
 	}

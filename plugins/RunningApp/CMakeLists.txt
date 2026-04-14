@@ -9,7 +9,7 @@ set(PLUGIN_SOURCES
 		RunningAppAction.hpp
 		RunningAppPlugin.cpp
 		../Plugin.hpp
-		PluginData.hpp
+		RunningAppPluginData.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

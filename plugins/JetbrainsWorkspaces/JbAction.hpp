@@ -1,10 +1,10 @@
 ﻿#pragma once
 #include "plugins/BaseAction.hpp"
-#include "PluginData.hpp"
+#include "JbPluginData.hpp"
 
-class PluginAction final : public BaseAction {
+class JbAction final : public BaseAction {
 public:
-	PluginAction() {
+	JbAction() {
 		pluginId = m_pluginId;
 	}
 
@@ -38,6 +38,6 @@ public:
 		return nullptr;
 	}
 
-	~PluginAction() override {
+	~JbAction() override {
 	}
 };

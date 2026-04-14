@@ -54,7 +54,7 @@ public:
 			std::make_shared<FeatureLaunchAction>(L"查看所有软件配置 JSON 文件", L"打开settings.json文件", BaseLaunchAction::LOADTYPE_SHELL32, 69,
 												m_host->GetAppLaunchActionCallbacks().at("viewAllSettings")));
 		// allExampleActions.push_back(
-		// 	std::make_shared<NormalLaunchAction>(L"查看用户索引配置 JSON 文件", L"打开runner.json文件", IDI_CLOSE,
+		// 	std::make_shared<NormalLaunchAction>(L"查看用户索引配置 JSON 文件", L"打开config_folder_plugin.json文件", IDI_CLOSE,
 		// 									m_host->GetAppLaunchActionCallbacks().at("viewIndexConfig")));
 		allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"软件帮助文档", L"前往浏览器查看帮助文档", BaseLaunchAction::LOADTYPE_SHELL32, 154,
 																m_host->GetAppLaunchActionCallbacks().at("openHelp")));

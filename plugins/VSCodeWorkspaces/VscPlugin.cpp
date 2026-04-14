@@ -4,9 +4,9 @@
 #include <iomanip>
 #include <sstream>
 
-#include "PluginAction.hpp"
-#include "PluginData.hpp"
-#include "PluginUtil.hpp"
+#include "VscAction.hpp"
+#include "VscPluginData.hpp"
+#include "VscUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
 inline std::vector<std::shared_ptr<BaseAction>> allPluginActions;
@@ -103,7 +103,7 @@ public:
 		return {};
 	}
 
-	static std::wstring GetActionFileIconPath(const std::shared_ptr<PluginAction>& workspaceAction) {
+	static std::wstring GetActionFileIconPath(const std::shared_ptr<VscAction>& workspaceAction) {
 		if (!workspaceAction->iconFilePath.empty() &&
 			GetFileAttributesW(workspaceAction->iconFilePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
 			return workspaceAction->iconFilePath;
@@ -113,7 +113,7 @@ public:
 
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
-		const std::shared_ptr<PluginAction> workspaceAction = std::dynamic_pointer_cast<PluginAction>(action);
+		const std::shared_ptr<VscAction> workspaceAction = std::dynamic_pointer_cast<VscAction>(action);
 		if (!workspaceAction) return false;
 
 		// Determine VSCode executable path

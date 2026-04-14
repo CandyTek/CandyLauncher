@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <string>
 #include <ShlObj.h>
-#include "PluginData.hpp"
+#include "ToolBoxPluginData.hpp"
 
 class SmallToolBoxAction final : public BaseAction
 {

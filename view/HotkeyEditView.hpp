@@ -3,6 +3,7 @@
 #include <fstream> // Required for file operations
 #include <commctrl.h> // For ListView controls
 #include <CommCtrl.h>
+#include <vector>
 
 #include "../util/BaseTools.hpp"
 #include "../common/Constants.hpp"
@@ -18,14 +19,42 @@ static const wchar_t* HOTKEY_CTX_KEY = L"HotkeyCtxKey";
 #define WM_APP_HOTKEY_COMMIT (WM_APP + 0x120)
 #endif
 
-
 static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 												UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
 	// Use window property instead of static variable to avoid cross-control contamination
 	static const wchar_t* HOTKEY_PROP = L"CurrentHotkey";
 
-
 	switch (uMsg) {
+	case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hdc = BeginPaint(hWnd, &ps);
+
+			RECT rc;
+			GetClientRect(hWnd, &rc);
+			// 先让原生 EDIT 画内容
+			DefSubclassProc(hWnd, WM_PAINT, (WPARAM)hdc, 0);
+
+			bool hasFocus = (GetFocus() == hWnd);
+			COLORREF borderColor = hasFocus ? RGB(0, 120, 215)   // 蓝色（Win10 风格）
+											: RGB(180, 180, 180); // 默认灰色
+			// 再覆盖画 2px 灰色边框
+			HBRUSH hBrush = CreateSolidBrush(borderColor);
+
+			RECT rTop = {rc.left, rc.top, rc.right, rc.top + 2};
+			RECT rBottom = {rc.left, rc.bottom - 2, rc.right, rc.bottom};
+			RECT rLeft = {rc.left, rc.top + 2, rc.left + 2, rc.bottom - 2};
+			RECT rRight = {rc.right - 2, rc.top + 2, rc.right, rc.bottom - 2};
+
+			FillRect(hdc, &rTop, hBrush);
+			FillRect(hdc, &rBottom, hBrush);
+			FillRect(hdc, &rLeft, hBrush);
+			FillRect(hdc, &rRight, hBrush);
+
+			DeleteObject(hBrush);
+			EndPaint(hWnd, &ps);
+			return 0;
+		}
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
 		{
@@ -80,8 +109,18 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			return 0;
 		}
 	case WM_SETFOCUS:
-		// 编辑开始，取消全局快捷键注册
-		UnregisterHotKey(g_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+		{
+			// 编辑主面板全局快捷键时，先释放旧注册，避免原快捷键被输入过程触发。
+			HGLOBAL hKeyMem = (HGLOBAL)GetPropW(hWnd, HOTKEY_CTX_KEY);
+			if (hKeyMem) {
+				if (wchar_t* settingKey = (wchar_t*)GlobalLock(hKeyMem)) {
+					if (std::wstring(settingKey) == L"pref_hotkey_toggle_main_panel") {
+						UnregisterHotKey(g_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+					}
+					GlobalUnlock(hKeyMem);
+				}
+			}
+		}
 		break;
 	case WM_KILLFOCUS:
 		{
@@ -99,8 +138,9 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 				// 保险：若属性没有（比如外部预填了内容），从控件文本取
 				int len = GetWindowTextLengthW(hWnd);
 				if (len > 0) {
-					currentHotkey.resize(len);
-					GetWindowTextW(hWnd, currentHotkey.data(), len + 1);
+					std::vector<wchar_t> buffer(len + 1);
+					GetWindowTextW(hWnd, buffer.data(), static_cast<int>(buffer.size()));
+					currentHotkey.assign(buffer.data());
 				}
 			}
 
@@ -123,9 +163,6 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 		// 可以让系统处理或自己填充背景
 		return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 
-	case WM_PAINT:
-		// 不做特殊处理时，调用默认处理
-		break;
 	// +++ 新增部分：处理窗口销毁 +++
 	case WM_NCDESTROY:
 		{

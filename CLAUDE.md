@@ -69,7 +69,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - **[CherryTree](plugins/CherryTree/CherryTreePlugin.cpp**: Indexes all notes of cherrytree software
 - **[ExamplePlugin](plugins/Example/ExamplePlugin.cpp**: A simple plugin dll specification use case
 - **[FeatureLaunch](plugins/FeatureLaunch/FeatureLaunchPlugin.cpp**: Navigate some settings and functions of the main program
-- **[Folder](plugins/Folder/FolderPlugin.cpp)**: Read `runner.json` configuration file and scan the files in the specified directory,and environment variable %PATH% path, and read the UWP app list. IndexedManager.hpp is all index management and viewers for the Folder plugin
+- **[Folder](plugins/Folder/FolderPlugin.cpp)**: Read `config_folder_plugin.json` configuration file and scan the files in the specified directory,and environment variable %PATH% path, and read the UWP app list. IndexedManager.hpp is all index management and viewers for the Folder plugin
 - **[JetbrainsWorkspaces](plugins/JetbrainsWorkspaces/Main.cpp)**: Index all ide software history open projects of jetbrains
 - **[RegistryPlugin.cpp](plugins/Registry/RegistryPlugin.cpp)**: Navigation system registry items
 - **[RunningApp](plugins/RunningApp/RunningAppPlugin.cpp)**: Index all windows running in the system
@@ -87,7 +87,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - `settings.json`: App preferences items and defualt value
 - `user_settings.json`: User-specific configuration overrides
 - `skin_tests.json`: Interface skin configuration file
-- `runner.json`: FolderPlugin configuration file for defining searchable items and directories
+- `config_folder_plugin.json`: FolderPlugin configuration file for defining searchable items and directories
 
 ### Key Dependencies
 - Windows APIs (Win32, GDI+, Shell)
@@ -113,6 +113,15 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - The json.hpp file is not read, and it is just a json parsing library
 - The exprtk.hpp file is not read, and it is just a scientific computing library
 
+### App Update System
+
+read [DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)
+
+
+### backlog.md use
+
+read [DOC_BACKLOG_MD.md](docs/DOC_BACKLOG_MD.md)
+
 ### note
 
 - Project codes are indented using tabs
@@ -120,3 +129,4 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - Use ``util/LogUtil.hpp`` funtion ``Loge(L"tag",L"error msg",e.what());`` print error or std::cerr
 - Save files using UTF-8 with BOM
 - No need to resolve warning and node reminder when building
+

@@ -12,6 +12,8 @@ add_executable(CandyLauncher WIN32
 		common/framework.h
 		util/json.hpp
 		common/Resource.h
+		common/I18n.hpp
+		common/I18nResource.h
 		common/targetver.h
 		CandyLauncher.cpp
 		util/PinyinHelper.hpp
@@ -30,7 +32,14 @@ add_executable(CandyLauncher WIN32
 		icons/close.ico
 		icons/small.ico
 		icons/refresh.ico
-		settings.json
+		icons/tab_plugin.ico
+		icons/tab_normal.ico
+		icons/tab_feature.ico
+		icons/tab_skin.ico
+		icons/tab_other.ico
+		icons/tab_hotkey.ico
+		icons/tab_about.ico
+		common/settings.json
 		view/ScrollViewController.hpp
 		util/ShortcutUtil.hpp
 		common/AppController.hpp
@@ -72,7 +81,27 @@ add_executable(CandyLauncher WIN32
 		model/ScoredAction.hpp
 		util/MyToastUtil.hpp
 		util/TaskWorker.hpp
+		view/CustomEdit.hpp
+		util/FullScreenDetectUtil.hpp
 
+)
+
+add_library(CandyLauncherLangZh SHARED
+#		lang/ResourceDllEntry.cpp #平时去掉可以加快编译速度，资源改动时取消注释
+		lang/zh-CN.rc
+)
+set_target_properties(CandyLauncherLangZh PROPERTIES
+		OUTPUT_NAME "zh-CN"
+		PREFIX ""
+)
+
+add_library(CandyLauncherLangEn SHARED
+#		lang/ResourceDllEntry.cpp
+		lang/en-US.rc
+)
+set_target_properties(CandyLauncherLangEn PROPERTIES
+		OUTPUT_NAME "en-US"
+		PREFIX ""
 )
 
 target_precompile_headers(CandyLauncher
@@ -89,6 +118,8 @@ target_compile_definitions(CandyLauncher PRIVATE UNICODE _UNICODE
 		$<$<CONFIG:Debug>:DEBUG=1>
 		$<$<CONFIG:Release>:NDEBUG=1>
 )
+target_compile_definitions(CandyLauncherLangZh PRIVATE UNICODE _UNICODE)
+target_compile_definitions(CandyLauncherLangEn PRIVATE UNICODE _UNICODE)
 
 # Add /bigobj flag for MSVC to handle large object files (ExprTk)
 if (MSVC)
@@ -99,6 +130,8 @@ if (MSVC)
 	# 禁用特定的第三方库警告
 	#    target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4819)
 	target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4996)
+	target_compile_options(CandyLauncherLangZh PRIVATE /bigobj /wd4251 /wd4996)
+	target_compile_options(CandyLauncherLangEn PRIVATE /bigobj /wd4251 /wd4996)
 endif ()
 
 
@@ -180,6 +213,7 @@ target_link_libraries(CandyLauncher PRIVATE
 		runtimeobject.lib
 		WinToast
 		oledb
+		autoupdater::autoupdater
 )
 if (MSVC)
 	target_link_libraries(CandyLauncher PRIVATE oledb WinToast)
@@ -208,6 +242,18 @@ add_custom_command(TARGET CandyLauncher POST_BUILD
 		$<TARGET_FILE:cpp-pinyin>
 		$<TARGET_FILE_DIR:CandyLauncher>)
 
+add_custom_command(TARGET CandyLauncher POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory
+		$<TARGET_FILE_DIR:CandyLauncher>/lang
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		$<TARGET_FILE:CandyLauncherLangZh>
+		$<TARGET_FILE_DIR:CandyLauncher>/lang
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		$<TARGET_FILE:CandyLauncherLangEn>
+		$<TARGET_FILE_DIR:CandyLauncher>/lang
+)
+#add_dependencies(CandyLauncher CandyLauncherLangZh CandyLauncherLangEn)
+
 # 复制多音字拼音库字典
 add_custom_command(TARGET CandyLauncher POST_BUILD
 		COMMAND ${CMAKE_COMMAND}
@@ -235,6 +281,7 @@ add_subdirectory(3rdparty/pugixml)
 if (MSVC)
 add_subdirectory(3rdparty/WinToast)
 endif ()
+add_subdirectory(3rdparty/github-releases-autoupdater)
 
 #plugins
 add_subdirectory(plugins/RunningApp)
@@ -263,8 +310,8 @@ add_subdirectory(plugins/PluginTest)
 # Plugins that are rarely changed can be commented to speed up compilation.
 set(PLUGIN_DEPENDENCIES)
 
-list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
+#list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
+list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
@@ -273,8 +320,8 @@ list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ExamplePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VSCodeWorkspacesPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES JetbrainsWorkspacesPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES FolderPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
+list(APPEND PLUGIN_DEPENDENCIES FolderPlugin)
+list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES CherryTreePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES UnitConverterPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES CalcPlugin)
@@ -284,10 +331,6 @@ list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ServicePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES WindowsSearchPlugin)
 
-
-if (PLUGIN_DEPENDENCIES)
-	#add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
-endif ()
 
 if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 	#	message(WARNING "come here")

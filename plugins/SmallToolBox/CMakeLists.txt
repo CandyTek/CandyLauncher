@@ -6,13 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 插件源文件
 set(PLUGIN_SOURCES
-		PluginAction.hpp
-		main.cpp
+		ToolBoxAction.hpp
+		ToolBoxPlugin.cpp
 		../Plugin.hpp
-		PluginData.hpp
+		ToolBoxPluginData.hpp	
 		qrcodegen.cpp
 		qrcodegen.hpp
-		PluginUtil.hpp
+		ToolBoxUtil.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

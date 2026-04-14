@@ -2,6 +2,8 @@
 
 #include <fstream> // Required for file operations
 
+#include "../common/I18n.hpp"
+#include "../common/I18nResource.h"
 #include "../util/BaseTools.hpp"
 #include "../common/Resource.h"
 #include "../common/Constants.hpp"
@@ -13,6 +15,7 @@
 #include "plugins/PluginManager.hpp"
 #include "util/FileUtil.hpp"
 #include "util/MyJsonUtil.hpp"
+#include "util/UpdateManager.hpp"
 #include "view/CustomButtonHelper.hpp"
 
 
@@ -48,7 +51,7 @@ static std::vector<std::wstring> FindSkinFiles() {
 static std::string GetSettingsJsonText() {
 // 正式版使用程序内嵌的文本，debug版使用绝对路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本
 #ifndef NDEBUG
-	std::string jsonText = ReadUtf8File(EXE_FOLDER_PATH + LR"(\..\settings.json)");
+	std::string jsonText = ReadUtf8File(EXE_FOLDER_PATH + LR"(\..\common\settings.json)");
 	if (jsonText.empty()) {
 		return GetAppResourceText(IDR_SETTINGS_JSON);
 	}
@@ -62,6 +65,9 @@ static std::string GetSettingsJsonText() {
 // 从user_settings.json文件加载用户的配置
 static nlohmann::json loadUserConfig(const std::wstring& filename) {
 	std::string f = ReadUtf8File(filename);
+	if (f.empty()) {
+		return {};
+	}
 	nlohmann::json userConfig;
 	try {
 		// Parse the file content into the JSON object.
@@ -70,7 +76,11 @@ static nlohmann::json loadUserConfig(const std::wstring& filename) {
 		// The file is corrupted or not valid JSON.
 		std::wstring error_msg = L"Config file load error in '" + filename +
 			L"'. Using default settings.\n\nError: " + utf8_to_wide(e.what());
-		MessageBoxW(nullptr, error_msg.c_str(), L"Config Load Error", MB_OK | MB_ICONWARNING);
+		MessageBoxW(
+			nullptr,
+			error_msg.c_str(),
+			LoadI18nString(IDS_I18N_CONFIG_LOAD_ERROR_TITLE, L"Config Load Error").c_str(),
+			MB_OK | MB_ICONWARNING);
 		return {}; // Return empty to fall back to defaults.
 	}
 	return userConfig;
@@ -330,6 +340,8 @@ static void saveSettingControlValues(nlohmann::json& newConfig2, const bool isJu
 static void LoadSettingList() {
 	g_settings_ui_last_save.clear();
 	subPageTabs.clear();
+	nlohmann::json userConfig = loadUserConfig(USER_SETTINGS_PATH);
+	InitializeI18n(&userConfig);
 	const std::string settingsText = GetSettingsJsonText();
 	std::vector<SettingItem> pluginSettings;
 
@@ -376,8 +388,6 @@ static void LoadSettingList() {
 	// auto it = g_settings_map.find("pref_use_everything_sdk_index");
 	// bool isFind =it != g_settings_map.end();
 
-
-	nlohmann::json userConfig = loadUserConfig(USER_SETTINGS_PATH);
 	if (!g_settings_ui_last_save.empty()) {
 		// 将用户设置合并到主要设置结构中。此此更新在UI构建之前更新每个项目的" defvalue"。
 		if (!userConfig.is_null() && !userConfig.empty()) {
@@ -433,10 +443,19 @@ static void handleButtonAction(HWND hwnd, const std::string& key) {
 					st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
 		if (CopyFileW(USER_SETTINGS_PATH.c_str(), fileName, FALSE)) {
-			std::wstring message = L"设置已备份到: " + std::wstring(fileName);
-			MessageBoxW(hwnd, message.c_str(), L"备份成功", MB_OK | MB_ICONINFORMATION);
+			std::wstring message = LoadI18nString(IDS_I18N_BACKUP_SUCCESS_PREFIX, L"Settings backed up to: ")
+				+ std::wstring(fileName);
+			MessageBoxW(
+				hwnd,
+				message.c_str(),
+				LoadI18nString(IDS_I18N_BACKUP_SUCCESS_TITLE, L"Backup Created").c_str(),
+				MB_OK | MB_ICONINFORMATION);
 		} else {
-			MessageBoxW(hwnd, L"备份失败", L"错误", MB_OK | MB_ICONERROR);
+			MessageBoxW(
+				hwnd,
+				LoadI18nString(IDS_I18N_BACKUP_FAIL_TEXT, L"Backup failed").c_str(),
+				LoadI18nString(IDS_I18N_GENERIC_ERROR_TITLE, L"Error").c_str(),
+				MB_OK | MB_ICONERROR);
 		}
 	} else if (key == "pref_restore_settings") {
 		// Show file dialog to select backup file
@@ -457,10 +476,33 @@ static void handleButtonAction(HWND hwnd, const std::string& key) {
 
 		if (GetOpenFileNameW(&ofn)) {
 			if (CopyFileW(szFile, USER_SETTINGS_PATH.c_str(), FALSE)) {
-				MessageBoxW(hwnd, L"设置已恢复，请重启程序生效", L"恢复成功", MB_OK | MB_ICONINFORMATION);
+				MessageBoxW(
+					hwnd,
+					LoadI18nString(IDS_I18N_RESTORE_SUCCESS_TEXT,
+						L"Settings restored. Restart the app to apply them.").c_str(),
+					LoadI18nString(IDS_I18N_RESTORE_SUCCESS_TITLE, L"Restore Completed").c_str(),
+					MB_OK | MB_ICONINFORMATION);
 			} else {
-				MessageBoxW(hwnd, L"恢复失败", L"错误", MB_OK | MB_ICONERROR);
+				MessageBoxW(
+					hwnd,
+					LoadI18nString(IDS_I18N_RESTORE_FAIL_TEXT, L"Restore failed").c_str(),
+					LoadI18nString(IDS_I18N_GENERIC_ERROR_TITLE, L"Error").c_str(),
+					MB_OK | MB_ICONERROR);
 			}
+		}
+	}else if (key == "pref_check_version_update") {
+		AppUpdate::StartCheckForUpdates(true);
+	}else if (key == "pref_project_url") {
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher", nullptr, nullptr, SW_SHOW);
+	}else if (key == "pref_project_discuss") {
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/discussions", nullptr, nullptr, SW_SHOW);
+	}else if (key == "pref_project_issues") {
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/issues", nullptr, nullptr, SW_SHOW);
+	}else if (key == "pref_project_help") {
+		if (g_uiLanguageCode == L"zh-CN") {
+			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/%E4%B8%AD%E6%96%87", nullptr, nullptr, SW_SHOW);
+		}else {
+			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/English", nullptr, nullptr, SW_SHOW);
 		}
 	}
 }
@@ -473,5 +515,6 @@ static void AddAppStartupTime() {
 	if (it == g_settings_ui_last_save.rend()) {
 		return;
 	}
-	it->title = "本次应用启动完成耗时: " + std::to_string(APP_STARTUP_TIME) + "ms";
+	it->title = wide_to_utf8(LoadI18nString(IDS_I18N_STARTUP_TIME_PREFIX, L"Startup completed in "))
+		+ std::to_string(APP_STARTUP_TIME) + "ms";
 }

@@ -14,7 +14,7 @@ set(PLUGIN_SOURCES
 		exprtk/exprtk.hpp
 		../Plugin.hpp
 		ExprtkWrapper.hpp
-		PluginData.hpp
+		CalcPluginData.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

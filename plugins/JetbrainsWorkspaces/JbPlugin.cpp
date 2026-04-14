@@ -4,9 +4,9 @@
 #include <iomanip>
 #include <sstream>
 
-#include "PluginAction.hpp"
-#include "PluginData.hpp"
-#include "PluginUtil.hpp"
+#include "JbAction.hpp"
+#include "JbPluginData.hpp"
+#include "JbPluginUtil.hpp"
 #include "../../util/StringUtil.hpp"
 #include "util/MyJsonUtil.hpp"
 
@@ -123,7 +123,7 @@ public:
 	
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
-		auto workspaceAction = std::dynamic_pointer_cast<PluginAction>(action);
+		auto workspaceAction = std::dynamic_pointer_cast<JbAction>(action);
 		if (!workspaceAction) return false;
 
 		// 执行时用指定软件打开项目位置

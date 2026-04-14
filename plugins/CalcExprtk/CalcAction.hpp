@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "PluginData.hpp"
+#include "CalcPluginData.hpp"
 #include <string>
 #include <ShlObj.h>
 
