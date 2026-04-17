@@ -157,7 +157,6 @@ static bool shouldShowInCurrentWindowTopmostMode(HWND hwnd) {
 }
 
 static void userSettingsAfterTheAppStart() {
-	initGlobalVariable();
 	bool pref_run_app_as_admin = (g_settings_map["pref_run_app_as_admin"].boolValue);
 	if (pref_run_app_as_admin) {
 		if (!IsRunAsAdmin()) {
@@ -401,6 +400,7 @@ static void TrayMenuClick(const int position) {
 }
 
 inline std::unordered_map<std::string, std::function<void()>> getAppLaunchActionCallBacks() {
+	namespace fs = std::filesystem;
 	std::unordered_map<std::string, std::function<void()>> callbacks;
 	HWND hWnd = g_mainHwnd;
 
@@ -437,7 +437,9 @@ inline std::unordered_map<std::string, std::function<void()>> getAppLaunchAction
 				if (pData) {
 					// 创建临时文件并写入内容
 					std::wstring tempPath = std::filesystem::temp_directory_path().wstring() + L"\\settings_view.json";
-					std::ofstream file(tempPath, std::ios::binary);
+					fs::path p(tempPath);
+					std::ofstream file(p, std::ios::binary);
+					// std::ofstream file(tempPath, std::ios::binary);
 					file.write(static_cast<const char*>(pData), dataSize);
 					file.close();
 					// 打开临时文件
@@ -519,7 +521,7 @@ inline int mainWindowHotkey(WPARAM wParam) {
 	switch (wParam) {
 	case HOTKEY_ID_TOGGLE_MAIN_PANEL:
 		{
-			Println(L"Hotkey Alt + K");
+			ConsolePrintln(L"Hotkey Alt + K");
 			if (IsWindowVisible(g_mainHwnd)) {
 				HideWindow();
 			} else {

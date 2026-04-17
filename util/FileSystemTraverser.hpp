@@ -14,9 +14,6 @@
 #pragma comment(lib, "Psapi.lib")
 
 
-namespace fs = std::filesystem;
-
-
 template <typename Callback>
 static void TraverseFiles(
 	const std::wstring& folderPath2,
@@ -24,6 +21,7 @@ static void TraverseFiles(
 	const std::wstring& exeFolderPath,
 	Callback&& callback
 ) {
+	namespace fs = std::filesystem;
 	const std::wstring folderPath = ExpandEnvironmentVariables(folderPath2, exeFolderPath);
 	if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 

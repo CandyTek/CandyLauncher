@@ -2,7 +2,7 @@
 // Microsoft Visual C++ 生成的包含文件。
 // 使用者 CandyLauncher.rc
 #pragma once
-
+#define IDI_CANDYLAUNCHER        101
 #define IDS_APP_TITLE			103
 
 #define IDR_MAINFRAME			128
@@ -11,7 +11,7 @@
 #define IDM_ABOUT				104
 #define IDM_EXIT				105
 #define IDI_SMALL				111
-#define IDI_CANDYLAUNCHER		112
+// #define IDI_CANDYLAUNCHER		112
 #define IDI_CLOSE				113
 #define IDI_REFRESH				114
 //#define IDI_RESTART				(IDI_SMALL+4)

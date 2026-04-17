@@ -4,10 +4,11 @@
 #include <Shobjidl.h>
 #include <string>
 #include <variant>
+#include <gdiplus.h>
 
 #include "../util/json.hpp"
-#include "../util/BaseTools.hpp"
 #include "../model/SettingItem.hpp"
+#include "../util/FileUtil.hpp"
 
 // 将修饰符和虚拟键码打包成一个 64 位键
 #define MAKE_HOTKEY_KEY(modifiers, vk) \
@@ -25,6 +26,9 @@ extern HKL g_hklIme;
 extern UINT_PTR TimerIDSetFocusEdit;
 extern HINSTANCE g_hInst;
 
+// 用于拖放文件时延迟关闭窗口
+extern HHOOK g_mouseHook;
+
 extern HotkeyMap g_hotkeyMap;
 // 把 settings.json 里有序的配置项一一转成有序的配置列表，用来实现UI
 extern std::vector<SettingItem> g_settings_ui_last_save;
@@ -33,8 +37,10 @@ extern std::vector<SettingItem> g_settings_ui;
 // 在任何地方都可以调用这个数组来获取用户配置项
 extern std::unordered_map<std::string, SettingItem> g_settings_map;
 
-extern std::wstring EXE_FOLDER_PATH;
+extern const std::wstring EXE_FOLDER_PATH;
 extern std::wstring USER_SETTINGS_PATH;
+extern const std::wstring DEFAULT_SKIN_PATH;
+extern const std::wstring NIGHT_SKIN_PATH;
 extern std::wstring EDIT_HINT_TEXT;
 extern std::string pref_force_ime_mode;
 extern std::string pref_hotkey_toggle_main_panel;

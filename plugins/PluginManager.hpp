@@ -14,9 +14,9 @@
 #include "util/FileUtil.hpp"
 #include "util/json.hpp"
 #include "manager/TextMatchHelper.hpp"
-#include "util/MyToastUtil.hpp"
 #include "util/PinyinHelper.hpp"
 #include "util/MainTools.hpp"
+#include "util/MyToastUtil.hpp"
 
 struct PluginInfo {
 	HMODULE handle = nullptr;
@@ -68,6 +68,7 @@ public:
 							const std::wstring& fullPath,
 							const std::wstring& parent,
 							const std::wstring& ext)> callback) override {
+		namespace fs = std::filesystem;
 		if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 
 		std::wstringstream query;
@@ -119,6 +120,7 @@ public:
 							const std::wstring& fullPath,
 							const std::wstring& parent,
 							const std::wstring& ext)>&& callback) override {
+		namespace fs = std::filesystem;
 		const std::wstring folderPath = ExpandEnvironmentVariables(folderPath2, EXE_FOLDER_PATH);
 		if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 
@@ -554,7 +556,17 @@ public:
 	}
 
 	void ShowSimpleToast(const std::wstring& title, const std::wstring& msg) override {
+#if !defined(__MINGW32__)
 		MyShowSimpleToast(title, msg);
+#endif
+	}
+	
+	void ChangeEditTextText(const std::wstring& basic_string) override {
+		SetWindowTextW(g_editHwnd, basic_string.c_str());
+		// 将光标移到文本末尾
+		int textLength = GetWindowTextLengthW(g_editHwnd);
+		SendMessageW(g_editHwnd, EM_SETSEL, (WPARAM)textLength, (LPARAM)textLength);
+		SendMessageW(g_editHwnd, EM_SCROLLCARET, 0, 0);
 	}
 
 private:
@@ -721,15 +733,7 @@ private:
 
 		info.loaded = false;
 	}
-
-	void ChangeEditTextText(const std::wstring& basic_string) override {
-		SetWindowTextW(g_editHwnd, basic_string.c_str());
-		// 将光标移到文本末尾
-		int textLength = GetWindowTextLengthW(g_editHwnd);
-		SendMessageW(g_editHwnd, EM_SETSEL, (WPARAM)textLength, (LPARAM)textLength);
-		SendMessageW(g_editHwnd, EM_SCROLLCARET, 0, 0);
-	}
-
+	
 	std::wstring& GetEditTextText() override {
 		return editTextBuffer;
 	}

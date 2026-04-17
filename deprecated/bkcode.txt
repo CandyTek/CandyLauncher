@@ -1,57 +1,43 @@
 ﻿todo:
 
 
-
-做一个标准夜间模式
-pref_night_mode
-
-skin
-做一些好看的皮肤
-
-主题提供提示文本
-覆盖主题的hint 提示文本
-
-当主题变更，变更监听的文件
-
-导航action添加索引管理器
-
-主面板：
-
-
-插件功能：
-网络搜索
-- 书签
-通过指定浏览器打开
-配置默认浏览器
-可复制
-
-
-历史打开项搜索
-可能要重构插件才行
-
-代码cherrytree:
-图标使用语言
-
+计算器插件，三角学单位
+设置界面，完善tab图标
+单位插件，补全图标
+双Ctrl启动,双Shift，启动
+鼠标侧键中键启动
+完善预设runner.json 也在桌面找应用
+索引查看器，添加查看排除了哪些项
 jb 工作区插件 看看怎么找到对应软件打开
 
-单位面板，补全图标
-- 完善目录索引与拖放交互
+
+skin 图片不能严格对应控件大小，试试黑白相间的图片
+插件支持动态卸载加载，设置项的插件开关要有用
+导航action添加索引管理器
+添加插件，网络%s搜索
+- 书签插件
+	通过指定浏览器打开
+	配置默认浏览器
+	可复制
+
+历史打开插件项搜索，可能要重构插件系统
+添加，语言国际化
+自动检查更新，不再提示更新 pref_check_version_update
+skin 做一些好看的皮肤
+
+////////////////////////////////////////////////////////////
+插件系统，并发与超时
 
 
-检查已打开的窗口
-
-
-stringArr设置项 保存好像不管用
-
-
-三角学单位
-
-插件 并发与超时
+更多插件：
 索引adobe
 飞书
 思源笔记
 幕布
 notions
+emoji
+ip
+
 
 Google
 Evernote
@@ -130,34 +116,6 @@ I:\AndroidSdk\platforms\android-33\data\res\drawable-xxhdpi\btn_default_pressed_
 
 
 
-
-
-
-
-
-
-////////////////////////////////////////////////////////////
-后期：
-完善item图标
-
-双Ctrl启动
-鼠标侧键中键启动
-小细节，编辑框 paint重绘，再次显示界面时 选中词语背景有点问题
-完善预设runner.json 也在桌面找应用
-暴力测试各种设置项
-添加，语言国际化
-allow_drag_file
-
-
-自动检查更新，不在提示
-pref_check_version_update
-
-索引查看器:
-添加查看排除了哪些项
-两个列表前面添加小图标
-
-皮肤：
-当不使用透明图片背景时，使用传统的gdi 来渲染窗口内容
 
 
 
@@ -3014,3 +2972,104 @@ if (!workspaceAction->originalUri.empty()) {
 // };
 
 // static const IID IID_IDataInitialize = {0x2206CCB1, 0x19C1, 0x11D1, {0x89, 0xE0, 0x00, 0xC0, 0x4F, 0xD7, 0xA8, 0x29}};
+
+
+🌍 国际化方案架构设计
+
+  核心技术方案
+
+  1. LocalizationManager 单例模式
+  // 高性能设计要点：
+  - 启动时一次性加载JSON到内存（std::unordered_map）
+  - O(1) 哈希查找，无文件I/O开销
+  - 支持语言热切换，无需重启
+  - Fallback机制：缺失翻译自动降级到中文
+
+  2. 语言文件结构 (JSON格式)
+  {
+    "app": {
+      "name": "CandyLauncher",
+      "tray_show": "显示启动器",
+      "tray_settings": "设置",
+      "tray_exit": "退出"
+    },
+    "settings": {
+      "title": "设置",
+      "general": "通用",
+      "language": "语言"
+    },
+    "plugins": {
+      "calc": {
+        "name": "计算器",
+        "description": "科学计算器"
+      }
+    }
+  }
+
+  3. 性能优化策略
+  - ✅ 预加载：程序启动时加载所有字符串到内存
+  - ✅ 缓存：使用 std::unordered_map<std::wstring, std::wstring>
+  - ✅ constexpr key：编译期常量作为查找键
+  - ✅ 避免实时解析：不在运行时解析JSON
+  - ✅ 智能Fallback：缺失翻译不中断程序
+
+  4. 插件系统集成
+  // 扩展 IPluginHost 接口
+  virtual std::wstring getString(const std::wstring& key) = 0;
+
+  // 插件调用示例
+  auto name = pluginHost->getString(L"plugins.calc.name");
+
+  实施优先级
+
+  第一阶段（核心基础）：
+  1. ✅ 实现 LocalizationManager 类
+  2. ✅ 创建语言文件模板
+  3. ✅ 集成到 GlobalState
+
+  第二阶段（内容提取）：
+  4. ✅ 提取所有硬编码字符串（主程序 + UI + 10个插件）
+  5. ✅ 创建完整的中英文语言文件
+
+  第三阶段（代码改造）：
+  6. ✅ 替换所有硬编码为 Loc::Get(L"key") 调用
+  7. ✅ 为插件提供国际化接口
+
+  第四阶段（UI功能）：
+  8. ✅ 添加语言选择界面
+  9. ✅ 实现语言热切换
+
+  第五阶段（测试优化）：
+  10. ✅ 全面测试 + 性能优化
+
+  预期性能指标
+
+  - 🚀 字符串查找：< 10ns (哈希表 O(1))
+  - 💾 内存占用：< 500KB (完整双语言包)
+  - ⚡ 语言切换：< 100ms (仅重绘UI)
+  - 📦 启动开销：< 50ms (加载JSON到内存)
+
+  这个方案已经考虑了CandyLauncher的架构特点，可以无缝集成到现有代码中。需要我开始实施吗？
+
+  Todos
+  ☐ 设计国际化架构 - 创建LocalizationManager单例类，使用JSON语言文件+内存缓存方案
+  ☐ 实现LocalizationManager核心类 (util/LocalizationManager.hpp) -
+    支持语言加载、切换、字符串查询、fallback机制
+  ☐ 创建语言文件结构 - 在locales/目录下创建zh-CN.json, en-US.json等语言文件模板
+  ☐ 扫描并提取主程序所有硬编码字符串 - CandyLauncher.cpp, TrayMenuManager.cpp等核心文件
+  ☐ 扫描并提取UI组件硬编码字符串 - SettingsWindow.hpp, EditManager.hpp, ListViewManager.hpp等
+  ☐ 扫描并提取所有插件的硬编码字符串 - 10个插件模块的所有可见文本
+  ☐ 创建完整的中文语言文件 (zh-CN.json) - 包含所有提取的字符串
+  ☐ 创建英文语言文件 (en-US.json) - 翻译所有中文字符串到英文
+  ☐ 在GlobalState.hpp添加语言设置状态管理
+  ☐ 修改主程序代码 - 将硬编码字符串替换为LocalizationManager调用
+  ☐ 修改UI组件代码 - 将硬编码字符串替换为本地化调用
+  ☐ 修改所有插件代码 - 集成国际化支持，通过IPluginHost接口访问
+  ☐ 扩展IPluginHost接口 - 添加getString()方法供插件获取本地化字符串
+  ☐ 在SettingsWindow添加语言选择UI - 添加语言下拉列表控件
+  ☐ 在SettingsManager添加语言设置项 - 保存/加载用户选择的语言
+  ☐ 实现语言热切换功能 - 切换语言后刷新所有UI界面
+  ☐ 优化性能 - 实现字符串预加载、哈希查找、constexpr优化
+  ☐ 测试所有界面的国际化显示 - 主窗口、设置窗口、托盘菜单等
+  ☐ 测试所有插件的国际化显示 - 10个插件的搜索结果和UI文本
+  ☐ 测试语言切换功能 - 验证切换后所有文本正确更新

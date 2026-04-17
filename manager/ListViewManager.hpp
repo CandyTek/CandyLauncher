@@ -142,7 +142,7 @@ static void refreshAppLaunchAction() {
 	base_launch_action1->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action1->getTitle()));
 	auto base_launch_action2 = std::make_shared<BaseLaunchAction>(L"刷新插件", L"重新加载所有插件动作", L"",
 																appLaunchActionCallBacks["refreshPlugins"]);
-	base_launch_action2->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action1->getTitle()));
+	base_launch_action2->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action2->getTitle()));
 	base_launch_action2->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, 48, 48);
 
 	baseAppLaunchActions.push_back(base_launch_action1);
@@ -620,7 +620,7 @@ static void refreshPluginRunner() {
 inline void textMatching() {
 	// 通知插件用户输入变化
 	std::wstring editTextBuffer2;
-	if (MyStartsWith2(editTextBuffer, L"{\"arg\":\"")) {
+	if (MyStartsWith2(editTextBuffer, LR"({"arg":")")) {
 		if (const size_t end = find_json_end(editTextBuffer); end != std::wstring::npos) {
 			const std::wstring json_part = editTextBuffer.substr(0, end + 1);
 			bool isSuccess = false;

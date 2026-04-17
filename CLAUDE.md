@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 
 ```bash
-./scripts/run_candylauncher.cmd | findstr /i 'pluginname'
+./scripts/run_candylauncher.cmd | grep -i 'pluginname'
 ```
 
 > IMPORTANT: Dont use ``Reading shell output`` commond, the output obtained by this command is often stale

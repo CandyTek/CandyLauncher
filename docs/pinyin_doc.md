@@ -18,24 +18,24 @@ git submodule add https://github.com/wolfgitpr/cpp-pinyin 3rdparty/cpp-pinyin
 
 ```cmake
 # 添加 cpp-pinyin 子目录
-add_subdirectory(3rdparty/cpp-pinyin)
+add_subdirectory(../3rdparty/cpp-pinyin)
 
 # 链接库
 target_link_libraries(CandyLauncher PRIVATE
-    cpp-pinyin::cpp-pinyin
-    # ... 其他库
+        cpp-pinyin::cpp-pinyin
+        # ... 其他库
 )
 
 # 添加包含目录
 include_directories(
-    ${CMAKE_SOURCE_DIR}/3rdparty/cpp-pinyin/include
+        ${CMAKE_SOURCE_DIR}/3rdparty/cpp-pinyin/include
 )
 
 # 复制字典文件到输出目录
 add_custom_command(TARGET CandyLauncher POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/3rdparty/cpp-pinyin/res/dict
-    $<TARGET_FILE_DIR:CandyLauncher>/dict
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/3rdparty/cpp-pinyin/res/dict
+        $<TARGET_FILE_DIR:CandyLauncher>/dict
 )
 ```
 

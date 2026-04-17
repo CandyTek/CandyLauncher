@@ -15,10 +15,10 @@
 #include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
 
-namespace fs = std::filesystem;
 
 // 返回第一个找到的 .ico 文件路径（非递归）
 static std::string findFirstIcoFile(const std::string& folderPath) {
+	namespace fs = std::filesystem;
 	try {
 		const fs::path dir(folderPath);
 		if (!fs::exists(dir) || !fs::is_directory(dir)) {
@@ -88,6 +88,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 	const std::string& historyDbPath,
 	const std::wstring& browserIconPath,
 	int maxResults = 2000) {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	try {
@@ -260,6 +261,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 
 // 获取 Chrome 历史记录
 static std::vector<std::shared_ptr<BaseAction>> GetChromeHistory(int maxResults = 2000) {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	const std::string localAppData = getLocalAppData();
@@ -283,6 +285,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeHistory(int maxResults 
 
 // 获取 Edge 历史记录
 static std::vector<std::shared_ptr<BaseAction>> GetEdgeHistory(int maxResults = 2000) {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	const std::string localAppData = getLocalAppData();
@@ -307,6 +310,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetEdgeHistory(int maxResults = 
 static std::vector<std::shared_ptr<BaseAction>> GetHistoryFromCustomPath(
 	const std::string& profilePath,
 	int maxResults = 2000) {
+	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	try {

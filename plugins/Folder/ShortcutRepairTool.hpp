@@ -90,7 +90,7 @@ static void RefreshInvalidListView() {
 				FileInfo fileInfo1;
 				fileInfo1.file_path = filePath;
 
-				std::wstring fileName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\") + 1);
+				std::wstring fileName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\/") + 1);
 				if (fileName.size() > 4 && fileName.substr(fileName.size() - 4) == L".lnk") {
 					fileName = fileName.substr(0, fileName.size() - 4);
 				}
@@ -217,7 +217,7 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 					}
 					SendMessage(g_candidateListView, WM_SETREDRAW, FALSE, 0); // 暂停重绘
 					// 提取目标文件名（去掉扩展名）
-					std::wstring fileName = shortcutTargetPath.substr(shortcutTargetPath.find_last_of(L"\\") + 1);
+					std::wstring fileName = shortcutTargetPath.substr(shortcutTargetPath.find_last_of(L"\\/") + 1);
 					// 找到最后一个点
 					size_t dotPos = fileName.find_last_of(L'.');
 					if (dotPos != std::wstring::npos) {

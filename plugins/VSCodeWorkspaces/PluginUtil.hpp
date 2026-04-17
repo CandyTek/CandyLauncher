@@ -250,7 +250,8 @@ inline std::vector<std::shared_ptr<PluginAction>> ParseStorageJson(
 
 	try {
 		int iconFilePathIndex = GetSysImageIndex(instance.executablePath);
-		std::ifstream file(jsonPath);
+		std::filesystem::path p(jsonPath);
+		std::ifstream file(p, std::ios::binary);
 		if (!file.is_open()) {
 			return results;
 		}

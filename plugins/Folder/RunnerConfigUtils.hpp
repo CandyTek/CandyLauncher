@@ -26,7 +26,7 @@ static std::vector<std::string> WideVectorToUtf8Vector(const std::vector<std::ws
 	return result;
 }
 
-// 解析 runner.json 文件
+// 解析 config_folder_plugin.json 文件
 static std::vector<TraverseOptions> ParseRunnerConfig() {
 	std::vector<TraverseOptions> configs;
 	std::string jsonText = ReadUtf8File(RUNNER_CONFIG_PATH2);
@@ -47,7 +47,7 @@ static std::vector<TraverseOptions> ParseRunnerConfig() {
 	}
 	//}
 	//catch (const std::exception &e) {
-	//	MessageBoxA(nullptr, ("Failed to parse runner.json: " + std::string(e.what())).c_str(),
+	//	MessageBoxA(nullptr, ("Failed to parse config_folder_plugin.json: " + std::string(e.what())).c_str(),
 	//				"Error", MB_OK | MB_ICONERROR);
 	//}
 
@@ -81,7 +81,7 @@ static void SaveConfigToFile(std::vector<TraverseOptions>& runnerConfigs) {
 		file.close();
 	}
 	catch (const std::exception &e) {
-		MessageBoxA(nullptr, ("Failed to save runner.json: " + std::string(e.what())).c_str(),
+		MessageBoxA(nullptr, ("Failed to save config_folder_plugin.json: " + std::string(e.what())).c_str(),
 					"Error", MB_OK | MB_ICONERROR);
 	}
 }

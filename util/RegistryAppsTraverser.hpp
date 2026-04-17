@@ -41,7 +41,7 @@ static void TraverseRegistryApps(
 
 		// 获取可执行文件的父目录
 		std::wstring workingDir = executablePath;
-		size_t pos = workingDir.find_last_of(L"\\");
+		size_t pos = workingDir.find_last_of(L"\\/");
 		if (pos != std::wstring::npos) {
 			workingDir = workingDir.substr(0, pos);
 		}

@@ -26,25 +26,32 @@ CandyLauncher 是一个用 C++ 编写的轻量级 Windows 快捷启动器，仿 
 
 - 安装组件：使用 C++ 的桌面开发（含 Windows SDK、MSVC 工具集、CMake 集成）
 - 打开仓库根目录文件夹
-- 选择 x64 / x86 与 Debug / Release，CandyLauncher.exe 运行
+- 选择其中一项配置进行生成（推荐 ninja-msvc）
+- 运行项选择 CandyLauncher.exe，点击运行按钮
 
 ### CLion
 
-- 使用 CLion 打开仓库根目录
-- 点击运行按钮
+- 打开仓库根目录文件夹
+- 不使用 Cmake预设，使用默认的Debug配置，手动选择工具链、生成器（推荐 Visual Studio + Ninja）
+- 运行项选择 CandyLauncher，点击运行按钮
 
 ### VsCode + 插件 (CMake Tools + C/C++)
 
-- 使用 VsCode 打开仓库根目录，选择其中一项配置进行生成，注意相关的依赖和环境变量
-- 点击运行按钮
+- 打开仓库根目录文件夹
+- 快捷键 Ctrl+Shift+P，Cmake: 选择配置预设
+- 选择其中一项配置进行生成（推荐 ninja-msvc）
+- 底部状态栏点击生成
+- 点击运行按钮，运行项选择 CandyLauncher
 
 ### 命令行 (Native Tools Command Prompt for VS 2022)
 
+在仓库根目录打开终端
+
 #### CMake + Ninja + MSVC
 
-```commandline
+```bash
 cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
-cmake --build build --config Debug
+cmake --build build --config Debug --target CandyLauncher
 ctest -C Debug --test-dir build
 ```
 
@@ -52,38 +59,32 @@ ctest -C Debug --test-dir build
 
 ```commandline
 cmake -S . -B build -G "Visual Studio 17 2022"
-cmake --build build --config Debug
+cmake --build build --config Debug --target CandyLauncher
 ctest -C Debug --test-dir build
 ```
 
-### 命令行
 
-#### CMake + MinGW-w64
+### 命令行
 
 使用命令检查 MinGW
 
 ```commandline
 where gcc
 where g++
-```
-
-```commandline
-cmake -S . -B build -G "MinGW Makefiles"
-cmake --build build --config Debug
-ctest -C Debug --test-dir build
 ```
 
 #### CMake + Ninja + MinGW-w64
 
-使用命令检查 MinGW
-
-```commandline
-where gcc
-where g++
-```
-
 ```commandline
 cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=C:\path_to\ninja.exe
+cmake --build build --config Debug
+ctest -C Debug --test-dir build
+```
+
+#### CMake + MinGW-w64
+
+```commandline
+cmake -S . -B build -G "MinGW Makefiles"
 cmake --build build --config Debug
 ctest -C Debug --test-dir build
 ```

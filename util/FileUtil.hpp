@@ -41,8 +41,10 @@ inline std::wstring GetCurrentWorkingDirectoryW() {
 
 // 从文件读取 JSON，支持 UTF-8 (带/不带 BOM)
 inline std::string ReadUtf8File(const std::wstring& configPath) {
+	namespace fs = std::filesystem;
 	// 打开文件
-	std::ifstream in(configPath);
+	fs::path p(configPath);
+	std::ifstream in(p, std::ios::binary);
 	if (!in) {
 		std::wcerr << L"配置文件不存在：" << configPath << std::endl;
 		std::string utf8json2;
@@ -50,8 +52,6 @@ inline std::string ReadUtf8File(const std::wstring& configPath) {
 	}
 
 	// 先打印完整路径
-	namespace fs = std::filesystem;
-	fs::path p(configPath);
 	try {
 		auto absPath = fs::absolute(p);
 		ConsolePrintln(L"ReadUtf8File", L"Configuration file path: " + absPath.wstring());

@@ -6,11 +6,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 插件源文件
 set(PLUGIN_SOURCES
-	OneNotePlugin.cpp
-	../Plugin.hpp
-	OneNoteAction.hpp
-	OneNotePluginData.hpp
-	OneNoteUtil.hpp
+		OneNotePlugin.cpp
+		../Plugin.hpp
+		OneNoteAction.hpp
+		OneNotePluginData.hpp
+		OneNoteUtil.hpp
+		FindOneNoteUtil.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

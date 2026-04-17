@@ -90,6 +90,11 @@ public:
 	void ShowSimpleToast(const std::wstring& title, const std::wstring& msg) override {
 		TestLog(L"[Toast] " + title + L": " + msg);
 	}
+
+	std::wstring& GetEditTextText() override {
+		std::wstring temp;
+		return temp;
+	}
 };
 
 int main() {

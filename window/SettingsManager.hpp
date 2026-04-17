@@ -30,11 +30,11 @@ inline std::vector<std::vector<HWND>> hCtrlsByTab;
 static std::vector<std::wstring> FindSkinFiles() {
 	std::vector<std::wstring> skinFiles;
 	TraverseOptions options;
-	options.folder = EXE_FOLDER_PATH;
+	options.folder = EXE_FOLDER_PATH + LR"(\skins)";
 	options.recursive = true;
 	options.extensions = {L".json"};
 
-	TraverseFiles(EXE_FOLDER_PATH, options, EXE_FOLDER_PATH, [&](const std::wstring& name, const std::wstring& fullPath,
+	TraverseFiles(options.folder, options, options.folder, [&](const std::wstring& name, const std::wstring& fullPath,
 																const std::wstring& parent, const std::wstring& ext) {
 		if (MyStartsWith(name, L"skin_")) {
 			skinFiles.push_back(fullPath);
@@ -46,10 +46,12 @@ static std::vector<std::wstring> FindSkinFiles() {
 
 // 获取 settings.json 文件内容
 static std::string GetSettingsJsonText() {
-	// 正式版使用程序内嵌的文本，debug版使用固定路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本
+// 正式版使用程序内嵌的文本，debug版使用绝对路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本
 #ifndef NDEBUG
-	std::string jsonText = ReadUtf8File(LR"(C:\Users\Administrator\source\repos\WindowsProject1\settings.json)");
-	if (jsonText.empty()) return GetAppResourceText(IDR_SETTINGS_JSON);
+	std::string jsonText = ReadUtf8File(EXE_FOLDER_PATH + LR"(\..\settings.json)");
+	if (jsonText.empty()) {
+		return GetAppResourceText(IDR_SETTINGS_JSON);
+	}
 	return jsonText;
 #else
 	return GetAppResourceText(IDR_SETTINGS_JSON);
@@ -74,6 +76,41 @@ static nlohmann::json loadUserConfig(const std::wstring& filename) {
 	return userConfig;
 }
 
+static void initGlobalVariable() {
+	g_currectSkinFilePath = utf8_to_wide(g_settings_map["pref_skin"].stringValue);
+	pref_show_window_and_release_modifier_key = (g_settings_map["pref_show_window_and_release_modifier_key"].boolValue);
+	pref_ctrl_number_launch_item = (g_settings_map["pref_ctrl_number_launch_item"].boolValue);
+	pref_alt_number_launch_item = (g_settings_map["pref_alt_number_launch_item"].boolValue);
+	pref_switch_list_right_click_with_shift_right_click = (g_settings_map[
+		"pref_switch_list_right_click_with_shift_right_click"].boolValue);
+	pref_show_window_and_release_modifier_key = (g_settings_map["pref_show_window_and_release_modifier_key"].boolValue);
+	pref_run_item_as_admin = (g_settings_map["pref_run_item_as_admin"].boolValue);
+	pref_hide_in_fullscreen = (g_settings_map["pref_hide_in_fullscreen"].boolValue);
+	pref_hide_in_topmost_fullscreen = (g_settings_map["pref_hide_in_topmost_fullscreen"].boolValue);
+	pref_lock_window_popup_position = (g_settings_map["pref_lock_window_popup_position"].boolValue);
+	pref_preserve_last_search_term = (g_settings_map["pref_preserve_last_search_term"].boolValue);
+	pref_single_click_to_open = (g_settings_map["pref_single_click_to_open"].boolValue);
+	pref_fuzzy_match = (g_settings_map["pref_fuzzy_match"].boolValue);
+	pref_last_search_term_selected = (g_settings_map["pref_last_search_term_selected"].boolValue);
+	pref_close_after_open_item = (g_settings_map["pref_close_after_open_item"].boolValue);
+	pref_force_ime_mode = g_settings_map["pref_force_ime_mode"].stringValue;
+	pref_max_search_results = g_settings_map["pref_max_search_results"].intValue;
+	pref_hotkey_toggle_main_panel = g_settings_map["pref_hotkey_toggle_main_panel"].stringValue;
+	pref_fuzzy_match_score_threshold = g_settings_map["pref_fuzzy_match_score_threshold"].intValue;
+	if (!g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {
+		EDIT_HINT_TEXT = utf8_to_wide(g_settings_map["pref_search_box_placeholder"].stringValue);
+	}
+
+	int64_t tempX = g_settings_map["pref_window_popup_position_offset_x"].intValue;
+	int64_t tempY = g_settings_map["pref_window_popup_position_offset_y"].intValue;
+	if (tempX >= 0 && tempX <= 100) {
+		window_position_offset_x = static_cast<float>(tempX) / 100.0f;
+	}
+	if (tempY >= 0 && tempY <= 100) {
+		window_position_offset_y = static_cast<float>(tempY) / 100.0f;
+	}
+	PinyinHelper::SetActivePinyinScheme(g_settings_map["pref_pinyin_mode"].stringValue);
+}
 
 static void LoadSettingsMap() {
 	g_settings_map.clear();
@@ -90,6 +127,7 @@ static void LoadSettingsMap() {
 	};
 
 	loadSettingsToMap(g_settings_ui_last_save);
+	initGlobalVariable();
 	// auto it = g_settings_map.find("com.candytek.normallaunchplugin.moreitem");
 	// auto it = g_settings_map.find("com.candytek.folderplugin.envpath_apps");
 	// auto it = g_settings_map.find("pref_use_everything_sdk_index");
@@ -98,8 +136,10 @@ static void LoadSettingsMap() {
 
 // 保存配置到JSON文件
 static void saveConfigToFile(const std::wstring& filename, const nlohmann::json& newConfig) {
+	namespace fs = std::filesystem;
 	const std::string newSettingsText = newConfig.dump(4);
-	std::ofstream o(filename);
+	fs::path p(filename);
+	std::ofstream o(p, std::ios::binary);
 	o << newSettingsText << std::endl;
 	o.close();
 }
@@ -286,40 +326,6 @@ static void saveSettingControlValues(nlohmann::json& newConfig2, const bool isJu
 	saveSettingControlValuesSub(g_settings_ui, newConfig2);
 }
 
-
-static void initGlobalVariable() {
-	pref_show_window_and_release_modifier_key = (g_settings_map["pref_show_window_and_release_modifier_key"].boolValue);
-	pref_ctrl_number_launch_item = (g_settings_map["pref_ctrl_number_launch_item"].boolValue);
-	pref_alt_number_launch_item = (g_settings_map["pref_alt_number_launch_item"].boolValue);
-	pref_switch_list_right_click_with_shift_right_click = (g_settings_map[
-		"pref_switch_list_right_click_with_shift_right_click"].boolValue);
-	pref_show_window_and_release_modifier_key = (g_settings_map["pref_show_window_and_release_modifier_key"].boolValue);
-	pref_run_item_as_admin = (g_settings_map["pref_run_item_as_admin"].boolValue);
-	pref_hide_in_fullscreen = (g_settings_map["pref_hide_in_fullscreen"].boolValue);
-	pref_hide_in_topmost_fullscreen = (g_settings_map["pref_hide_in_topmost_fullscreen"].boolValue);
-	pref_lock_window_popup_position = (g_settings_map["pref_lock_window_popup_position"].boolValue);
-	pref_preserve_last_search_term = (g_settings_map["pref_preserve_last_search_term"].boolValue);
-	pref_single_click_to_open = (g_settings_map["pref_single_click_to_open"].boolValue);
-	pref_fuzzy_match = (g_settings_map["pref_fuzzy_match"].boolValue);
-	pref_last_search_term_selected = (g_settings_map["pref_last_search_term_selected"].boolValue);
-	pref_close_after_open_item = (g_settings_map["pref_close_after_open_item"].boolValue);
-	pref_force_ime_mode = g_settings_map["pref_force_ime_mode"].stringValue;
-	pref_max_search_results = g_settings_map["pref_max_search_results"].intValue;
-	pref_hotkey_toggle_main_panel = g_settings_map["pref_hotkey_toggle_main_panel"].stringValue;
-	pref_fuzzy_match_score_threshold = g_settings_map["pref_fuzzy_match_score_threshold"].intValue;
-	EDIT_HINT_TEXT = utf8_to_wide(g_settings_map["pref_search_box_placeholder"].stringValue);
-
-	int64_t tempX = g_settings_map["pref_window_popup_position_offset_x"].intValue;
-	int64_t tempY = g_settings_map["pref_window_popup_position_offset_y"].intValue;
-	if (tempX >= 0 && tempX <= 100) {
-		window_position_offset_x = static_cast<float>(tempX) / 100.0f;
-	}
-	if (tempY >= 0 && tempY <= 100) {
-		window_position_offset_y = static_cast<float>(tempY) / 100.0f;
-	}
-	PinyinHelper::SetActivePinyinScheme(g_settings_map["pref_pinyin_mode"].stringValue);
-}
-
 // 程序开始加载所有用户配置项
 static void LoadSettingList() {
 	g_settings_ui_last_save.clear();
@@ -398,7 +404,6 @@ static void LoadSettingList() {
 	}
 
 	LoadSettingsMap();
-	initGlobalVariable();
 }
 
 // 等未来彻底稳定了再实现该方法

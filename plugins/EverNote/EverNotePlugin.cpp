@@ -95,7 +95,14 @@ public:
 			"title": "Evernote 数据库文件路径",
 			"type": "string",
 			"subPage": "plugin",
-			"defValue": "C:\\Users\\Administrator\\AppData\\Roaming\\Evernote\\conduit-storage\\https%3A%2F%2Fwww.evernote.com\\UDB-User305290988+RemoteGraph.sql"
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.evernoteplugin.db_path",
+			"title": "数据库文件路径位置需要自己查找，在用户的Evernote文件夹内，比如\n C:\\Users\\用户名\\AppData\\Roaming\\Evernote\\conduit-storage\\https%3A%2F%2Fwww.evernote.com\\UDB-User12345+RemoteGraph.sql",
+			"type": "text",
+			"subPage": "plugin",
+			"defValue": ""
 		}
 	]
 }
