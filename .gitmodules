@@ -19,3 +19,6 @@
 [submodule "3rdparty/WinToast"]
 	path = 3rdparty/WinToast
 	url = https://github.com/mohabouje/WinToast
+[submodule "3rdparty/github-releases-autoupdater"]
+	path = 3rdparty/github-releases-autoupdater
+	url = https://github.com/CandyTek/github-releases-autoupdater
