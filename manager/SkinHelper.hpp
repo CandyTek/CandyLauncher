@@ -7,6 +7,7 @@
 #include "../common/GlobalState.hpp"
 #include <gdiplus.h>
 #include <atomic>
+#include "../util/StringUtil.hpp"
 
 // 监听皮肤文件改动
 inline std::thread g_skinFileWatcherThread;
@@ -19,6 +20,22 @@ inline size_t g_prefSkinIndex;
 // 外部变量声明
 //inline std::atomic<bool> g_shouldStop;
 
+static std::wstring getCurrectSkinPath(std::wstring skinPath) {
+	std::wstring result;
+	if (skinPath == L"default") {
+		result = DEFAULT_SKIN_PATH;
+	} else if (skinPath == L"night_mode") {
+		result = NIGHT_SKIN_PATH;
+	} else {
+		skinPath = NormalizePath(skinPath);
+		if (StartsWith(skinPath, L"/") || StartsWith(skinPath, L"\\")) {
+			result = EXE_FOLDER_PATH + skinPath;
+		} else {
+			result = skinPath;
+		}
+	}
+	return result;
+}
 
 // 判断系统是否启用了深色模式
 static bool IsSystemDarkMode() {
@@ -61,8 +78,8 @@ static bool IsSystemDarkMode() {
 
 static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKey, int width, int height) {
 	std::wstring picturePath = utf8_to_wide(MyTrim(g_skinJson.value(skinKey, "")));
-	if (MyStartsWith2(picturePath, L"\\\\")) {
-	} else if (MyStartsWith2(picturePath, L"\\")) {
+	if (StartsWith(picturePath, L"\\\\")) {
+	} else if (StartsWith(picturePath, L"\\")) {
 		picturePath = utf8_to_wide(g_skinJson["skin_folder"]) + picturePath;
 	}
 	if (image) {
@@ -71,7 +88,7 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 		image = nullptr;
 	}
 	if (!picturePath.empty()) {
-		if (MyEndsWith(picturePath, L".9.png")) {
+		if (EndsWith(picturePath, L".9.png")) {
 			image = RenderNinePatchToSize(picturePath.c_str(), width, height);
 			//image =CreateNinePatchBitmap(utf8_to_wide(picturePath).c_str(),MAIN_WINDOW_WIDTH,MAIN_WINDOW_HEIGHT);
 		} else {
@@ -102,12 +119,33 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 	}
 }
 
-static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) {
-	if (skinPath == L"default") {
-		skinPath = DEFAULT_SKIN_PATH;
-	} else if (skinPath == L"night_mode") {
-		skinPath = NIGHT_SKIN_PATH;
+static void UpdateListViewScrollbarStyle()
+{
+	if (!g_listViewHwnd || !IsWindow(g_listViewHwnd))
+		return;
+
+	LONG_PTR style = GetWindowLongPtr(g_listViewHwnd, GWL_STYLE);
+
+	if (g_listViewHideScrollbar) {
+		// 禁止 ListView 自己显示滚动条
+		style |= LVS_NOSCROLL;
+
+		// 去掉垂直滚动条窗口样式
+		style &= ~WS_VSCROLL;
+	} else {
+		// 允许 ListView 自己管理滚动条
+		style &= ~LVS_NOSCROLL;
+
+		// 恢复垂直滚动条窗口样式
+		style |= WS_VSCROLL;
 	}
+
+	SetWindowLongPtr(g_listViewHwnd, GWL_STYLE, style);
+}
+
+
+static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) {
+	skinPath = getCurrectSkinPath(skinPath);
 	// 黑夜模式功能
 	std::string mode = g_settings_map["pref_night_mode"].stringValue;
 	if (mode == "night_mode" || (mode == "auto_recognition" && IsSystemDarkMode())) {
@@ -219,9 +257,12 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_itemListWidth, g_itemListHeight, SWP_NOZORDER);
 	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
-	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
+	g_listViewHideScrollbar = g_skinJson.value("listview_hide_scrollbar", false);
+	int thumbWidth = g_listViewHideScrollbar ? 0 : GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
 	ListView_SetColumnWidth(g_listViewHwnd, 0, g_itemListWidth - thumbWidth - 6);
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
+	UpdateListViewScrollbarStyle();
+	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
 
 	// 更新列表视图颜色
 	// COLORREF listBgColor = HexToCOLORREF(g_skinJson.value("listview_bg_color", "#FFFFFF"));
@@ -272,10 +313,8 @@ static void RefreshSkinFile() {
 	prefSkin->entries.emplace_back("夜间模式");
 
 	for (const auto& path : g_skinFilePaths) {
-		std::filesystem::path p(path);
-		std::wstring fileName = p.stem().wstring();
 		prefSkin->entryValues.emplace_back(wide_to_utf8(path));
-		prefSkin->entries.emplace_back(wide_to_utf8(fileName));
+		prefSkin->entries.emplace_back(wide_to_utf8(path));
 	}
 }
 
@@ -340,14 +379,8 @@ static void watchSkinFile() {
 				std::wstring changedFile(pNotify->FileName, pNotify->FileNameLength / sizeof(WCHAR));
 
 				// 从当前皮肤路径中提取文件名
-				std::wstring currentSkinFileName;
-				if (g_currectSkinFilePath == L"default") {
-					currentSkinFileName = DEFAULT_SKIN_PATH;
-				} else if (g_currectSkinFilePath == L"night_mode") {
-					currentSkinFileName = NIGHT_SKIN_PATH;
-				} else {
-					currentSkinFileName = g_currectSkinFilePath;
-				}
+				std::wstring currentSkinFileName = getCurrectSkinPath(g_currectSkinFilePath);
+
 				if (const size_t pos = currentSkinFileName.find_last_of(L"\\/"); pos != std::wstring::npos) {
 					currentSkinFileName = currentSkinFileName.substr(pos + 1);
 				}

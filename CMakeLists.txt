@@ -83,11 +83,12 @@ add_executable(CandyLauncher WIN32
 		util/TaskWorker.hpp
 		view/CustomEdit.hpp
 		util/FullScreenDetectUtil.hpp
+		util/ShortCutDetectUtil.hpp
 
 )
 
 add_library(CandyLauncherLangZh SHARED
-#		lang/ResourceDllEntry.cpp #平时去掉可以加快编译速度，资源改动时取消注释
+		lang/ResourceDllEntry.cpp #平时去掉可以加快编译速度，资源改动时取消注释
 		lang/zh-CN.rc
 )
 set_target_properties(CandyLauncherLangZh PROPERTIES
@@ -96,7 +97,7 @@ set_target_properties(CandyLauncherLangZh PROPERTIES
 )
 
 add_library(CandyLauncherLangEn SHARED
-#		lang/ResourceDllEntry.cpp
+		lang/ResourceDllEntry.cpp
 		lang/en-US.rc
 )
 set_target_properties(CandyLauncherLangEn PROPERTIES
@@ -304,6 +305,7 @@ add_subdirectory(plugins/TextFile)
 add_subdirectory(plugins/EverNote)
 add_subdirectory(plugins/VisualStudio)
 add_subdirectory(plugins/SmallToolBox)
+add_subdirectory(plugins/WebSearch)
 
 
 add_subdirectory(plugins/PluginTest)
@@ -312,6 +314,7 @@ set(PLUGIN_DEPENDENCIES)
 
 #list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
 list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
@@ -334,26 +337,26 @@ list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
 
 if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 	#	message(WARNING "come here")
-	set(PLUGIN_DEPENDENCIES
-			FeatureLaunchPlugin
-			EverNotePlugin
-			VisualStudioPlugin
-			BrowserHistoryPlugin
-			TextFilePlugin
-			ExamplePlugin
-			VSCodeWorkspacesPlugin
-			JetbrainsWorkspacesPlugin
-			FolderPlugin
-			RunningAppPlugin
-			CherryTreePlugin
-			UnitConverterPlugin
-			CalcPlugin
-			ValueGeneratorPlugin
-			BookmarkPlugin
-			RegistryPlugin
-			ServicePlugin
-			WindowsSearchPlugin
-	)
+	 set(PLUGIN_DEPENDENCIES
+	 		FeatureLaunchPlugin
+	 		EverNotePlugin
+	 		VisualStudioPlugin
+	 		BrowserHistoryPlugin
+	 		TextFilePlugin
+	 		ExamplePlugin
+	 		VSCodeWorkspacesPlugin
+	 		JetbrainsWorkspacesPlugin
+	 		FolderPlugin
+	 		RunningAppPlugin
+	 		CherryTreePlugin
+	 		UnitConverterPlugin
+	 		CalcPlugin
+	 		ValueGeneratorPlugin
+	 		BookmarkPlugin
+	 		RegistryPlugin
+	 		ServicePlugin
+	 		WindowsSearchPlugin
+	 )
 
 	set(PLUGIN_OUTPUT_DIR $<TARGET_FILE_DIR:CandyLauncher>/plugins)
 

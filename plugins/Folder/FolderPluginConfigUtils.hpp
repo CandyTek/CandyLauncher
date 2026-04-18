@@ -64,13 +64,16 @@ static void SaveConfigToFile(std::vector<TraverseOptions>& runnerConfigs) {
 		nlohmann::json j;
 		for (const auto &config: runnerConfigs) {
 			nlohmann::json item;
-			item["command"] = wide_to_utf8(config.command);
+			item["name"] = wide_to_utf8(config.name);
 			item["folder"] = wide_to_utf8(config.folder);
 			item["type"] = wide_to_utf8(config.type);
+			item["is_contain_subfolder"] = config.recursive;
+			item["index_files_only"] = config.indexFilesOnly;
 			item["exclude_words"] = WideVectorToUtf8Vector(config.excludeWords);
 			item["excludes"] = WideVectorToUtf8Vector(config.excludeNames);
 			item["rename_sources"] = WideVectorToUtf8Vector(config.renameSources);
 			item["rename_targets"] = WideVectorToUtf8Vector(config.renameTargets);
+			item["exts"] = WideVectorToUtf8Vector(config.extensions);
 			j.push_back(item);
 		}
 

@@ -183,7 +183,7 @@ static HICON BitmapToIcon(HBITMAP hBitmap) {
 static HBITMAP GetIconFromPathAsBitmap(const std::wstring& path) {
 	std::wstring actualPath = path;
 
-	if (MyEndsWith(path, L".lnk")) {
+	if (EndsWith(path, L".lnk")) {
 		actualPath = GetShortcutTarget(path);
 	}
 

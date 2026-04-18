@@ -10,6 +10,12 @@ set(PLUGIN_SOURCES
 		RunningAppPlugin.cpp
 		../Plugin.hpp
 		RunningAppPluginData.hpp
+		../../util/MainTools.hpp
+		../../util/BitmapUtil.hpp
+		../../util/FileSystemTraverser.hpp
+		../../util/FileUtil.hpp
+		../../util/BaseTools.hpp
+		ContextMenuHelper.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

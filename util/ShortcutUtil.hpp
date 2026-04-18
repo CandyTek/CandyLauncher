@@ -46,7 +46,7 @@ inline std::wstring SaveGetShortcutTarget(const std::wstring& lnkPath) {
 	DWORD attr = GetFileAttributesW(lnkPath.c_str());
 	if (attr == INVALID_FILE_ATTRIBUTES) {
 	} else {
-		if (MyEndsWith(lnkPath, {L".lnk"})) {
+		if (EndsWith(lnkPath, L".lnk")) {
 			std::wstring actualPath = GetShortcutTarget(lnkPath);
 			return actualPath;
 		}
@@ -58,7 +58,7 @@ inline std::wstring SaveGetShortcutTargetAndReturn(const std::wstring& lnkPath) 
 	DWORD attr = GetFileAttributesW(lnkPath.c_str());
 	if (attr == INVALID_FILE_ATTRIBUTES) {
 	} else {
-		if (MyEndsWith(lnkPath, {L".lnk"})) {
+		if (EndsWith(lnkPath, L".lnk")) {
 			std::wstring actualPath = GetShortcutTarget(lnkPath);
 			return actualPath;
 		}

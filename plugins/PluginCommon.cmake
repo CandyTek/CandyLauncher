@@ -19,6 +19,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 if (WIN32)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE BUILDING_PLUGIN_DLL)
 	target_compile_options(${PROJECT_NAME} PRIVATE /wd4251 /wd4275 /bigobj)
+	target_link_libraries(${PROJECT_NAME} PRIVATE Shlwapi)
 endif ()
 
 # Debug 定义

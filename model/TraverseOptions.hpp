@@ -21,8 +21,9 @@ struct TraverseOptions {
 	std::unordered_map<std::wstring, std::wstring> renameMap; // name -> displayName
 	std::wstring type;
 	std::wstring folder;
-	std::wstring command;
+	std::wstring name;
 	bool recursive = false;
+	bool indexFilesOnly = true;
 };
 
 // 需匹配大小写

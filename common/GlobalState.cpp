@@ -44,6 +44,7 @@ bool pref_single_click_to_open = false;
 bool pref_fuzzy_match = false;
 bool pref_last_search_term_selected = true;
 bool pref_close_after_open_item = true;
+bool pref_ignore_popup_sound = false;
 
 
 int64_t pref_max_search_results = 0;
@@ -80,7 +81,7 @@ std::unique_ptr<Gdiplus::Font> g_listItemFont1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFont2 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2 = nullptr;
-std::wstring g_currectSkinFilePath = DEFAULT_SKIN_PATH;
+std::wstring g_currectSkinFilePath = L"default";
 
 int g_lastWindowOpacity = 255;
 
@@ -111,6 +112,7 @@ int MAIN_WINDOW_HEIGHT = 480;
 
 int g_listItemWidth = 580;
 int g_listItemHeight = 35;
+bool g_listViewHideScrollbar = false;
 
 std::unordered_map<std::string, std::function<void()>> appLaunchActionCallBacks;
 

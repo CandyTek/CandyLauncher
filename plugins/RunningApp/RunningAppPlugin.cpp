@@ -4,6 +4,7 @@
 
 #include "RunningAppAction.hpp"
 #include "RunningAppPluginData.hpp"
+#include "ContextMenuHelper.hpp"
 
 
 #include "../../util/MainTools.hpp"
@@ -16,6 +17,7 @@
 #include "util/BitmapUtil.hpp"
 #include "util/FileSystemTraverser.hpp"
 #include "util/FileUtil.hpp"
+#include "util/MainTools.hpp"
 #include "util/RunningWindowsTraverser.hpp"
 
 
@@ -157,7 +159,7 @@ public:
 			auto action = std::make_shared<RunningAppAction>();
 			action->title = L"正在运行: " + name;
 			action->subTitle = fullPath;
-			action->iconFilePath = fullPath;
+			action->filePath = fullPath;
 			action->runningAppHwnd = hwnd;
 			action->iconFilePathIndex = GetSysImageIndex(fullPath);
 			action->matchText = m_host->GetTheProcessedMatchingText(name) + GetFileNameFromPath(fullPath);
@@ -170,12 +172,61 @@ public:
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override
 	{
 		if (!m_host) return false;
-		auto exampleAction = std::dynamic_pointer_cast<RunningAppAction>(action);
-		if (!exampleAction) return false;
+		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
+		if (!runningAppAction) return false;
 
-		exampleAction->Invoke();
+		runningAppAction->Invoke();
 		return true;
 	}
+
+	
+	bool OnItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
+		ConsolePrintln(L"FolderPlugin", L"OnItemRightClick entered");
+		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
+		if (!runningAppAction) {
+			ConsolePrintln(L"FolderPlugin", L"OnItemRightClick skipped: action is not RunningAppAction");
+			return false;
+		}
+		ConsolePrintln(L"FolderPlugin", L"ShowShellContextMenu path=" + runningAppAction->getFilePath());
+		ShowShellContextMenu(parentHwnd, runningAppAction->getFilePath(), screenPt);
+		ConsolePrintln(L"FolderPlugin", L"ShowShellContextMenu returned");
+		return true;
+	}
+
+	
+	bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
+		ConsolePrintln(L"FolderPlugin", L"OnItemShiftRightClick entered");
+		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
+		if (!runningAppAction) {
+			ConsolePrintln(L"FolderPlugin", L"OnItemShiftRightClick skipped: action is not RunningAppAction");
+			return false;
+		}
+		ConsolePrintln(L"FolderPlugin", L"ShowMyContextMenu path=" + runningAppAction->getFilePath());
+		const UINT cmd = ShowMyContextMenu(parentHwnd, runningAppAction->getFilePath(), screenPt);
+		ConsolePrintln(L"FolderPlugin", L"ShowMyContextMenu cmd=" + std::to_wstring(cmd));
+		switch (cmd) {
+		case IDM_OPEN_APP:
+			// runningAppAction->Invoke(runningAppAction->getFilePath());
+			break;
+		case IDM_OPEN_IN_CONSOLE:
+			OpenConsoleHere(SaveGetShortcutTargetAndReturn(runningAppAction->getFilePath()));
+			break;
+		case IDM_KILL_PROCESS:
+			KillProcessByImagePath(SaveGetShortcutTargetAndReturn(runningAppAction->getFilePath()));
+			break;
+		case IDM_COPY_PATH:
+			CopyTextToClipboard(parentHwnd, runningAppAction->getFilePath());
+			break;
+		// case IDM_COPY_TARGET_PATH:
+		// 	CopyTextToClipboard(parentHwnd, SaveGetShortcutTargetAndReturn(runningAppAction->getFilePath()));
+		// 	break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+
 };
 
 PLUGIN_EXPORT IPlugin* CreatePlugin()

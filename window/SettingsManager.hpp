@@ -39,8 +39,10 @@ static std::vector<std::wstring> FindSkinFiles() {
 
 	TraverseFiles(options.folder, options, options.folder, [&](const std::wstring& name, const std::wstring& fullPath,
 																const std::wstring& parent, const std::wstring& ext) {
-		if (MyStartsWith(name, L"skin_")) {
-			skinFiles.push_back(fullPath);
+		if (StartsWithIgnoreCase(name, L"skin_")) {
+			if (StartsWithIgnoreCase(fullPath, EXE_FOLDER_PATH)) {
+				skinFiles.push_back(fullPath.substr(EXE_FOLDER_PATH.length()));
+			}
 		}
 	});
 
@@ -49,7 +51,7 @@ static std::vector<std::wstring> FindSkinFiles() {
 
 // 获取 settings.json 文件内容
 static std::string GetSettingsJsonText() {
-// 正式版使用程序内嵌的文本，debug版使用绝对路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本
+	// 正式版使用程序内嵌的文本，debug版使用绝对路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本
 #ifndef NDEBUG
 	std::string jsonText = ReadUtf8File(EXE_FOLDER_PATH + LR"(\..\common\settings.json)");
 	if (jsonText.empty()) {
@@ -103,6 +105,7 @@ static void initGlobalVariable() {
 	pref_fuzzy_match = (g_settings_map["pref_fuzzy_match"].boolValue);
 	pref_last_search_term_selected = (g_settings_map["pref_last_search_term_selected"].boolValue);
 	pref_close_after_open_item = (g_settings_map["pref_close_after_open_item"].boolValue);
+	pref_ignore_popup_sound = (g_settings_map["pref_ignore_popup_sound"].boolValue);
 	pref_force_ime_mode = g_settings_map["pref_force_ime_mode"].stringValue;
 	pref_max_search_results = g_settings_map["pref_max_search_results"].intValue;
 	pref_hotkey_toggle_main_panel = g_settings_map["pref_hotkey_toggle_main_panel"].stringValue;
@@ -138,6 +141,7 @@ static void LoadSettingsMap() {
 
 	loadSettingsToMap(g_settings_ui_last_save);
 	initGlobalVariable();
+	ConsolePrintln(L"总共" + std::to_wstring(g_settings_map.size()) + L"个设置项");
 	// auto it = g_settings_map.find("com.candytek.normallaunchplugin.moreitem");
 	// auto it = g_settings_map.find("com.candytek.folderplugin.envpath_apps");
 	// auto it = g_settings_map.find("pref_use_everything_sdk_index");
@@ -147,7 +151,14 @@ static void LoadSettingsMap() {
 // 保存配置到JSON文件
 static void saveConfigToFile(const std::wstring& filename, const nlohmann::json& newConfig) {
 	namespace fs = std::filesystem;
-	const std::string newSettingsText = newConfig.dump(4);
+	nlohmann::json mergedConfig = loadUserConfig(filename);
+	if (!mergedConfig.is_object()) {
+		mergedConfig = nlohmann::json::object();
+	}
+	for (auto it = newConfig.begin(); it != newConfig.end(); ++it) {
+		mergedConfig[it.key()] = it.value();
+	}
+	const std::string newSettingsText = mergedConfig.dump(4);
 	fs::path p(filename);
 	std::ofstream o(p, std::ios::binary);
 	o << newSettingsText << std::endl;
@@ -347,28 +358,39 @@ static void LoadSettingList() {
 
 	if (g_pluginManager) {
 		for (const auto& pluginCatalog : g_pluginManager->GetPluginCatalog()) {
-		try {
-			SettingItem setting;
-			setting.key = wide_to_utf8(pluginCatalog.pkgName);
-			setting.type = "expandswitch";
-			setting.title = wide_to_utf8(pluginCatalog.name);
-			setting.subPageIndex = GetTabIndexForSetting("plugin");
-			setting.setValue(nlohmann::json(pluginCatalog.enabled));
+			try {
+				SettingItem setting;
+				setting.key = wide_to_utf8(pluginCatalog.pkgName);
+				setting.type = "expandswitch";
+				setting.title = wide_to_utf8(pluginCatalog.name);
+				setting.subPageIndex = GetTabIndexForSetting("plugin");
+				setting.setValue(nlohmann::json(pluginCatalog.enabled));
 
-			if (const PluginInfo* loadedPlugin = g_pluginManager->FindLoadedPluginByPackageName(pluginCatalog.pkgName)) {
-				setting.pluginId = loadedPlugin->pluginId;
-				const std::wstring defaultSettingJson = pluginCatalog.defaultSettingJson.empty()
-					? loadedPlugin->plugin->DefaultSettingJson()
-					: pluginCatalog.defaultSettingJson;
-				setting.children = ParseConfig(wide_to_utf8(defaultSettingJson), loadedPlugin->pluginId);
-			} else if (!pluginCatalog.defaultSettingJson.empty() && pluginCatalog.defaultSettingJson != L"{}") {
-				setting.children = ParseConfig(wide_to_utf8(pluginCatalog.defaultSettingJson), 65535);
+				if (const PluginInfo* loadedPlugin = g_pluginManager->FindLoadedPluginByPackageName(pluginCatalog.pkgName)) {
+					setting.pluginId = loadedPlugin->pluginId;
+					const std::wstring defaultSettingJson = pluginCatalog.defaultSettingJson.empty()
+																? loadedPlugin->plugin->DefaultSettingJson()
+																: pluginCatalog.defaultSettingJson;
+					setting.children = ParseConfig(wide_to_utf8(defaultSettingJson), loadedPlugin->pluginId);
+				} else if (!pluginCatalog.defaultSettingJson.empty() && pluginCatalog.defaultSettingJson != L"{}") {
+					setting.children = ParseConfig(wide_to_utf8(pluginCatalog.defaultSettingJson), 65535);
+				}
+
+				SettingItem priorityItem;
+				priorityItem.key = wide_to_utf8(pluginCatalog.pkgName) + ".priority";
+				priorityItem.type = "long";
+				priorityItem.title = wide_to_utf8(g_uiLanguageCode == L"zh-CN"
+													? L"排序优先级 (越大越靠前, 默认0)"
+													: L"Sort Priority (higher = first, default 0)");
+				priorityItem.subPageIndex = setting.subPageIndex;
+				priorityItem.pluginId = setting.pluginId;
+				priorityItem.intValue = 0;
+				setting.children.insert(setting.children.begin(), priorityItem);
+
+				pluginSettings.push_back(setting);
+			} catch (...) {
+				ConsolePrintln(L"[SettingsManager]注意，该插件的设置json加载失败:" + pluginCatalog.name);
 			}
-
-			pluginSettings.push_back(setting);
-		} catch (...) {
-			ConsolePrintln(L"[SettingsManager]注意，该插件的设置json加载失败:" + pluginCatalog.name);
-		}
 		}
 	}
 
@@ -376,13 +398,13 @@ static void LoadSettingList() {
 	g_settings_ui_last_save.insert(g_settings_ui_last_save.end(), pluginSettings.begin(), pluginSettings.end());
 	g_settings_ui_last_save.insert(g_settings_ui_last_save.end(), appSettings.begin(), appSettings.end());
 
-	bool isFind = false;
-	for (size_t i = 0; i < g_settings_ui_last_save.size(); ++i) {
-		if (g_settings_ui_last_save[i].key == "com.candytek.featurelaunchplugin.moreitem") {
-			isFind = true;
-			break;
-		}
-	}
+	// bool isFind = false;
+	// for (size_t i = 0; i < g_settings_ui_last_save.size(); ++i) {
+	// 	if (g_settings_ui_last_save[i].key == "com.candytek.featurelaunchplugin.moreitem") {
+	// 		isFind = true;
+	// 		break;
+	// 	}
+	// }
 	// auto it = g_settings_ui_last_save.find("com.candytek.normallaunchplugin.moreitem");
 	// auto it = g_settings_map.find("com.candytek.folderplugin.envpath_apps");
 	// auto it = g_settings_map.find("pref_use_everything_sdk_index");
@@ -479,7 +501,7 @@ static void handleButtonAction(HWND hwnd, const std::string& key) {
 				MessageBoxW(
 					hwnd,
 					LoadI18nString(IDS_I18N_RESTORE_SUCCESS_TEXT,
-						L"Settings restored. Restart the app to apply them.").c_str(),
+									L"Settings restored. Restart the app to apply them.").c_str(),
 					LoadI18nString(IDS_I18N_RESTORE_SUCCESS_TITLE, L"Restore Completed").c_str(),
 					MB_OK | MB_ICONINFORMATION);
 			} else {
@@ -490,18 +512,18 @@ static void handleButtonAction(HWND hwnd, const std::string& key) {
 					MB_OK | MB_ICONERROR);
 			}
 		}
-	}else if (key == "pref_check_version_update") {
+	} else if (key == "pref_check_version_update") {
 		AppUpdate::StartCheckForUpdates(true);
-	}else if (key == "pref_project_url") {
+	} else if (key == "pref_project_url") {
 		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher", nullptr, nullptr, SW_SHOW);
-	}else if (key == "pref_project_discuss") {
+	} else if (key == "pref_project_discuss") {
 		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/discussions", nullptr, nullptr, SW_SHOW);
-	}else if (key == "pref_project_issues") {
+	} else if (key == "pref_project_issues") {
 		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/issues", nullptr, nullptr, SW_SHOW);
-	}else if (key == "pref_project_help") {
+	} else if (key == "pref_project_help") {
 		if (g_uiLanguageCode == L"zh-CN") {
 			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/%E4%B8%AD%E6%96%87", nullptr, nullptr, SW_SHOW);
-		}else {
+		} else {
 			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/English", nullptr, nullptr, SW_SHOW);
 		}
 	}
@@ -515,6 +537,27 @@ static void AddAppStartupTime() {
 	if (it == g_settings_ui_last_save.rend()) {
 		return;
 	}
+
+
+	std::string pluginTime;
+	struct PluginTimingEntry {
+		std::wstring name;
+		uint64_t loadMs;
+		uint64_t refreshMs;
+	};
+
+	std::vector<PluginTimingEntry> pluginTimes;
+	for (const auto& [pluginId, info] : m_plugins) {
+		if (info.loaded) {
+			pluginTimes.push_back({info.name, info.loadTimeMs, info.refreshTimeMs});
+		}
+	}
+
+	for (const auto& entry : pluginTimes) {
+		pluginTime += wide_to_utf8(entry.name) + ": " + std::to_string(entry.loadMs) + "ms + " + std::to_string(entry.refreshMs) + "ms\n";
+	}
+
 	it->title = wide_to_utf8(LoadI18nString(IDS_I18N_STARTUP_TIME_PREFIX, L"Startup completed in "))
-		+ std::to_string(APP_STARTUP_TIME) + "ms";
+		+ std::to_string(APP_STARTUP_TIME) + "ms\n\n" + pluginTime;
+	// 不要在代码里动态创建设置项，最好是写在 settigs.json里，如果要动态创建的话，注意控件subid 与 settingitem 对应关系
 }

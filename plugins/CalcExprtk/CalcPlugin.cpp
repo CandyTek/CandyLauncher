@@ -227,7 +227,7 @@ public:
 
 	// todo: 实现全局和 前缀
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if (!startStr.empty() && MyStartsWith2(input, startStr)) {
+		if (!startStr.empty() && StartsWith(input, startStr)) {
 			if (isDetectReplace && input.size() > (startStr.size() + 2) && MyEndsWith2(input, L"=")) {
 				swprintf(editTextBuf, 64, L"%.15g", EvaluateExpression(input.substr(0, input.size() - 1)));
 				m_host->ChangeEditTextText(startStr + editTextBuf);
@@ -237,7 +237,7 @@ public:
 			}
 
 			return allPluginActions;
-		} else if (MyStartsWith2(input, L"latex ")) {
+		} else if (StartsWith(input, L"latex ")) {
 			std::dynamic_pointer_cast<CalcAction>(allPluginActions[0])->subTitle = EvaluateLatex(input);
 			return allPluginActions;
 		}

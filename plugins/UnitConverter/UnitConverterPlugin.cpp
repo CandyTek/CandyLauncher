@@ -122,7 +122,7 @@ public:
 		std::wstring queryInput;
 		isNeedShow = false;
 		if (!startStr.empty()) {
-			if (!MyStartsWith2(input, startStr)) {
+			if (!StartsWith(input, startStr)) {
 				return {};
 			}
 			queryInput = input.substr(startStr.size());

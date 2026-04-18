@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "BaseAction.hpp"
 #include <functional>
@@ -17,6 +18,9 @@ public:
 	virtual void ShowMessage(const std::wstring& title, const std::wstring& message) = 0;
 	virtual const std::unordered_map<std::string, SettingItem>& GetSettingsMap() = 0;
 	virtual const std::unordered_map<std::string, std::function<void()>>& GetAppLaunchActionCallbacks() = 0;
+	virtual void RegisterAppLaunchActionCallback(const std::string& key, std::function<void()> callback) = 0;
+	virtual void UnregisterAppLaunchActionCallback(const std::string& key) = 0;
+	virtual bool IsPluginEnabledByPackageName(const std::wstring& packageName) const = 0;
 
 	virtual std::wstring GetTheProcessedMatchingText(const std::wstring& source) =0;
 	virtual void TraverseFilesSimpleForEverythingSDK(
@@ -24,6 +28,7 @@ public:
 		bool recursive, // 是否递归
 		const std::vector<std::wstring>& extensions, // 扩展名过滤
 		const std::wstring& nameFilter, // 文件名关键字，可为空
+		bool isIndexOnlyFile, // 是否只索引文件
 		std::function<void(const std::wstring& name,
 							const std::wstring& fullPath,
 							const std::wstring& parent,
@@ -100,6 +105,16 @@ public:
 	// 一定一定不要在这里面实现复杂算法，会影响用户输入体验
 	virtual std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) {
 		return {};
+	}
+
+	// 右键点击列表项时调用，返回 true 表示已处理（阻止默认行为）
+	virtual bool OnItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
+		return false;
+	}
+
+	// Shift+右键点击列表项时调用，返回 true 表示已处理（阻止默认行为）
+	virtual bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
+		return false;
 	}
 };
 

@@ -46,6 +46,29 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam);
 Gdiplus::GdiplusStartupInput gdiplusStartupInput;
 inline ULONG_PTR gdiplusToken;
 static ULONGLONG lastDragAndDropTime;
+static UINT g_WM_TASKBARCREATED = 0;
+
+static void ShowMainWindowSystemMenu(HWND hWnd) {
+	HMENU hSystemMenu = GetSystemMenu(hWnd, FALSE);
+	if (!hSystemMenu) return;
+
+	RECT windowRect{};
+	if (!GetWindowRect(hWnd, &windowRect)) return;
+	SetForegroundWindow(hWnd);
+
+	const int menuCmd = TrackPopupMenu(
+		hSystemMenu,
+		TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD,
+		windowRect.left,
+		windowRect.top,
+		0,
+		hWnd,
+		nullptr
+	);
+	if (menuCmd != 0) {
+		PostMessageW(hWnd, WM_SYSCOMMAND, static_cast<WPARAM>(menuCmd), 0);
+	}
+}
 
 // 主进程函数
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -77,6 +100,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_CANDYLAUNCHER));
 	refreshSkin(g_currectSkinFilePath, !g_settings_map["pref_hide_window_after_run"].boolValue);
 	APP_STARTUP_TIME = GetTickCount64() - g_appStartTick; // 记录程序耗费时
+	g_WM_TASKBARCREATED = RegisterWindowMessageW(L"TaskbarCreated");
 	ConsolePrintln(L"WinMain", L"程序初始化完成");
 	AppUpdate::ScheduleStartupUpdateCheck();
 	// MyShowSimpleToast(L"CandyLauncher 已启动", L"程序初始化完成,按 Alt+K 呼出启动器");
@@ -123,7 +147,7 @@ ATOM MainWindowRegisterClass(HINSTANCE hInstance) {
 static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow) {
 	unsigned long dw_style;
 	bool isShow = !g_settings_map["pref_hide_window_after_run"].boolValue;
-	dw_style = WS_POPUP;
+	dw_style = WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX;
 	long dw_ex_style = WS_EX_ACCEPTFILES | WS_EX_COMPOSITED | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
 	if (g_settings_map["pref_window_always_on_top"].boolValue) {
 		dw_ex_style |= WS_EX_TOPMOST;
@@ -339,6 +363,12 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			// 如果是 WA_INACTIVE，说明窗口从激活变为非激活状态（失去焦点）
 			if (LOWORD(wParam) == WA_INACTIVE) {
 				if (hWnd == g_mainHwnd) {
+					// 设置界面在皮肤tab时，暂停随焦点消失关闭功能（皮肤预览需要主窗口保持可见）
+					bool isSettingsSkinTabActive = g_settingsHwnd != nullptr
+						&& static_cast<size_t>(currentSubPageIndex) < subPageTabs.size()
+						&& subPageTabs[currentSubPageIndex] == "skin";
+					if (isSettingsSkinTabActive) break;
+
 					std::string closeMode = g_settings_map["pref_close_on_dismiss_focus"].stringValue;
 					if (closeMode == "close_immediate") {
 						HideWindow();
@@ -423,28 +453,45 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 					break;
 				case NM_RCLICK:
 					{
+						LPNMITEMACTIVATE pia = reinterpret_cast<LPNMITEMACTIVATE>(lParam);
 						POINT pt;
 						// 获取鼠标坐标（相对 ListView 客户区）
 						GetCursorPos(&pt);
 
 						// 获取当前点击项
-						LVHITTESTINFO lvhti = {};
-						POINT ptClient = pt;
-						ScreenToClient(g_listViewHwnd, &ptClient);
-						lvhti.pt = ptClient;
-						int index = ListView_HitTest(g_listViewHwnd, &lvhti);
-						if (index != -1) {
+						int index = pia ? pia->iItem : -1;
+						if (index == -1) {
+							LVHITTESTINFO lvhti = {};
+							POINT ptClient = pt;
+							ScreenToClient(g_listViewHwnd, &ptClient);
+							lvhti.pt = ptClient;
+							index = ListView_HitTest(g_listViewHwnd, &lvhti);
+						}
+						if (index == -1) {
+							index = ListView_GetNextItem(g_listViewHwnd, -1, LVNI_SELECTED);
+						}
+						ConsolePrintln(L"RightClick",
+							L"NM_RCLICK index=" + std::to_wstring(index) +
+							L", actions=" + std::to_wstring(filteredActions.size()) +
+							L", piaItem=" + std::to_wstring(pia ? pia->iItem : -1));
+						if (index != -1 && filteredActions.size() > static_cast<size_t>(index)) {
 							// 选中当前项（可选）
 							// ListView_SetItemState(hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 							std::shared_ptr<BaseAction>& it = filteredActions[index];
 							const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+							bool handled = false;
 							if (shiftDown ^ pref_switch_list_right_click_with_shift_right_click) {
-								// UINT cmd = ShowMyContextMenu(hWnd, it->GetTargetPath(), pt);
-								// DoMyContextMenuAction(cmd, index, it);
+								if (g_pluginManager) handled = g_pluginManager->DispatchItemShiftRightClick(it, hWnd, pt);
 							} else {
-								// 非 Shift：走你原本的 Shell 右键菜单
-								// ShowShellContextMenu(hWnd, it->GetTargetPath(), pt);
+								if (g_pluginManager) handled = g_pluginManager->DispatchItemRightClick(it, hWnd, pt);
 							}
+							ConsolePrintln(L"RightClick",
+								L"dispatch handled=" + std::to_wstring(handled) +
+								L", shift=" + std::to_wstring(shiftDown) +
+								L", switchPref=" + std::to_wstring(pref_switch_list_right_click_with_shift_right_click) +
+								L", pluginId=" + std::to_wstring(it ? it->pluginId : 65535));
+						} else {
+							ConsolePrintln(L"RightClick", L"skip dispatch: invalid index");
 						}
 						PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
 						return TRUE;
@@ -528,7 +575,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				HideWindow();
 				return 0;
 			}
-		}
+			}
 		break;
 	case WM_SIZE:
 		{
@@ -540,9 +587,17 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		}
 		break;
 	case WM_SYSCHAR:
-	case WM_SYSKEYDOWN:
 	case WM_SYSKEYUP:
 		{
+			// 阻止 ALT 等系统键造成的副作用
+			return 0;
+		}
+	case WM_SYSKEYDOWN:
+		{
+			if (wParam == VK_SPACE && (lParam & (1 << 29))) {
+				ShowMainWindowSystemMenu(hWnd);
+				return 0;
+			}
 			// 阻止 ALT 等系统键造成的副作用
 			return 0;
 		}
@@ -569,6 +624,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		}
 		break;
 	case WM_RBUTTONUP:
+	case WM_NCRBUTTONUP:
 		{
 			TrayMenuShow(hWnd);
 			return 0;
@@ -581,7 +637,12 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		}
 		break;
 
-	default: return DefWindowProc(hWnd, message, wParam, lParam);
+	default:
+		if (g_WM_TASKBARCREATED && message == g_WM_TASKBARCREATED) {
+			ShowTrayIcon();
+			return 0;
+		}
+		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
 	// return 0;
 	return DefWindowProc(hWnd, message, wParam, lParam);

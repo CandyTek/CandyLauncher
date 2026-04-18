@@ -239,7 +239,7 @@ list(APPEND PLUGIN_DEPENDENCIES YourPlugin)
 **常用函数**:
 
 - `utf8_to_wide()` / `wide_to_utf8()` - 编码转换
-- `MyStartsWith2()` / `MyTrim()` - 字符串操作
+- `StartsWith()` / `MyTrim()` - 字符串操作
 - `ConsolePrintln()` / `Loge()` - 调试和日志
 - `GetSysImageIndex()` - 获取图标索引（提升性能）
 

@@ -20,32 +20,26 @@
 #include <stdexcept>
 #include <array>
 #include <dwmapi.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #include <io.h>
 #include <fcntl.h>
 #include <shlwapi.h>
 #include <tlhelp32.h>
 
 #include "BaseTools.hpp"
-#include "../common/Constants.hpp"
+#include "ShortcutUtil.hpp"
 #include "../common/GlobalState.hpp"
 #include "../plugins/BaseAction.hpp"
 #include "../model/TraverseOptions.hpp"
+#include <propvarutil.h>
+
+#include "ShortCutDetectUtil.hpp"
 
 struct MonitorData {
 	HMONITOR hMonitor;
 	MONITORINFOEX mi;
 	bool isPrimary;
-};
-
-enum : UINT {
-	// 防止和弹出菜单的esc 0 值冲突
-	IDM_REMOVE_ITEM = 9999,
-	IDM_RENAME_ITEM,
-	IDM_RUN_AS_ADMIN,
-	IDM_OPEN_IN_CONSOLE,
-	IDM_KILL_PROCESS,
-	IDM_COPY_PATH,
-	IDM_COPY_TARGET_PATH
 };
 
 static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
@@ -375,36 +369,35 @@ static void ReleaseAltKey() {
 	keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
 }
 
-struct ComInitGuard {
-	ComInitGuard() {
-		hr = CoInitialize(nullptr);
-	}
-
-	~ComInitGuard() {
-		if (SUCCEEDED(hr)) CoUninitialize();
-	}
-
-	HRESULT hr;
-};
-
 static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const POINT& ptScreen) {
+	ConsolePrintln(L"ShellMenu", L"enter path=" + filePath +
+		L", x=" + std::to_wstring(ptScreen.x) +
+		L", y=" + std::to_wstring(ptScreen.y));
 	ComInitGuard guard;
-	if (FAILED(guard.hr)) return;
+	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"CoInitialize failed hr=" + std::to_wstring(guard.hr));
+		return;
+	}
 
 	PIDLIST_ABSOLUTE pidl = nullptr;
 	SFGAOF sfgao;
 	guard.hr = SHParseDisplayName(filePath.c_str(), nullptr, &pidl, 0, &sfgao);
-	if (FAILED(guard.hr)) return;
+	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"SHParseDisplayName failed hr=" + std::to_wstring(guard.hr));
+		return;
+	}
 
 	IShellFolder* desktopFolder = nullptr;
 	guard.hr = SHGetDesktopFolder(&desktopFolder);
 	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"SHGetDesktopFolder failed hr=" + std::to_wstring(guard.hr));
 		CoTaskMemFree(pidl);
 		return;
 	}
 
 	PIDLIST_ABSOLUTE pidlParent = ILClone(pidl);
 	if (!pidlParent) {
+		ConsolePrintln(L"ShellMenu", L"ILClone failed");
 		desktopFolder->Release();
 		CoTaskMemFree(pidl);
 		return;
@@ -421,6 +414,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		(void**)&parentFolder
 	);
 	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"SHBindToObject failed hr=" + std::to_wstring(guard.hr));
 		desktopFolder->Release();
 		CoTaskMemFree(pidl);
 		CoTaskMemFree(pidlParent);
@@ -431,6 +425,9 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 
 	IContextMenu* contextMenu = nullptr;
 	guard.hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void**)&contextMenu);
+	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"GetUIObjectOf failed hr=" + std::to_wstring(guard.hr));
+	}
 	if (SUCCEEDED(guard.hr)) {
 		IContextMenu2* contextMenu2 = nullptr;
 		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu2, (void **) &contextMenu2))) {
@@ -456,10 +453,15 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		UINT idCmdFirst = 1;
 		UINT idCmdLast = 0x7FFF;
 
-		contextMenu->QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, CMF_NORMAL);
+		const HRESULT queryHr = contextMenu->QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, CMF_NORMAL);
+		ConsolePrintln(L"ShellMenu", L"QueryContextMenu hr=" + std::to_wstring(queryHr) +
+			L", count=" + std::to_wstring(GetMenuItemCount(hMenu)));
 
+		SetForegroundWindow(hwnd);
 		int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
 								ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
+		PostMessageW(hwnd, WM_NULL, 0, 0);
+		ConsolePrintln(L"ShellMenu", L"TrackPopupMenu cmd=" + std::to_wstring(cmd));
 
 		if (cmd >= static_cast<int>(idCmdFirst) && cmd <= static_cast<int>(idCmdLast)) {
 			CMINVOKECOMMANDINFOEX cmi = {0};
@@ -474,6 +476,8 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		}
 
 		DestroyMenu(hMenu);
+	} else {
+		ConsolePrintln(L"ShellMenu", L"CreatePopupMenu failed err=" + std::to_wstring(GetLastError()));
 	}
 
 	contextMenu->Release();
@@ -567,6 +571,7 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring& filePath, const
 	// CoUninitialize();
 }
 
+
 static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth, HFONT hFontD) {
 	// 1. 创建 RECT 结构体，设置最大宽度，高度初始为0
 	HDC hdc = GetDC(hwnd);
@@ -616,7 +621,9 @@ inline bool IsRectOnAnyMonitor(const RECT& rc) {
 	return MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) != nullptr;
 }
 
-static bool IsShortcutInvalid(const std::wstring& shortcutPath) {
+
+[[deprecated(L"会误伤一些快捷方式")]]
+static bool IsShortcutInvalid2(const std::wstring& shortcutPath) {
 	ComInitGuard guard;
 	if (FAILED(guard.hr)) return true;
 
@@ -638,7 +645,8 @@ static bool IsShortcutInvalid(const std::wstring& shortcutPath) {
 		pShellLink->Release();
 		return true;
 	}
-
+	hr = pShellLink->Resolve(nullptr, SLR_NO_UI | SLR_NOSEARCH | SLR_NOTRACK);
+	
 	wchar_t targetPath[MAX_PATH] = {0};
 	hr = pShellLink->GetPath(targetPath, MAX_PATH, nullptr, 0);
 
@@ -662,8 +670,8 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 	if (cmd.contains("folder") && cmd["folder"].is_string()) {
 		traverseOptions.folder = Utf8ToWString(cmd["folder"].get<std::string>());cmd.value("folder", cmd["folder"].get<std::string>());
 	}
-	if (cmd.contains("command") && cmd["command"].is_string()) {
-		traverseOptions.command = Utf8ToWString(cmd["command"].get<std::string>());
+	if (cmd.contains("name") && cmd["name"].is_string()) {
+		traverseOptions.name = Utf8ToWString(cmd["name"].get<std::string>());
 	}
 	if (cmd.contains("type") && cmd["type"].is_string()) {
 		traverseOptions.type = Utf8ToWString(cmd["type"].get<std::string>());
@@ -672,6 +680,11 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 		traverseOptions.recursive = cmd["is_contain_subfolder"].get<bool>();
 	} else {
 		traverseOptions.recursive = true;
+	}
+	if (cmd.contains("index_files_only") && cmd["index_files_only"].is_boolean()) {
+		traverseOptions.indexFilesOnly = cmd["index_files_only"].get<bool>();
+	} else {
+		traverseOptions.indexFilesOnly = true;
 	}
 
 
@@ -685,8 +698,6 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 				traverseOptions.extensions.push_back(Utf8ToWString(ext));
 			}
 		}
-	} else {
-		traverseOptions.extensions = DEFAULT_EXTENSIONS;
 	}
 
 	if (cmd.contains("excludes") && cmd["excludes"].is_array()) {
@@ -824,6 +835,16 @@ inline void ShowMainWindowSimple() {
 	RestoreWindowIfMinimized(g_mainHwnd);
 	SetFocus(g_editHwnd);
 	MyMoveWindow(g_mainHwnd);
+	if (!pref_ignore_popup_sound && g_skinJson != nullptr) {
+		std::string soundRelPath = g_skinJson.value("popup_sound", "");
+		if (!soundRelPath.empty()) {
+			std::wstring soundPath = utf8_to_wide(soundRelPath);
+			if (soundPath[0] != L'\\' && soundPath[0] != L'/' && soundPath.size() >= 2 && soundPath[1] != L':') {
+				soundPath = utf8_to_wide(g_skinJson.value("skin_folder", "")) + L"\\" + soundPath;
+			}
+			PlaySoundW(soundPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+		}
+	}
 	// if (g_BgImage != nullptr) {
 	// 	RedrawWindow(g_mainHwnd, nullptr, nullptr,
 	// 				RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
@@ -938,7 +959,7 @@ static bool RelaunchAsAdmin() {
 
 static void ChangeEditTextArg(const std::wstring& arg2) {
 	std::wstring editTextBuffer2;
-	if (MyStartsWith2(editTextBuffer, LR"({"arg":")")) {
+	if (StartsWith(editTextBuffer, LR"({"arg":")")) {
 		if (const size_t end = find_json_end(editTextBuffer); end != std::wstring::npos) {
 			const std::wstring json_part = editTextBuffer.substr(0, end + 1);
 			bool isSuccess = false;

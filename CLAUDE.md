@@ -117,11 +117,6 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 
 read [DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)
 
-
-### backlog.md use
-
-read [DOC_BACKLOG_MD.md](docs/DOC_BACKLOG_MD.md)
-
 ### note
 
 - Project codes are indented using tabs

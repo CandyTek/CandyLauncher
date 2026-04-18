@@ -58,6 +58,7 @@ extern bool pref_single_click_to_open;
 extern bool pref_fuzzy_match;
 extern bool pref_last_search_term_selected;
 extern bool pref_close_after_open_item;
+extern bool pref_ignore_popup_sound;
 
 extern int64_t pref_max_search_results;
 extern int last_open_window_position_x;
@@ -146,6 +147,7 @@ extern int MAIN_WINDOW_HEIGHT;
 
 extern int g_listItemWidth;
 extern int g_listItemHeight;
+extern bool g_listViewHideScrollbar;
 
 constexpr int DEFAULT_MAIN_WINDOW_WIDTH = 620;
 constexpr int DEFAULT_MAIN_WINDOW_HEIGHT = 480;

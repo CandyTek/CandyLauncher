@@ -4,6 +4,9 @@
 #include "FeatureLaunchAction.hpp"
 #include "FeatureLaunchPluginData.hpp"
 
+constexpr const char* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = "openFolderIndexedManager";
+constexpr const wchar_t* FOLDER_PLUGIN_PACKAGE_NAME = L"com.candytek.folderplugin";
+
 class FeatureLaunchPlugin : public IPlugin {
 private:
 	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
@@ -39,7 +42,6 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) return;
-
 		allPluginActions.clear();
 
 		allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"退出软件", L"退出本软件", BaseLaunchAction::LOADTYPE_SHELL32, 131,
@@ -56,6 +58,15 @@ public:
 		// allExampleActions.push_back(
 		// 	std::make_shared<NormalLaunchAction>(L"查看用户索引配置 JSON 文件", L"打开config_folder_plugin.json文件", IDI_CLOSE,
 		// 									m_host->GetAppLaunchActionCallbacks().at("viewIndexConfig")));
+		const auto& callbacks = m_host->GetAppLaunchActionCallbacks();
+		if (m_host->IsPluginEnabledByPackageName(FOLDER_PLUGIN_PACKAGE_NAME)) {
+			if (const auto it = callbacks.find(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY); it != callbacks.end()) {
+				allPluginActions.push_back(
+					std::make_shared<FeatureLaunchAction>(L"文件夹索引管理器", L"打开文件夹插件的索引管理器",
+														BaseLaunchAction::LOADTYPE_SHELL32, 4, it->second));
+			}
+		}
+
 		allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"软件帮助文档", L"前往浏览器查看帮助文档", BaseLaunchAction::LOADTYPE_SHELL32, 154,
 																m_host->GetAppLaunchActionCallbacks().at("openHelp")));
 
@@ -88,6 +99,7 @@ public:
    )";
 	}
 
+	
 	void OnUserSettingsLoadDone() override {
 		// auto it = settings_map.find("pref_pinyin_mode");
 		// if (it != settings_map.end()) {

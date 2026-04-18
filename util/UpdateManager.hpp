@@ -1,15 +1,18 @@
-#pragma once
+﻿#pragma once
 
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <commctrl.h>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
 
 #include "../3rdparty/github-releases-autoupdater/src/cautoupdatergithub.h"
 #include "../common/GlobalState.hpp"
+#include "FileUtil.hpp"
 #include "LogUtil.hpp"
 #include "MyToastUtil.hpp"
 #include "StringUtil.hpp"
@@ -21,10 +24,85 @@ constexpr UINT WM_APP_UPDATE_DOWNLOAD_FINISHED = WM_APP + 203;
 namespace AppUpdate {
 
 constexpr const char* kGithubRepoName = "CandyTek/CandyLauncher";
+constexpr const char* kIgnoredUpdateVersionKey = "pref_ignored_update_version";
+constexpr int kUpdateDialogButtonUpdate = 1001;
+constexpr int kUpdateDialogButtonIgnoreVersion = 1002;
+constexpr int kUpdateDialogButtonDisableAutoPrompt = 1003;
+constexpr int kUpdateDialogButtonLater = 1004;
 
 inline std::atomic_bool g_isCheckingForUpdate = false;
 inline std::atomic_bool g_isDownloadingUpdate = false;
 inline std::atomic_bool g_hasScheduledStartupCheck = false;
+
+inline nlohmann::json LoadUserSettingsJson() {
+	const std::string text = ReadUtf8File(USER_SETTINGS_PATH);
+	if (text.empty()) {
+		return nlohmann::json::object();
+	}
+
+	try {
+		nlohmann::json config = nlohmann::json::parse(text);
+		if (config.is_object()) {
+			return config;
+		}
+	} catch (const std::exception& e) {
+		Loge(L"Update", L"Failed to parse user_settings.json while saving update preference", e.what());
+	}
+
+	return nlohmann::json::object();
+}
+
+inline void SaveUserSettingsJson(const nlohmann::json& config) {
+	namespace fs = std::filesystem;
+	fs::path path(USER_SETTINGS_PATH);
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	if (!output) {
+		Loge(L"Update", L"Failed to open user_settings.json for writing update preference");
+		return;
+	}
+
+	output << config.dump(4) << std::endl;
+}
+
+inline std::string GetIgnoredUpdateVersion() {
+	const nlohmann::json config = LoadUserSettingsJson();
+	if (!config.contains(kIgnoredUpdateVersionKey) || !config[kIgnoredUpdateVersionKey].is_string()) {
+		return "";
+	}
+	return config[kIgnoredUpdateVersionKey].get<std::string>();
+}
+
+inline void SaveIgnoredUpdateVersion(const std::string& versionString) {
+	nlohmann::json config = LoadUserSettingsJson();
+	config[kIgnoredUpdateVersionKey] = versionString;
+	SaveUserSettingsJson(config);
+	ConsolePrintln(L"Update", L"Ignored update version: v" + utf8_to_wide(versionString));
+}
+
+inline void SetSettingBoolInList(std::vector<SettingItem>& settings, const std::string& key, const bool value) {
+	for (SettingItem& setting : settings) {
+		if (setting.key == key) {
+			setting.boolValue = value;
+		}
+		if (!setting.children.empty()) {
+			SetSettingBoolInList(setting.children, key, value);
+		}
+	}
+}
+
+inline void DisableAutomaticUpdatePrompts() {
+	nlohmann::json config = LoadUserSettingsJson();
+	config["pref_check_app_version"] = false;
+	SaveUserSettingsJson(config);
+
+	auto it = g_settings_map.find("pref_check_app_version");
+	if (it != g_settings_map.end()) {
+		it->second.boolValue = false;
+	}
+	SetSettingBoolInList(g_settings_ui_last_save, "pref_check_app_version", false);
+	SetSettingBoolInList(g_settings_ui, "pref_check_app_version", false);
+	ConsolePrintln(L"Update", L"Automatic update prompt disabled");
+}
 
 struct UpdateAvailablePayload {
 	bool manual = false;
@@ -91,6 +169,42 @@ inline std::wstring BuildUpdateSummaryText(const CAutoUpdaterGithub::ChangeLog& 
 
 	text += L"\r\n\r\nStart update now?";
 	return text;
+}
+
+inline int ShowAutomaticUpdateDialog(const CAutoUpdaterGithub::ChangeLog& changelog) {
+	const std::wstring content = BuildUpdateSummaryText(changelog);
+	const TASKDIALOG_BUTTON buttons[] = {
+		{kUpdateDialogButtonUpdate, LR"(立即更新)"},
+		{kUpdateDialogButtonIgnoreVersion, LR"(忽略当前版本)"},
+		{kUpdateDialogButtonDisableAutoPrompt, LR"(不再提示更新)"},
+		{kUpdateDialogButtonLater, LR"(稍后提醒)"}
+	};
+
+	TASKDIALOGCONFIG config{};
+	config.cbSize = sizeof(config);
+	config.hwndParent = g_mainHwnd;
+	config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+	config.dwCommonButtons = 0;
+	config.pszWindowTitle = L"Update";
+	config.pszMainIcon = TD_INFORMATION_ICON;
+	config.pszMainInstruction = L"\u53d1\u73b0\u65b0\u7248\u672c";
+	config.pszContent = content.c_str();
+	config.cButtons = static_cast<UINT>(std::size(buttons));
+	config.pButtons = buttons;
+	config.nDefaultButton = kUpdateDialogButtonUpdate;
+
+	int selectedButton = kUpdateDialogButtonLater;
+	const HRESULT hr = TaskDialogIndirect(&config, &selectedButton, nullptr, nullptr);
+	if (SUCCEEDED(hr)) {
+		return selectedButton;
+	}
+
+	const int fallbackResult = MessageBoxW(
+		g_mainHwnd,
+		content.c_str(),
+		L"Update",
+		MB_YESNO | MB_ICONQUESTION | MB_TOPMOST);
+	return fallbackResult == IDYES ? kUpdateDialogButtonUpdate : kUpdateDialogButtonLater;
 }
 
 class UpdateStatusListener final : public CAutoUpdaterGithub::UpdateStatusListener {
@@ -212,19 +326,32 @@ inline LRESULT HandleUpdateAvailableMessage(LPARAM lParam) {
 	}
 
 	const auto& latest = payload->changelog.front();
+	if (!payload->manual && latest.versionString == GetIgnoredUpdateVersion()) {
+		ConsolePrintln(L"Update", L"Skipped ignored update version: v" + utf8_to_wide(latest.versionString));
+		return 0;
+	}
+
 	if (latest.versionUpdateUrl.empty()) {
 		MessageBoxW(g_mainHwnd, L"A newer version was found, but the release does not contain a supported update package.", L"Update", MB_OK | MB_ICONWARNING | MB_TOPMOST);
 		return 0;
 	}
 
-	const int result = MessageBoxW(
-		g_mainHwnd,
-		BuildUpdateSummaryText(payload->changelog).c_str(),
-		L"Update",
-		MB_YESNO | MB_ICONQUESTION | MB_TOPMOST);
+	const int result = payload->manual
+		? MessageBoxW(
+			g_mainHwnd,
+			BuildUpdateSummaryText(payload->changelog).c_str(),
+			L"Update",
+			MB_YESNO | MB_ICONQUESTION | MB_TOPMOST)
+		: ShowAutomaticUpdateDialog(payload->changelog);
 
-	if (result == IDYES) {
+	if (payload->manual && result == IDYES) {
 		StartDownloadUpdate(latest.versionUpdateUrl, latest.versionString, payload->manual);
+	} else if (!payload->manual && result == kUpdateDialogButtonUpdate) {
+		StartDownloadUpdate(latest.versionUpdateUrl, latest.versionString, payload->manual);
+	} else if (!payload->manual && result == kUpdateDialogButtonIgnoreVersion) {
+		SaveIgnoredUpdateVersion(latest.versionString);
+	} else if (!payload->manual && result == kUpdateDialogButtonDisableAutoPrompt) {
+		DisableAutomaticUpdatePrompts();
 	}
 	return 0;
 }

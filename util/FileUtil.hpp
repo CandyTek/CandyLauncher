@@ -10,6 +10,7 @@
 #include "LogUtil.hpp"
 #include "StringUtil.hpp"
 
+// 后面不带斜杠
 static std::wstring GetExecutableFolder() {
 	wchar_t path[MAX_PATH];
 	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);

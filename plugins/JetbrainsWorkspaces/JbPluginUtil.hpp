@@ -143,7 +143,7 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 	std::map<std::wstring, JetBrainsIDE> ideMap;
 
 	m_host->TraverseFilesSimpleForEverythingSDK(
-		searchPath, true, {L".xml"}, LR"(\options\recentProjects.xml)",
+		searchPath, true, {L".xml"}, LR"(\options\recentProjects.xml)",true,
 		[&](const std::wstring& name, const std::wstring& fullPath,
 			const std::wstring& parent, const std::wstring& ext) {
 			if (name == L"recentProjects") {

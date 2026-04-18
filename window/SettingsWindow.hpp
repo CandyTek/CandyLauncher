@@ -383,7 +383,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 					WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
 					L"SCROLLVIEW", nullptr,
 					WS_CHILD | WS_VISIBLE | WS_VSCROLL,
-					tabBtnWidth + 4, 0, (SETTINGS_WINDOW_WIDTH - tabBtnWidth - 16 - 4), 380, hwnd, nullptr,
+					tabBtnWidth + 4, 0, (SETTINGS_WINDOW_WIDTH - tabBtnWidth - 16 - 4), SETTINGS_WINDOW_HEIGHT-88, hwnd, nullptr,
 					GetModuleHandle(nullptr), nullptr);
 				tabContainers[tabIdx] = hContainer;
 			}

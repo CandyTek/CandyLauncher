@@ -10,8 +10,15 @@ set(PLUGIN_SOURCES
 		FolderPluginData.hpp
 		FileSystemTraverserWrapper.hpp
 		ShortcutRepairTool.hpp
-		IndexManager.hpp
+		IndexManagerState.hpp
+		IndexManagerLogic.hpp
+		IndexManagerWindow.hpp
 		UWPAppsTraverserWrapper.hpp
+		../../util/MainTools.hpp
+		../../util/BitmapUtil.hpp
+		../../util/FileSystemTraverser.hpp
+		../../util/FileUtil.hpp
+		ContextMenuHelper.hpp
 )
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 

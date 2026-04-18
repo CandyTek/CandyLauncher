@@ -263,7 +263,7 @@ public:
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if (!startStr.empty() && MyStartsWith2(input, startStr)) {
+		if (!startStr.empty() && StartsWith(input, startStr)) {
 			const std::wstring restInput = input.substr(startStr.size());
 
 			// 检查是否是直接计算命令（格式：md5 abcd1234）
@@ -284,7 +284,7 @@ public:
 			};
 
 			for (const auto& [command, actionTitle] : directCommands) {
-				if (MyStartsWith2(restInput, command)) {
+				if (StartsWith(restInput, command)) {
 					const std::wstring dataToProcess = restInput.substr(command.size());
 
 					// 如果有数据，创建一个计算结果的action

@@ -128,6 +128,14 @@
 			"defValue": ""
 		},
 		{
+			"key": "pref_ignore_popup_sound",
+			"title": "忽略主题弹出声音",
+			"title_en": "Ignore theme popup sound",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": false
+		},
+		{
 			"key": "pref_hide_in_fullscreen",
 			"title": "全屏应用时不弹出窗口",
 			"title_en": "Do not show window over fullscreen apps",
@@ -455,22 +463,6 @@
 			"defValue": ""
 		},
 		{
-			"key": "pref_acknowledgements",
-			"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
-			"title_en": "Open source licenses & acknowledgements: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
-			"type": "text",
-			"subPage": "about",
-			"defValue": ""
-		},
-		{
-			"key": "pref_about_other1",
-			"title": "本次应用启动完成耗时(动态更改)",
-			"title_en": "Startup timing (dynamic)",
-			"type": "text",
-			"subPage": "about",
-			"defValue": ""
-		},
-		{
 			"key": "pref_project_help",
 			"title": "软件帮助",
 			"title_en": "Project URL",
@@ -499,6 +491,37 @@
 			"title": "反馈问题",
 			"title_en": "Project issues",
 			"type": "button",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_about_other1",
+			"title": "本次应用启动完成耗时(动态更改)",
+			"title_en": "Startup timing (dynamic)",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_candylauncher_details",
+			"title": "\n-----------------------------------------------\n\nCandyLauncher 是MIT协议授权的，它是免费的，可用于商业用途\n作者: CandyTek\n邮箱: 1375839679@qq.com\n",
+			"title_en": "\nCandyLauncher is MIT-Licensed, it's free and free for commercial use\nBy CandyTek\nMail: 1375839679@qq.com\n",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_acknowledgements",
+			"title": "本项目在开发过程中使用和参考了以下工具或开源项目，在此一并表示感谢：\n",
+			"title_en": "This project uses and referenced the following tools and open source libraries. Sincere thanks to their authors and contributors:\n\n",
+			"type": "text",
+			"subPage": "about",
+			"defValue": ""
+		},
+		{
+			"key": "pref_acknowledgements_details",
+			"title": "CLion\n(For non-commercial use only)\nhttps://www.jetbrains.com/clion/\n\nHakeQuick\nhttps://github.com/lzl1918/HakeQuick\n\nEverything SDK\nhttps://www.voidtools.com/support/everything/sdk/\n\nrapidfuzz-cpp\nhttps://github.com/rapidfuzz/rapidfuzz-cpp\n\nExprTk\nhttps://github.com/ArashPartow/exprtk\n\ncpp-pinyin\nhttps://github.com/wolfgitpr/cpp-pinyin\n\nsqlite-amalgamation\nhttps://github.com/azadkuh/sqlite-amalgamation\n\npugixml\nhttps://github.com/zeux/pugixml\n\nWinToast\nhttps://github.com/mohabouje/WinToast\n\ngithub-releases-autoupdater\nhttps://github.com/CandyTek/github-releases-autoupdater\n\nnlohmann-json\nhttps://github.com/nlohmann/json\n",
+			"type": "text",
 			"subPage": "about",
 			"defValue": ""
 		},

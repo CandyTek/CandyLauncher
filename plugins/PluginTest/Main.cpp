@@ -48,6 +48,18 @@ public:
 		return callbacks;
 	}
 
+	void RegisterAppLaunchActionCallback(const std::string& key, std::function<void()> callback) override {
+		callbacks[key] = std::move(callback);
+	}
+
+	void UnregisterAppLaunchActionCallback(const std::string& key) override {
+		callbacks.erase(key);
+	}
+
+	bool IsPluginEnabledByPackageName(const std::wstring& packageName) const override {
+		return true;
+	}
+
 	std::wstring GetTheProcessedMatchingText(const std::wstring& source) override {
 		// 简单返回原文本（实际应该处理拼音等）
 		return source;

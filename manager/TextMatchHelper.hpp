@@ -44,7 +44,7 @@ static void Fuzzymatch_MultiThreaded2(const std::wstring& keyword, const std::ve
 
 		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword, searchableText); score >=
 			pref_fuzzy_match_score_threshold) {
-			tmp[i] = ScoredAction{action, score};
+			tmp[i] = ScoredAction{action, score, action->pluginPriority};
 		}
 	});
 
@@ -89,7 +89,7 @@ static void Fuzzymatch(const std::wstring& keyword, const std::vector<std::share
 		// WRatio 对于不同长度的字符串和乱序的单词有很好的效果，是通用的优选。
 		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword, action->matchText); score >=
 			pref_fuzzy_match_score_threshold) {
-			scoredActions.push_back({action, score});
+			scoredActions.push_back({action, score, action->pluginPriority});
 		}
 	}
 
@@ -97,7 +97,7 @@ static void Fuzzymatch(const std::wstring& keyword, const std::vector<std::share
 	std::sort(scoredActions.begin(), scoredActions.end(), std::greater<>());
 
 	int matchedCount = 0;
-	for (const auto& [action, score] : scoredActions) {
+	for (const auto& [action, score, priority] : scoredActions) {
 		filteredActions.push_back(action);
 		if (pref_max_search_results > 0) {
 			matchedCount++;

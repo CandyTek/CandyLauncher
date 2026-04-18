@@ -221,6 +221,12 @@ private:
 				if (GetKeyState(VK_SHIFT) & 0x8000) currentModifiers |= MOD_SHIFT;
 				if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) currentModifiers |= MOD_WIN_KEY;
 
+				// TODO: Alt+Space: 转发给父窗口触发系统菜单，但是单独按下alt后，仍然会发出beep的声音
+				// if (msg == WM_SYSKEYDOWN && vk == VK_SPACE && currentModifiers == MOD_ALT_KEY) {
+				// 	PostMessage(g_mainHwnd, WM_SYSCOMMAND, SC_KEYMENU, VK_SPACE);
+				// 	return 0;
+				// }
+
 				if ((pref_alt_number_launch_item && currentModifiers == MOD_ALT_KEY)) {
 					if (vk >= '1' && vk <= '9') {
 						doNumberAction(vk);

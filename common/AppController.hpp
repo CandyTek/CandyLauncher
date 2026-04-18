@@ -19,7 +19,7 @@ constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
 constexpr bool needOpenSettingWindow = true;
-constexpr bool needMinimizeSettingWindow = false;
+constexpr bool needMinimizeSettingWindow = true;
 #else
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
@@ -169,107 +169,6 @@ static void doPrefChanged() {
 		g_pluginManager->NotifyUserSettingsLoadDone();
 		g_pluginManager->RefreshAllActions();
 	}
-}
-
-inline void DoMyContextMenuAction(UINT cmd, int index, std::shared_ptr<BaseAction>& action) {
-	switch (cmd) {
-	case IDM_REMOVE_ITEM:
-		{
-			// 从 ListView 以及你的数据结构移除
-			//			ListView_DeleteItem(ListViewManager::hListView, index);
-			//			ListViewManager::filteredActions.erase(ListViewManager::filteredActions.begin() + index);
-		}
-		break;
-	case IDM_RENAME_ITEM:
-		{
-			// A. 只改 ListView 的显示名：启动就地编辑
-			//			ListView_EditLabel(ListViewManager::hListView, index);
-			// B. 如果你想真的重命名文件：
-			//    建议在 LVN_ENDLABELEDIT 里拿到新名字，调用 MoveFileExW(old, new, 0)
-		}
-		break;
-	case IDM_RUN_AS_ADMIN:
-		// action->InvokeWithTarget(nullptr, true);
-		// action->Invoke();
-		break;
-	case IDM_OPEN_IN_CONSOLE:
-		// OpenConsoleHere(SaveGetShortcutTargetAndReturn(action->GetTargetPath()));
-		break;
-	case IDM_KILL_PROCESS:
-		{
-			// std::wstring actualPath = GetShortcutTarget(action->GetTargetPath());
-			// if (systemProcesses.find(MyToLower(actualPath)) != systemProcesses.end()) {
-			// 	MessageBoxW(nullptr, (actualPath + L" 是系统关键进程，不建议终止。").c_str(),
-			// 				L"警告", MB_OK | MB_ICONWARNING | MB_TOPMOST);
-			// } else {
-			// 	int n = KillProcessByImagePath(actualPath);
-			// 	using namespace std::string_literals;
-			// 	Println(L"终止"s + std::to_wstring(n));
-			// }
-		}
-		break;
-	case IDM_COPY_PATH:
-		// CopyTextToClipboard(g_mainHwnd, action->GetTargetPath());
-		break;
-	case IDM_COPY_TARGET_PATH:
-		{
-			// std::wstring actualPath = GetShortcutTarget(action->GetTargetPath());
-			// CopyTextToClipboard(g_mainHwnd, actualPath);
-		}
-		break;
-	default: break;
-	}
-}
-
-static UINT ShowMyContextMenu(HWND hWnd, const std::wstring& path, POINT screenPt) {
-	HMENU hMenu = CreatePopupMenu();
-	// todo: 写完索引管理器时，来完善这个菜单项
-	AppendMenuW(hMenu, MF_STRING, IDM_REMOVE_ITEM, L"排除该索引(未完善)");
-	AppendMenuW(hMenu, MF_STRING, IDM_RENAME_ITEM, L"重映射命名该索引(未完善)");
-	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-	AppendMenuW(hMenu, MF_STRING, IDM_RUN_AS_ADMIN, L"以管理员身份运行");
-	AppendMenuW(hMenu, MF_STRING, IDM_OPEN_IN_CONSOLE, L"在控制台打开该项");
-	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-
-	AppendMenuW(hMenu, MF_STRING, IDM_KILL_PROCESS, L"杀死进程");
-
-	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-	AppendMenuW(hMenu, MF_STRING, IDM_COPY_PATH, L"复制路径");
-
-	AppendMenuW(hMenu, MF_STRING, IDM_COPY_TARGET_PATH, L"复制目标路径");
-
-	// 根据上下文可禁用一些项（举例：路径不存在则灰掉）
-	DWORD attr = GetFileAttributesW(path.c_str());
-	if (attr == INVALID_FILE_ATTRIBUTES) {
-		EnableMenuItem(hMenu, IDM_RUN_AS_ADMIN, MF_BYCOMMAND | MF_GRAYED);
-		EnableMenuItem(hMenu, IDM_OPEN_IN_CONSOLE, MF_BYCOMMAND | MF_GRAYED);
-		EnableMenuItem(hMenu, IDM_KILL_PROCESS, MF_BYCOMMAND | MF_GRAYED);
-		EnableMenuItem(hMenu, IDM_COPY_TARGET_PATH, MF_BYCOMMAND | MF_GRAYED);
-	} else {
-		if (MyEndsWith(path, {L".lnk"})) {
-			std::wstring actualPath = GetShortcutTarget(path);
-			if (!MyEndsWith(actualPath, {L".exe"})) {
-				EnableMenuItem(hMenu, IDM_KILL_PROCESS, MF_BYCOMMAND | MF_GRAYED);
-			}
-		} else {
-			EnableMenuItem(hMenu, IDM_COPY_TARGET_PATH, MF_BYCOMMAND | MF_GRAYED);
-			if (!MyEndsWith(path, {L".exe"})) {
-				EnableMenuItem(hMenu, IDM_KILL_PROCESS, MF_BYCOMMAND | MF_GRAYED);
-			}
-		}
-	}
-
-
-	SetForegroundWindow(hWnd); // 避免菜单失焦
-	UINT cmd = TrackPopupMenuEx(
-		hMenu,
-		TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NOANIMATION,
-		screenPt.x, screenPt.y,
-		hWnd,
-		nullptr
-	);
-	DestroyMenu(hMenu);
-	return cmd; // 0 表示没点任何命令（点了空白/ESC）
 }
 
 static void TrayMenuClick(const int position) {
