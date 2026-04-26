@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../util/BaseTools.hpp"
+#include "../util/MainTools.hpp"
 #include "../common/Constants.hpp"
 #include "../util/json.hpp"
 #include "../common/GlobalState.hpp"
@@ -18,6 +19,38 @@ static const wchar_t* HOTKEY_CTX_KEY = L"HotkeyCtxKey";
 #ifndef WM_APP_HOTKEY_COMMIT
 #define WM_APP_HOTKEY_COMMIT (WM_APP + 0x120)
 #endif
+
+static bool IsModifierOnlyVk(const UINT key) {
+	return key == VK_CONTROL || key == VK_SHIFT || key == VK_MENU || key == VK_LWIN || key == VK_RWIN;
+}
+
+static UINT NormalizeRecordedModifiers(const UINT key, UINT modifiers) {
+	if (key == VK_CONTROL) modifiers &= ~MOD_CONTROL;
+	else if (key == VK_SHIFT) modifiers &= ~MOD_SHIFT;
+	else if (key == VK_MENU) modifiers &= ~MOD_ALT;
+	else if (key == VK_LWIN || key == VK_RWIN) modifiers &= ~MOD_WIN;
+	return modifiers;
+}
+
+static void StoreHotkeyEditValue(HWND hWnd, const wchar_t* propName, const std::wstring& keyStr) {
+	SetWindowTextW(hWnd, keyStr.c_str());
+
+	HGLOBAL hOldMem = (HGLOBAL)GetPropW(hWnd, propName);
+	if (hOldMem) {
+		RemovePropW(hWnd, propName);
+		GlobalFree(hOldMem);
+	}
+
+	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (keyStr.length() + 1) * sizeof(wchar_t));
+	if (hMem) {
+		wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
+		if (pMem) {
+			wcscpy_s(pMem, keyStr.length() + 1, keyStr.c_str());
+			GlobalUnlock(hMem);
+			SetPropW(hWnd, propName, hMem);
+		}
+	}
+}
 
 static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 												UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -66,8 +99,64 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			if (GetAsyncKeyState(VK_LWIN) & 0x8000 || GetAsyncKeyState(VK_RWIN) & 0x8000) modifiers |= MOD_WIN;
 
 			UINT key = (UINT)wParam;
+			const UINT storedModifiers = NormalizeRecordedModifiers(key, modifiers);
 
-			if (key == VK_CONTROL || key == VK_SHIFT || key == VK_MENU || key == VK_LWIN || key == VK_RWIN) return 0; // 忽略单独的修饰键
+			std::wstring keyStr;
+
+			if (storedModifiers & MOD_CONTROL) keyStr += L"Ctrl+";
+			if (storedModifiers & MOD_ALT) keyStr += L"Alt+";
+			if (storedModifiers & MOD_SHIFT) keyStr += L"Shift+";
+			if (storedModifiers & MOD_WIN) keyStr += L"Win+";
+
+			// 获取键名
+			wchar_t keyName[64] = {0};
+			UINT scanCode = MapVirtualKey(key, MAPVK_VK_TO_VSC) << 16;
+			if (key == VK_RWIN || key == VK_RMENU) scanCode |= (1 << 24);
+			GetKeyNameTextW(scanCode, keyName, 64);
+			if (keyName[0] == L'\0' && IsModifierOnlyVk(key)) {
+				if (key == VK_CONTROL) wcscpy_s(keyName, L"Ctrl");
+				else if (key == VK_SHIFT) wcscpy_s(keyName, L"Shift");
+				else if (key == VK_MENU) wcscpy_s(keyName, L"Alt");
+				else wcscpy_s(keyName, L"Win");
+			}
+			keyStr += keyName;
+			keyStr += L"(";
+			keyStr += std::to_wstring(storedModifiers);
+			keyStr += L")";
+			keyStr += L"(";
+			keyStr += std::to_wstring(key);
+			keyStr += L")";
+
+			StoreHotkeyEditValue(hWnd, HOTKEY_PROP, keyStr);
+			return 0;
+		}
+	case WM_MBUTTONDOWN:
+	case WM_XBUTTONDOWN:
+		{
+			UINT modifiers = 0;
+			if (GetAsyncKeyState(VK_CONTROL) & 0x8000) modifiers |= MOD_CONTROL;
+			if (GetAsyncKeyState(VK_MENU) & 0x8000) modifiers |= MOD_ALT;
+			if (GetAsyncKeyState(VK_SHIFT) & 0x8000) modifiers |= MOD_SHIFT;
+			if (GetAsyncKeyState(VK_LWIN) & 0x8000 || GetAsyncKeyState(VK_RWIN) & 0x8000) modifiers |= MOD_WIN;
+
+			UINT key = 0;
+			std::wstring keyName;
+
+			if (uMsg == WM_MBUTTONDOWN) {
+				key = VK_MBUTTON;
+				keyName = L"Mouse Middle";
+			} else {
+				WORD xButton = GET_XBUTTON_WPARAM(wParam);
+				if (xButton == XBUTTON1) {
+					key = VK_XBUTTON1;
+					keyName = L"Mouse Back";
+				} else if (xButton == XBUTTON2) {
+					key = VK_XBUTTON2;
+					keyName = L"Mouse Forward";
+				} else {
+					return 0;
+				}
+			}
 
 			std::wstring keyStr;
 
@@ -76,10 +165,6 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			if (modifiers & MOD_SHIFT) keyStr += L"Shift+";
 			if (modifiers & MOD_WIN) keyStr += L"Win+";
 
-			// 获取键名
-			wchar_t keyName[64] = {0};
-			UINT scanCode = MapVirtualKey(key, MAPVK_VK_TO_VSC) << 16;
-			GetKeyNameTextW(scanCode, keyName, 64);
 			keyStr += keyName;
 			keyStr += L"(";
 			keyStr += std::to_wstring(modifiers);
@@ -88,24 +173,7 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			keyStr += std::to_wstring(key);
 			keyStr += L")";
 
-			SetWindowTextW(hWnd, keyStr.c_str());
-			// Clean up existing property first to prevent memory leak
-			HGLOBAL hOldMem = (HGLOBAL)GetPropW(hWnd, HOTKEY_PROP);
-			if (hOldMem) {
-				RemovePropW(hWnd, HOTKEY_PROP);
-				GlobalFree(hOldMem);
-			}
-			// Store hotkey string as window property
-			HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (keyStr.length() + 1) * sizeof(wchar_t));
-			if (hMem) {
-				wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
-				if (pMem) {
-					wcscpy_s(pMem, keyStr.length() + 1, keyStr.c_str());
-					GlobalUnlock(hMem);
-					SetPropW(hWnd, HOTKEY_PROP, hMem);
-				}
-			}
-
+			StoreHotkeyEditValue(hWnd, HOTKEY_PROP, keyStr);
 			return 0;
 		}
 	case WM_SETFOCUS:
@@ -115,7 +183,7 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			if (hKeyMem) {
 				if (wchar_t* settingKey = (wchar_t*)GlobalLock(hKeyMem)) {
 					if (std::wstring(settingKey) == L"pref_hotkey_toggle_main_panel") {
-						UnregisterHotKey(g_mainHwnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+						UnregisterMainPanelToggleHotkey(g_mainHwnd);
 					}
 					GlobalUnlock(hKeyMem);
 				}

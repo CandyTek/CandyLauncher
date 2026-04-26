@@ -6,8 +6,6 @@
 #include "FolderPluginData.hpp"
 #include "model/TraverseOptions.hpp"
 #include "util/json.hpp"
-#include "util/MainTools.hpp"
-
 
 
 #include <windows.h>

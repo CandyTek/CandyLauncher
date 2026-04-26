@@ -19,6 +19,7 @@ set(PLUGIN_SOURCES
 		../../util/FileSystemTraverser.hpp
 		../../util/FileUtil.hpp
 		ContextMenuHelper.hpp
+		FileHelper.hpp
 )
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 

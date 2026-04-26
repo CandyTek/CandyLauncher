@@ -55,7 +55,7 @@ inline std::string ReadUtf8File(const std::wstring& configPath) {
 	// 先打印完整路径
 	try {
 		auto absPath = fs::absolute(p);
-		ConsolePrintln(L"ReadUtf8File", L"Configuration file path: " + absPath.wstring());
+		// ConsolePrintln(L"ReadUtf8File", L"Configuration file path: " + absPath.wstring());
 	} catch (const std::exception& e) {
 		std::wcerr << L"路径解析失败: " << e.what() << std::endl;
 	}
@@ -124,4 +124,56 @@ inline std::wstring GetFileNameFromPath(const std::wstring& fullPath) {
 		return fullPath; // 没有分隔符，说明整个就是文件名
 	}
 	return fullPath.substr(pos + 1);
+}
+
+inline std::wstring ShortToLongPath(const std::wstring& shortPath) {
+	// 获取长路径所需的缓冲区大小
+	DWORD dwSize = GetFullPathName(shortPath.c_str(), 0, NULL, NULL);
+	if (dwSize == 0) {
+		std::wcerr << L"Error getting path length" << std::endl;
+		return L"";
+	}
+
+	// 创建一个足够大的缓冲区
+	std::wstring longPath(dwSize, L'\0');
+
+	// 调用 GetFullPathName 来转换短路径为长路径
+	dwSize = GetFullPathName(shortPath.c_str(), dwSize, &longPath[0], NULL);
+	if (dwSize == 0) {
+		std::wcerr << L"Error converting to long path" << std::endl;
+		return L"";
+	}
+
+	// 返回结果，移除结尾的空字符
+	return longPath;
+}
+
+inline std::wstring ShortToLongPathWithEnvironment(const std::wstring& shortPath) {
+	// 获取环境变量并展开
+	wchar_t expandedPath[MAX_PATH];
+	DWORD result = ExpandEnvironmentStrings(shortPath.c_str(), expandedPath, MAX_PATH);
+	if (result == 0) {
+		std::wcerr << L"Error expanding environment variables" << std::endl;
+		return L"";
+	}
+
+	// 获取长路径所需的缓冲区大小
+	DWORD dwSize = GetFullPathName(expandedPath, 0, NULL, NULL);
+	if (dwSize == 0) {
+		std::wcerr << L"Error getting path length" << std::endl;
+		return L"";
+	}
+
+	// 创建一个足够大的缓冲区
+	std::wstring longPath(dwSize, L'\0');
+
+	// 调用 GetFullPathName 来转换短路径为长路径
+	dwSize = GetFullPathName(expandedPath, dwSize, &longPath[0], NULL);
+	if (dwSize == 0) {
+		std::wcerr << L"Error converting to long path" << std::endl;
+		return L"";
+	}
+
+	// 返回结果，移除结尾的空字符
+	return longPath;
 }

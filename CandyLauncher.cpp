@@ -78,6 +78,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	static ULONGLONG g_appStartTick = GetTickCount64();
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 	if (FAILED(hr)) return -1;
+	HRESULT hrOle = OleInitialize(nullptr);
+	if (FAILED(hrOle)) {
+		return -1;
+	}
 
 	g_hInst = hInstance;
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
@@ -214,7 +218,7 @@ static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd) {
 	//ListView_SetBkColor(g_listViewHwnd, COLOR_UI_BG);
 	//ListView_SetTextBkColor(g_listViewHwnd, COLOR_UI_BG);
 
-	// SetWindowText(g_editHwnd, L"abcdefghijklmnoprstuvwxyz0123456789");
+	// SetWindowText(g_editHwnd, L"hn");
 }
 
 
@@ -235,6 +239,12 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 
 	CreateMainWindow(hInstance, nCmdShow);
 	InitMainWindowControls(hInstance, g_mainHwnd);
+	g_pluginManager->SetBeforePluginUnloadCallback([]() {
+		clearVisibleActionReferences();
+	});
+	g_pluginManager->SetActionsChangedCallback([]() {
+		refreshVisibleActionsFromCurrentInput();
+	});
 	Init(g_mainHwnd, hInstance);
 	userSettingsAfterTheAppStart();
 	g_pluginManager->NotifyUserSettingsLoadDone();
@@ -363,6 +373,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			// 如果是 WA_INACTIVE，说明窗口从激活变为非激活状态（失去焦点）
 			if (LOWORD(wParam) == WA_INACTIVE) {
 				if (hWnd == g_mainHwnd) {
+					if (g_isOleFileDragDropInProgress) break;
 					// 设置界面在皮肤tab时，暂停随焦点消失关闭功能（皮肤预览需要主窗口保持可见）
 					bool isSettingsSkinTabActive = g_settingsHwnd != nullptr
 						&& static_cast<size_t>(currentSubPageIndex) < subPageTabs.size()
@@ -497,7 +508,38 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 						return TRUE;
 					}
 					break;
-				default: break;
+
+				case LVN_BEGINDRAG:
+					{
+						auto* nmlv = reinterpret_cast<NMLISTVIEW*>(lParam);
+
+						const int itemIndex = nmlv->iItem;
+						if (itemIndex < 0 || itemIndex >= static_cast<int>(filteredActions.size())) {
+							return 0;
+						}
+
+						POINT screenPt = nmlv->ptAction;
+						ClientToScreen(nmlv->hdr.hwndFrom, &screenPt);
+
+						const auto& action = filteredActions[itemIndex];
+
+						bool handled = false;
+						if (g_pluginManager) {
+							handled = g_pluginManager->DispatchItemBeginDrag(
+								action,
+								nmlv->hdr.hwndFrom,
+								screenPt
+							);
+						}
+
+						if (!handled) {
+							// 插件/继承类未处理拖拽时，不实现功能
+							return 0;
+						}
+
+						return 0;
+					}
+					default: break;
 				}
 			}
 			break;
@@ -511,7 +553,11 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				SetFocus(g_editHwnd);
 			} else if (wParam == TIMER_SET_GLOBAL_HOTKEY) {
 				KillTimer(hWnd, TIMER_SET_GLOBAL_HOTKEY);
-				RegisterHotkeyFromString(g_mainHwnd, pref_hotkey_toggle_main_panel, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+				ConfigureMainPanelToggleHotkey(
+					g_mainHwnd,
+					pref_hotkey_toggle_main_panel_mode,
+					pref_hotkey_toggle_main_panel
+				);
 			} else if (wParam == TIMER_SHOW_WINDOW) {
 				KillTimer(hWnd, TIMER_SHOW_WINDOW);
 				ShowMainWindowSimple();
@@ -535,6 +581,11 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		}
 		break;
 	case WM_FOCUS_EDIT: SetFocus(g_editHwnd);
+		break;
+	case WM_SHOWWINDOW:
+		if (wParam==FALSE) {
+			g_pluginManager->OnMainWindowShowNotifi(false);
+		}
 		break;
 	case WM_APP_UPDATE_AVAILABLE:
 		return AppUpdate::HandleUpdateAvailableMessage(lParam);
@@ -609,6 +660,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				delete g_BgImage;
 				g_BgImage = nullptr;
 			}
+			UnregisterMainPanelToggleHotkey(hWnd);
 			UninstallMouseHook();
 			SaveWindowRectToRegistry(hWnd);
 			ListView_DeleteAllItems(g_listViewHwnd);

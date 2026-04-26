@@ -91,6 +91,7 @@ static int rightClickedItemIndex = -1;
 static int rightClickedConfigItemIndex = -1;
 static bool g_configDirty = false;
 static bool g_suppressDirty = false;
+static bool g_suppressSelectionNotifications = false;
 
 static std::wstring ToLowerString(const std::wstring& input) {
 	std::wstring result = input;

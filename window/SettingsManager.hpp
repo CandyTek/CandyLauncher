@@ -108,6 +108,7 @@ static void initGlobalVariable() {
 	pref_ignore_popup_sound = (g_settings_map["pref_ignore_popup_sound"].boolValue);
 	pref_force_ime_mode = g_settings_map["pref_force_ime_mode"].stringValue;
 	pref_max_search_results = g_settings_map["pref_max_search_results"].intValue;
+	pref_hotkey_toggle_main_panel_mode = g_settings_map["pref_hotkey_toggle_main_panel_mode"].stringValue;
 	pref_hotkey_toggle_main_panel = g_settings_map["pref_hotkey_toggle_main_panel"].stringValue;
 	pref_fuzzy_match_score_threshold = g_settings_map["pref_fuzzy_match_score_threshold"].intValue;
 	if (!g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {

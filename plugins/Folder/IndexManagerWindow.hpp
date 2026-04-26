@@ -377,33 +377,77 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			}
 			if (HIWORD(wParam) == CBN_SELCHANGE && (HWND)lParam == g_typeComboBox) {
 				g_configDirty = true;
-				// 类型下拉框选择变化，根据类型设置folder编辑框状态
-				int typeIndex = static_cast<int>(SendMessage(g_typeComboBox, CB_GETCURSEL, 0, 0));
-				if (typeIndex == 0) {
-					// folder
-					// 启用folder编辑框，恢复之前保存的folder值
-					EnableWindow(g_folderEdit, TRUE);
-					EnableWindow(g_nameEdit, TRUE);
-					EnableWindow(g_checkboxIndexFilesOnly, TRUE);
-					EnableWindow(g_checkboxRecursiveIndex, TRUE);
-					if (index_last_selected >= 0) {
-						SetWindowTextW(g_folderEdit, runnerConfigs[index_last_selected].folder.c_str());
-						SetWindowTextW(g_nameEdit, runnerConfigs[index_last_selected].name.c_str());
-					}
-				} else {
-					// uwp, regedit, path
-					// 禁用folder编辑框，显示"default"
-					EnableWindow(g_folderEdit, FALSE);
-					EnableWindow(g_nameEdit, FALSE);
-					EnableWindow(g_checkboxIndexFilesOnly, FALSE);
-					EnableWindow(g_checkboxRecursiveIndex, FALSE);
-					SetWindowTextW(g_folderEdit, L"default");
-					SetWindowTextW(g_nameEdit, L"default");
-				}
-
-				// 保存当前配置项
 				if (index_last_selected >= 0) {
-					SaveCurrentConfigItem(index_last_selected);
+					TraverseOptions currentConfig = runnerConfigs[index_last_selected];
+					wchar_t buffer[4096] = {};
+					const bool wasFolderType =
+						(currentConfig.type == L"folder" || currentConfig.type.empty());
+
+					if (wasFolderType) {
+						GetWindowTextW(g_nameEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+						currentConfig.name = buffer;
+						GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+						currentConfig.folder = buffer;
+						currentConfig.indexFilesOnly =
+							(SendMessageW(g_checkboxIndexFilesOnly, BM_GETCHECK, 0, 0) == BST_CHECKED);
+						currentConfig.recursive =
+							(SendMessageW(g_checkboxRecursiveIndex, BM_GETCHECK, 0, 0) == BST_CHECKED);
+					}
+
+					GetWindowTextW(g_excludeWordsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+					currentConfig.excludeWords = StringToVectorAndLower(buffer);
+					GetWindowTextW(g_excludesEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+					currentConfig.excludeNames = StringToVector(buffer);
+					GetWindowTextW(g_renameSourcesEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+					currentConfig.renameSources = StringToVector(buffer);
+					GetWindowTextW(g_renameTargetsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+					currentConfig.renameTargets = StringToVector(buffer);
+					GetWindowTextW(g_extsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+					{
+						auto rawExts = StringToVector(std::wstring(buffer));
+						std::vector<std::wstring> normalizedExts;
+						for (auto ext : rawExts) {
+							if (!ext.empty() && ext[0] != L'.') ext.insert(ext.begin(), L'.');
+							normalizedExts.push_back(ext);
+						}
+						currentConfig.extensions = normalizedExts;
+					}
+					currentConfig.renameMap.clear();
+					{
+						const auto& sources = currentConfig.renameSources;
+						const auto& targets = currentConfig.renameTargets;
+						size_t count = std::min(sources.size(), targets.size());
+						for (size_t i = 0; i < count; ++i) {
+							if (!sources[i].empty() && !targets[i].empty()) {
+								currentConfig.renameMap[sources[i]] = targets[i];
+							}
+						}
+					}
+
+					int typeIndex = static_cast<int>(SendMessage(g_typeComboBox, CB_GETCURSEL, 0, 0));
+					switch (typeIndex) {
+					case 1: currentConfig.type = L"uwp";
+						break;
+					case 2: currentConfig.type = L"regedit";
+						break;
+					case 3: currentConfig.type = L"path";
+						break;
+					default: currentConfig.type = L"";
+						break;
+					}
+
+					runnerConfigs[index_last_selected] = currentConfig;
+
+					if (index_last_selected >= static_cast<int>(folderItemTexts.size())) {
+						folderItemTexts.resize(runnerConfigs.size());
+					}
+					folderItemTexts[index_last_selected] =
+						(currentConfig.type == L"folder" || currentConfig.type.empty())
+							? currentConfig.name
+							: L"( " + MyToUpper(currentConfig.type) + L" )";
+					ListView_SetItemText(g_folderListView, index_last_selected, 0,
+										folderItemTexts[index_last_selected].data());
+					UpdateConfigDisplayText(index_last_selected);
 				}
 			} else if (HIWORD(wParam) == EN_KILLFOCUS) {
 				if ((HWND)lParam == g_nameEdit) {
@@ -570,17 +614,20 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					{
 						// 选中变化
 						LPNMLISTVIEW pnmv = (LPNMLISTVIEW)lParam;
+						if (g_suppressSelectionNotifications) {
+							return 0;
+						}
 						if (pnmv->uNewState & LVIS_SELECTED) {
 							// 当切换文件夹选择的时候保存当前配置
 							if (index_last_selected >= 0 && index_last_selected != pnmv->iItem) {
 								SaveCurrentConfigItem(index_last_selected);
-								// 显式清除旧选中项的高亮状态
-								ListView_SetItemState(g_folderListView, index_last_selected, 0, LVIS_SELECTED);
 							}
 							if (pnmv->iItem != index_last_selected) {
+								g_suppressSelectionNotifications = true;
 								index_last_selected = pnmv->iItem;
 								UpdateConfigDisplayText(pnmv->iItem);
 								UpdateIndexFileList(pnmv->iItem);
+								g_suppressSelectionNotifications = false;
 							}
 						}
 					}

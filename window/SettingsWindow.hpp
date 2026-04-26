@@ -133,7 +133,13 @@ static void setCustomEdit(HWND hEdit, bool isNumber=false) {
 
 static void RestoreSavedToggleMainPanelHotkey() {
 	if (!pref_hotkey_toggle_main_panel.empty()) {
-		RegisterHotkeyFromString(g_mainHwnd, pref_hotkey_toggle_main_panel, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+		ConfigureMainPanelToggleHotkey(
+			g_mainHwnd,
+			pref_hotkey_toggle_main_panel_mode,
+			pref_hotkey_toggle_main_panel
+		);
+	} else {
+		UnregisterMainPanelToggleHotkey(g_mainHwnd);
 	}
 }
 
@@ -561,7 +567,11 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			}
 
 			if (key && value && std::wstring(key) == L"pref_hotkey_toggle_main_panel") {
-				RegisterHotkeyFromString(g_mainHwnd, wide_to_utf8(value), HOTKEY_ID_TOGGLE_MAIN_PANEL);
+				ConfigureMainPanelToggleHotkey(
+					g_mainHwnd,
+					pref_hotkey_toggle_main_panel_mode,
+					wide_to_utf8(value)
+				);
 			}
 
 			return 0;

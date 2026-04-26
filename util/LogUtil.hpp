@@ -5,6 +5,8 @@
 #include <string>
 #include <sstream>
 #include <filesystem>
+#include <iostream>
+#include <unordered_map>
 
 #include "StringUtil.hpp"
 
@@ -128,15 +130,22 @@ static void ShowErrorMsgBox(const std::string& msg) {
 }
 
 
-inline std::chrono::steady_clock::time_point methodTimerStartTimestamp;
+inline std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> methodTimerStartTimestamp;
 
-inline void MethodTimerStart() {
-	methodTimerStartTimestamp = std::chrono::steady_clock::now();
+inline void MethodTimerStart(const std::wstring& label = L"Method") {
+	methodTimerStartTimestamp[label] = std::chrono::steady_clock::now();
 }
+
 inline void MethodTimerEnd(const std::wstring& label = L"Method") {
-	ConsolePrintln(
-		label + L": " + std::to_wstring(
-			std::chrono::duration_cast<std::chrono::milliseconds>(
-				std::chrono::steady_clock::now() - methodTimerStartTimestamp).
-			count()) + L" ms\n");
+	auto it = methodTimerStartTimestamp.find(label);
+
+	if (it != methodTimerStartTimestamp.end()) {
+		auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - it->second
+		).count();
+		ConsolePrintln(label + L": " + std::to_wstring(duration) + L" ms\n");
+		// methodTimerStartTimestamp.erase(it); // 可选：用完删除
+	} else {
+		ConsolePrintln(label + L": timer not found\n");
+	}
 }

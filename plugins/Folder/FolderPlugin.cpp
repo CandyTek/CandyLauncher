@@ -11,15 +11,20 @@
 #include <functional>
 #include <algorithm>
 #include <cwctype>
+#include <future>
 #include <unordered_set>
 
 #include "FileAction.hpp"
 #include "IndexManagerWindow.hpp"
 #include "ContextMenuHelper.hpp"
+#include "FileHelper.hpp"
 #include "FolderPluginConfigUtils.hpp"
 #include "../../util/BitmapUtil.hpp"
 #include "../../util/FileSystemTraverser.hpp"
 #include "../../util/FileUtil.hpp"
+#include "util/ThreadPool.hpp"
+#include <mutex>
+#include <atomic>
 
 
 // 任务队列系统
@@ -163,15 +168,20 @@ static ParsedHotkey ParseHotkeyString(const std::string& utf8Str) {
 	if (posStart == std::wstring::npos || posEnd == std::wstring::npos || posEnd <= posStart + 1) return {};
 
 	ParsedHotkey h;
-	try { h.vk = static_cast<UINT>(std::stoi(str.substr(posStart + 1, posEnd - posStart - 1))); }
-	catch (...) { return {}; }
+	try {
+		h.vk = static_cast<UINT>(std::stoi(str.substr(posStart + 1, posEnd - posStart - 1)));
+	} catch (...) {
+		return {};
+	}
 
 	if (posStart > 0) {
 		size_t posEnd2 = posStart - 1;
 		size_t posStart2 = str.rfind(L'(', posEnd2);
 		if (posStart2 != std::wstring::npos && posEnd2 > posStart2) {
-			try { h.mod = static_cast<UINT>(std::stoi(str.substr(posStart2 + 1, posEnd2 - posStart2 - 1))); }
-			catch (...) {}
+			try {
+				h.mod = static_cast<UINT>(std::stoi(str.substr(posStart2 + 1, posEnd2 - posStart2 - 1)));
+			} catch (...) {
+			}
 		}
 	}
 
@@ -247,48 +257,115 @@ public:
 		return allPluginActions;
 	}
 
+	static void doActionAddIconIndex(std::vector<std::shared_ptr<FileAction>>& shareds) {
+		if (shareds.empty()) {
+			return;
+		}
+		// 确定要使用的线程数，通常基于硬件核心数
+		// hardware_concurrency() 可能返回0，所以至少保证1个线程
+		unsigned int numThreads = std::min<size_t>(std::thread::hardware_concurrency(), shareds.size());
+		if (numThreads == 0) {
+			numThreads = 1;
+		}
+		ThreadPool poolThread(numThreads);
+
+		std::vector<std::future<void>> futures;
+		const size_t totalSize = shareds.size();
+		const size_t chunkSize = (totalSize + numThreads - 1) / numThreads;
+
+		// 创建并分发任务给多个线程
+		for (unsigned int i = 0; i < numThreads; ++i) {
+			const size_t start_index = i * chunkSize;
+			if (start_index >= totalSize) break;
+			const size_t end_index = std::min(start_index + chunkSize, totalSize);
+
+			// 获取该分块的起始和结束迭代器
+			auto start_it = shareds.begin() + start_index;
+			auto end_it = shareds.begin() + end_index;
+
+			// 注意：按值捕获迭代器，按引用捕获 shareds (如果只是读写成员，甚至不需要捕获整个容器)
+			futures.push_back(poolThread.enqueue([start_it, end_it]() {
+				for (auto it = start_it; it != end_it; ++it) {
+					auto& action = *it;
+					action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
+				}
+			}));
+		}
+		for (auto& f : futures) {
+			f.get();
+		}
+		// 必须做一轮查询，做一个兜底，因为多线程调用GetSysImageIndex ，会有几率得到 index 为0的图标
+		for (const std::shared_ptr<FileAction>& action : shareds) {
+			if (action->iconFilePathIndex == 0) {
+				action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
+			}
+		}
+	}
+
+	static void doActionAddIconIndexWithoutMultithreading(const std::vector<std::shared_ptr<FileAction>>& shareds) {
+		if (shareds.empty()) {
+			return;
+		}
+		for (const std::shared_ptr<FileAction>& action : shareds) {
+			action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
+		}
+	}
+
+
 	void RefreshAllActions() override {
 		allPluginActions.clear();
 		const bool allowDuplicateItems = g_host->GetSettingsMap().at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
 		std::unordered_set<std::wstring> indexedNames;
-		auto pushAction = [&](const std::shared_ptr<FileAction>& action) {
+		auto pushAction = [&](std::vector<std::shared_ptr<FileAction>>& actions, const std::shared_ptr<FileAction>& action) {
 			if (!action) return;
 			if (!allowDuplicateItems) {
 				const std::wstring normalizedTitle = NormalizeActionTitleForDedup(action->getTitle());
 				if (indexedNames.find(normalizedTitle) != indexedNames.end()) return;
 				indexedNames.insert(normalizedTitle);
 			}
-			allPluginActions.push_back(action);
+			actions.push_back(action);
+		};
+		auto pushAction2 = [&](std::vector<std::shared_ptr<BaseAction>>& actions, const std::shared_ptr<FileAction>& action) {
+			if (!action) return;
+			if (!allowDuplicateItems) {
+				const std::wstring normalizedTitle = NormalizeActionTitleForDedup(action->getTitle());
+				if (indexedNames.find(normalizedTitle) != indexedNames.end()) return;
+				indexedNames.insert(normalizedTitle);
+			}
+			actions.push_back(action);
 		};
 		// 遍历运行中的窗口并添加到列表
 		bool isPathAdded = false;
 		bool isUwpAdded = false;
 
+
+		std::vector<std::shared_ptr<FileAction>> tempActions;
+
 		std::vector<TraverseOptions> runnerConfigs = ParseRunnerConfig();
 		for (TraverseOptions traverseOptions1 : runnerConfigs) {
-			if (traverseOptions1.type.empty()) {
+			if (traverseOptions1.type == L"folder" || traverseOptions1.type.empty()) {
+				traverseOptions1.folder = GetCurrentFolderPath(traverseOptions1);
 				if (g_host->GetSettingsMap().at("pref_use_everything_sdk_index").boolValue) {
 					g_host->TraverseFilesForEverythingSDK(traverseOptions1.folder, traverseOptions1, [&](const std::wstring& name,
 														const std::wstring& fullPath,
 														const std::wstring& parent,
 														const std::wstring& ext) {
-															const auto action = std::make_shared<FileAction>(
-																name, fullPath, false, parent
-															);
-															action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-															pushAction(action);
+															const auto action = std::make_shared<FileAction>(name, fullPath, false, parent);
+															pushAction(tempActions, action);
 														});
 				} else {
-					::TraverseFiles(traverseOptions1.folder, traverseOptions1, EXE_FOLDER_PATH2, [&](const std::wstring& name,
-									const std::wstring& fullPath,
-									const std::wstring& parent,
-									const std::wstring& ext) {
-										const auto action = std::make_shared<FileAction>(
-											name, fullPath, false, parent
-										);
-										action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-										pushAction(action);
-									});
+					TraverseFiles(traverseOptions1.folder, traverseOptions1, EXE_FOLDER_PATH2, [&](const std::wstring& name,
+								const std::wstring& fullPath,
+								const std::wstring& parent,
+								const std::wstring& ext) {
+									const auto action = std::make_shared<FileAction>(name, fullPath, false, parent);
+									pushAction(tempActions, action);
+								});
+				}
+				if (g_host->GetSettingsMap().at("com.candytek.folderplugin.index_folderpath_itself").boolValue) {
+					std::wstring folderPath = ShortToLongPathWithEnvironment(traverseOptions1.folder);
+					const auto action = std::make_shared<FileAction>(traverseOptions1.name, folderPath, false, folderPath);
+					pushAction(tempActions, action);
 				}
 			} else if (traverseOptions1.type == L"path" && !isPathAdded &&
 				g_host->GetSettingsMap().at("com.candytek.folderplugin.envpath_apps").boolValue) {
@@ -296,12 +373,8 @@ public:
 											const std::wstring& fullPath,
 											const std::wstring& parent,
 											const std::wstring& ext) {
-					const auto action = std::make_shared<FileAction>(
-						name, fullPath, false, parent
-					);
-					action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-
-					pushAction(action);
+					const auto action = std::make_shared<FileAction>(name, fullPath, false, parent);
+					pushAction(tempActions, action);
 				}, traverseOptions1, EXE_FOLDER_PATH2);
 
 				isPathAdded = true;
@@ -310,13 +383,16 @@ public:
 				std::vector<std::shared_ptr<BaseAction>> uwpActions;
 				traverseUwpApps(uwpActions, traverseOptions1);
 				for (const auto& baseAction : uwpActions) {
-					auto fileAction = std::dynamic_pointer_cast<FileAction>(baseAction);
-					if (fileAction) pushAction(fileAction);
+					if (auto fileAction = std::dynamic_pointer_cast<FileAction>(baseAction)) pushAction2(allPluginActions, fileAction);
 				}
 				isUwpAdded = true;
 			}
 		}
 
+		doActionAddIconIndex(tempActions);
+		allPluginActions.insert(allPluginActions.end(),
+								std::make_move_iterator(tempActions.begin()),
+								std::make_move_iterator(tempActions.end()));
 
 		TraverseOptions emptyTraverseOptions;
 		TraverseOptions defaultOptions = CreateDefaultPathTraverseOptions();
@@ -325,7 +401,7 @@ public:
 			traverseUwpApps(uwpActions, emptyTraverseOptions);
 			for (const auto& baseAction : uwpActions) {
 				auto fileAction = std::dynamic_pointer_cast<FileAction>(baseAction);
-				if (fileAction) pushAction(fileAction);
+				if (fileAction) pushAction2(allPluginActions, fileAction);
 			}
 		} else if (!isPathAdded && g_host->GetSettingsMap().at("com.candytek.folderplugin.envpath_apps").boolValue) {
 			// TODO: 解决这个崩溃问题
@@ -337,7 +413,7 @@ public:
 					name, fullPath, false, parent
 				);
 				action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-				pushAction(action);
+				pushAction2(allPluginActions, action);
 			}, defaultOptions, EXE_FOLDER_PATH2);
 		}
 	}
@@ -390,6 +466,14 @@ public:
 			"type": "bool",
 			"subPage": "plugin",
 			"defValue": false
+		},
+		{
+			"key": "com.candytek.folderplugin.index_folderpath_itself",
+			"title": "索引路径本身",
+			"title_en": "The index path itself",
+			"type": "bool",
+			"subPage": "plugin",
+			"defValue": true
 		},
 		{
 			"key": "com.candytek.folderplugin.indexed_manager",
@@ -471,10 +555,10 @@ public:
 		}
 
 		const auto& settings = g_host->GetSettingsMap();
-		hkOpenFileLocation   = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_file_location").stringValue);
+		hkOpenFileLocation = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_file_location").stringValue);
 		hkOpenTargetLocation = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_target_location").stringValue);
-		hkOpenWithClipboard  = ParseHotkeyString(settings.at("com.candytek.folderplugin.open_with_clipboard_params").stringValue);
-		hkRunAsAdmin         = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
+		hkOpenWithClipboard = ParseHotkeyString(settings.at("com.candytek.folderplugin.open_with_clipboard_params").stringValue);
+		hkRunAsAdmin = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
 	}
 
 
@@ -556,6 +640,21 @@ public:
 		}
 		return true;
 	}
+
+	bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) override {
+		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
+		if (!g_host || !fileAction) {
+			return false;
+		}
+
+		const std::wstring targetPath = fileAction->GetTargetPath();
+		if (targetPath.empty()) {
+			return false;
+		}
+
+		ConsolePrintln(L"FolderPlugin", L"Begin OLE drag drop path=" + targetPath);
+		return g_host->BeginOleDragDropFiles({targetPath}, sourceHwnd);
+	}
 };
 
 PLUGIN_EXPORT IPlugin* CreatePlugin() {
@@ -567,7 +666,7 @@ PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
 }
 
 PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 2;
+	return 1;
 }
 
 

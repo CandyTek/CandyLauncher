@@ -179,7 +179,8 @@ endif ()
 #set(CMAKE_GENERATOR_PLATFORM x64)  # 或者 x86，依据需要设置
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
 #add_compile_definitions(_WIN32_WINNT=0x0600)
-add_compile_definitions(NTDDI_VERSION=0x06010000)
+#add_compile_definitions(NTDDI_VERSION=0x06010000)
+add_compile_definitions(NTDDI_VERSION=0x0A000003)
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 8) # 64-bit
 	set(EVERYTHING_LIB ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/lib/Everything64.lib)
@@ -215,6 +216,7 @@ target_link_libraries(CandyLauncher PRIVATE
 		WinToast
 		oledb
 		autoupdater::autoupdater
+		lunasvg::lunasvg
 )
 if (MSVC)
 	target_link_libraries(CandyLauncher PRIVATE oledb WinToast)
@@ -283,6 +285,14 @@ if (MSVC)
 add_subdirectory(3rdparty/WinToast)
 endif ()
 add_subdirectory(3rdparty/github-releases-autoupdater)
+set(LUNASVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(PLUTOVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+# Force static build for lunasvg and plutovg
+set(BUILD_SHARED_LIBS_OLD ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+add_subdirectory(3rdparty/lunasvg)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_OLD})
+
 
 #plugins
 add_subdirectory(plugins/RunningApp)
@@ -290,6 +300,7 @@ add_subdirectory(plugins/CalcExprtk)
 add_subdirectory(plugins/Example)
 add_subdirectory(plugins/Folder)
 add_subdirectory(plugins/FeatureLaunch)
+add_subdirectory(plugins/PluginBrowser)
 add_subdirectory(plugins/Bookmark)
 add_subdirectory(plugins/CherryTree)
 add_subdirectory(plugins/UnitConverter)
@@ -306,6 +317,7 @@ add_subdirectory(plugins/EverNote)
 add_subdirectory(plugins/VisualStudio)
 add_subdirectory(plugins/SmallToolBox)
 add_subdirectory(plugins/WebSearch)
+add_subdirectory(plugins/NodeJsPlugin)
 
 
 add_subdirectory(plugins/PluginTest)
@@ -314,7 +326,9 @@ set(PLUGIN_DEPENDENCIES)
 
 #list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
 list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES PluginBrowserPlugin)
 list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES NodeJsPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
@@ -329,7 +343,7 @@ list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES UnitConverterPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES CalcPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ValueGeneratorPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES BookmarkPlugin)
+list(APPEND PLUGIN_DEPENDENCIES BookmarkPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES RegistryPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ServicePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES WindowsSearchPlugin)
@@ -339,6 +353,7 @@ if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 	#	message(WARNING "come here")
 	 set(PLUGIN_DEPENDENCIES
 	 		FeatureLaunchPlugin
+	 		PluginBrowserPlugin
 	 		EverNotePlugin
 	 		VisualStudioPlugin
 	 		BrowserHistoryPlugin
@@ -356,6 +371,7 @@ if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 	 		RegistryPlugin
 	 		ServicePlugin
 	 		WindowsSearchPlugin
+			NodeJsPlugin
 	 )
 
 	set(PLUGIN_OUTPUT_DIR $<TARGET_FILE_DIR:CandyLauncher>/plugins)

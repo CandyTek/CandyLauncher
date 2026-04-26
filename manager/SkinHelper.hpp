@@ -123,24 +123,6 @@ static void UpdateListViewScrollbarStyle()
 {
 	if (!g_listViewHwnd || !IsWindow(g_listViewHwnd))
 		return;
-
-	LONG_PTR style = GetWindowLongPtr(g_listViewHwnd, GWL_STYLE);
-
-	if (g_listViewHideScrollbar) {
-		// 禁止 ListView 自己显示滚动条
-		style |= LVS_NOSCROLL;
-
-		// 去掉垂直滚动条窗口样式
-		style &= ~WS_VSCROLL;
-	} else {
-		// 允许 ListView 自己管理滚动条
-		style &= ~LVS_NOSCROLL;
-
-		// 恢复垂直滚动条窗口样式
-		style |= WS_VSCROLL;
-	}
-
-	SetWindowLongPtr(g_listViewHwnd, GWL_STYLE, style);
 }
 
 

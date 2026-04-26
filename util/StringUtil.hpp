@@ -125,7 +125,8 @@ inline bool EndsWith(const std::string& str, const std::string& prefix) {
 }
 
 // 大小写不敏感的 wstring 后缀判断
-inline bool EndsWithIgnoreCase(const std::wstring& str, const std::wstring& suffix) {
+[[deprecated]]
+inline bool EndsWithIgnoreCase2(const std::wstring& str, const std::wstring& suffix) {
 	if (str.size() < suffix.size()) return false;
 
 	auto itStr = str.end() - static_cast<int>(suffix.size());
@@ -139,12 +140,46 @@ inline bool EndsWithIgnoreCase(const std::wstring& str, const std::wstring& suff
 	return true;
 }
 
+inline bool EndsWithIgnoreCase(std::wstring_view str, std::wstring_view suffix)
+{
+	const size_t strSize = str.size();
+	const size_t suffixSize = suffix.size();
+
+	if (strSize < suffixSize) {
+		return false;
+	}
+
+	const wchar_t* pStr = str.data() + (strSize - suffixSize);
+	const wchar_t* pSuf = suffix.data();
+
+	for (size_t i = 0; i < suffixSize; ++i) {
+		if (std::towlower(pStr[i]) != std::towlower(pSuf[i])) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
 // 多个后缀匹配
 inline bool EndsWithAny(const std::wstring& str,
 						std::initializer_list<std::wstring> suffixes) {
 	for (const auto& suffix : suffixes) {
 		if (EndsWith(str, suffix)) return true;
 	}
+	return false;
+}
+inline bool EndsWithAnyIgnoreCase(
+	std::wstring_view str,
+	std::initializer_list<std::wstring_view> suffixes)
+{
+	for (std::wstring_view suffix : suffixes) {
+		if (EndsWithIgnoreCase(str, suffix)) {
+			return true;
+		}
+	}
+
 	return false;
 }
 

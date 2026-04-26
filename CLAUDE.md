@@ -97,6 +97,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - Scientific computing library for calc plugin (exprtk.hpp)
 - cpp-pinyin provides conversion of Chinese to pinyin
 - XML handling via zeux/pugixml
+- lunasvg for high-quality SVG icon rendering
 
 ### Build System
 - Primary: CMake with support for Visual Studio

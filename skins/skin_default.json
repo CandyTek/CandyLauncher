@@ -52,6 +52,7 @@
 	"item_font_size_2":10,
 	"item_font_size_selected_1":18,
 	"item_font_size_selected_2":12,
+	"listview_hide_scrollbar":true,
 
 	"item_font_family_1":"微软雅黑",
 	"item_font_family_2":"微软雅黑",

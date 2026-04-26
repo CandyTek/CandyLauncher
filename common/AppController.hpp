@@ -18,7 +18,7 @@
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
-constexpr bool needOpenSettingWindow = true;
+constexpr bool needOpenSettingWindow = false;
 constexpr bool needMinimizeSettingWindow = true;
 #else
 constexpr bool needOpenDebugCmd = false;

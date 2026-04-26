@@ -9,6 +9,7 @@
 #include "model/FileInfo.hpp"
 #include "model/SettingItem.hpp"
 #include "model/TraverseOptions.hpp"
+#include "../util/OleFileDragDrop.hpp"
 
 class IPluginHost {
 public:
@@ -49,9 +50,24 @@ public:
 
 	// 搜索可能的目标文件
 	virtual std::vector<FileInfo> SearchPossibleTargets(const std::wstring& fileName, uint64_t resultCount) =0;
+	virtual bool BeginOleDragDropFiles(const std::vector<std::wstring>& filePaths, HWND sourceHwnd) = 0;
+	virtual bool BeginOleDragDropData(const OleDragDropData& data, HWND sourceHwnd) = 0;
 
 	virtual HBITMAP LoadResIconAsBitmap(int nResID, int cx, int cy) = 0;
 	virtual void ShowSimpleToast(const std::wstring& title,const std::wstring& msg) = 0;
+
+	struct PluginCatalogEntry {
+		std::wstring name;
+		std::wstring version;
+		std::wstring pkgName;
+		std::wstring filePath;
+		std::wstring defaultSettingJson;
+		bool enabled = true;
+	};
+
+	virtual std::vector<PluginCatalogEntry> GetPluginCatalogEntries(uint16_t callerPluginId) = 0;
+	virtual bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) = 0;
+	virtual void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) = 0;
 };
 
 class IPlugin {
@@ -114,6 +130,11 @@ public:
 
 	// Shift+右键点击列表项时调用，返回 true 表示已处理（阻止默认行为）
 	virtual bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
+		return false;
+	}
+
+	// 在列表项开始拖拽时调用，返回 true 表示已处理拖拽。
+	virtual bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) {
 		return false;
 	}
 };

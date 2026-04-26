@@ -1,6 +1,9 @@
 ﻿#pragma once
 
+#include "FileHelper.hpp"
 #include "IndexManagerState.hpp"
+#include "../../util/MainTools.hpp"
+#include <windowsx.h>
 
 static void SetFileListColumnImageMode(bool enableImage) {
 	if (!g_fileListView) {
@@ -101,7 +104,7 @@ static void CollectIndexFileListFromConfig(TraverseOptions config, std::vector<F
 	outputItems.clear();
 	if (config.type == L"folder" || config.type.empty()) {
 		if (g_host->GetSettingsMap().at("pref_use_everything_sdk_index").boolValue) {
-			g_host->TraverseFilesForEverythingSDK(config.folder, config,
+			g_host->TraverseFilesForEverythingSDK(GetCurrentFolderPath(config), config,
 												[&](const std::wstring& name, const std::wstring& fullPath,
 													const std::wstring& parent, const std::wstring& ext) {
 													FileInfo fileInfo;
@@ -110,7 +113,7 @@ static void CollectIndexFileListFromConfig(TraverseOptions config, std::vector<F
 													outputItems.push_back(fileInfo);
 												});
 		} else {
-			TraverseFiles(config.folder, config, EXE_FOLDER_PATH2,
+			TraverseFiles(GetCurrentFolderPath(config), config, EXE_FOLDER_PATH2,
 						[&](const std::wstring& name, const std::wstring& fullPath,
 							const std::wstring& parent, const std::wstring& ext) {
 							FileInfo fileInfo;
@@ -214,6 +217,27 @@ static LRESULT CALLBACK ExcludedItemsWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 			}
 			break;
 		}
+	case WM_CONTEXTMENU:
+		{
+			if (reinterpret_cast<HWND>(wParam) == g_excludedItemsListView) {
+				int index = ListView_GetNextItem(g_excludedItemsListView, -1, LVNI_SELECTED);
+				if (index != -1 && index < static_cast<int>(excludedFileItems.size())) {
+					POINT pt;
+					if (lParam == -1) {
+						RECT rc;
+						ListView_GetItemRect(g_excludedItemsListView, index, &rc, LVIR_BOUNDS);
+						pt.x = (rc.left + rc.right) / 2;
+						pt.y = (rc.top + rc.bottom) / 2;
+						ClientToScreen(g_excludedItemsListView, &pt);
+					} else {
+						pt.x = GET_X_LPARAM(lParam);
+						pt.y = GET_Y_LPARAM(lParam);
+					}
+					ShowShellContextMenu(hwnd, excludedFileItems[index].file_path.wstring(), pt);
+				}
+			}
+			break;
+		}
 	case WM_CLOSE:
 		DestroyWindow(hwnd);
 		return 0;
@@ -301,7 +325,11 @@ static void SyncCurrentConfigNameToLeftList() {
 		folderItemTexts.resize(runnerConfigs.size());
 	}
 
-	folderItemTexts[index_last_selected] = buffer;
+	if (runnerConfigs[index_last_selected].type == L"folder" || runnerConfigs[index_last_selected].type.empty()) {
+		folderItemTexts[index_last_selected] = buffer;
+	} else {
+		folderItemTexts[index_last_selected] = L"( " + MyToUpper(runnerConfigs[index_last_selected].type) + L" )";
+	}
 	ListView_SetItemText(g_folderListView, index_last_selected, 0, folderItemTexts[index_last_selected].data());
 	InvalidateRect(g_folderListView, nullptr, TRUE);
 }
@@ -422,30 +450,28 @@ static void SaveCurrentConfigItem(int selectedIndex) {
 		break;
 	}
 
-	GetWindowTextW(g_nameEdit, buffer, sizeof(buffer));
-	runnerConfigs[selectedIndex].name = buffer;
+	const bool isFolderType = (typeIndex == 0);
+	if (isFolderType) {
+		GetWindowTextW(g_nameEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+		runnerConfigs[selectedIndex].name = buffer;
 
-	// 保存folder字段，如果是非folder类型且显示"default"，则保存为空字符串
-	GetWindowTextW(g_folderEdit, buffer, sizeof(buffer));
-	if (typeIndex != 0 && wcscmp(buffer, L"default") == 0) {
-		runnerConfigs[selectedIndex].folder = L"";
-	} else {
+		GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 		runnerConfigs[selectedIndex].folder = buffer;
 	}
 
-	GetWindowTextW(g_excludeWordsEdit, buffer, sizeof(buffer));
+	GetWindowTextW(g_excludeWordsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 	runnerConfigs[selectedIndex].excludeWords = StringToVectorAndLower(buffer);
 
-	GetWindowTextW(g_excludesEdit, buffer, sizeof(buffer));
+	GetWindowTextW(g_excludesEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 	runnerConfigs[selectedIndex].excludeNames = StringToVector(buffer);
 
-	GetWindowTextW(g_renameSourcesEdit, buffer, sizeof(buffer));
+	GetWindowTextW(g_renameSourcesEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 	runnerConfigs[selectedIndex].renameSources = StringToVector(buffer);
 
-	GetWindowTextW(g_renameTargetsEdit, buffer, sizeof(buffer));
+	GetWindowTextW(g_renameTargetsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 	runnerConfigs[selectedIndex].renameTargets = StringToVector(buffer);
 
-	GetWindowTextW(g_extsEdit, buffer, sizeof(buffer));
+	GetWindowTextW(g_extsEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 	{
 		auto rawExts = StringToVector(std::wstring(buffer));
 		std::vector<std::wstring> normalizedExts;
@@ -456,10 +482,12 @@ static void SaveCurrentConfigItem(int selectedIndex) {
 		runnerConfigs[selectedIndex].extensions = normalizedExts;
 	}
 
-	runnerConfigs[selectedIndex].indexFilesOnly =
-		(SendMessageW(g_checkboxIndexFilesOnly, BM_GETCHECK, 0, 0) == BST_CHECKED);
-	runnerConfigs[selectedIndex].recursive =
-		(SendMessageW(g_checkboxRecursiveIndex, BM_GETCHECK, 0, 0) == BST_CHECKED);
+	if (isFolderType) {
+		runnerConfigs[selectedIndex].indexFilesOnly =
+			(SendMessageW(g_checkboxIndexFilesOnly, BM_GETCHECK, 0, 0) == BST_CHECKED);
+		runnerConfigs[selectedIndex].recursive =
+			(SendMessageW(g_checkboxRecursiveIndex, BM_GETCHECK, 0, 0) == BST_CHECKED);
+	}
 
 	runnerConfigs[selectedIndex].renameMap.clear();
 	const auto& sources = runnerConfigs[selectedIndex].renameSources;
@@ -494,13 +522,12 @@ static TraverseOptions BuildCurrentConfigFromControls(int selectedIndex) {
 		break;
 	}
 
-	GetWindowTextW(g_nameEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
-	config.name = buffer;
+	const bool isFolderType = (typeIndex == 0);
+	if (isFolderType) {
+		GetWindowTextW(g_nameEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
+		config.name = buffer;
 
-	GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
-	if (typeIndex != 0 && wcscmp(buffer, L"default") == 0) {
-		config.folder = L"";
-	} else {
+		GetWindowTextW(g_folderEdit, buffer, sizeof(buffer) / sizeof(wchar_t));
 		config.folder = buffer;
 	}
 
@@ -527,10 +554,12 @@ static TraverseOptions BuildCurrentConfigFromControls(int selectedIndex) {
 		config.extensions = normalizedExts;
 	}
 
-	config.indexFilesOnly =
-		(SendMessageW(g_checkboxIndexFilesOnly, BM_GETCHECK, 0, 0) == BST_CHECKED);
-	config.recursive =
-		(SendMessageW(g_checkboxRecursiveIndex, BM_GETCHECK, 0, 0) == BST_CHECKED);
+	if (isFolderType) {
+		config.indexFilesOnly =
+			(SendMessageW(g_checkboxIndexFilesOnly, BM_GETCHECK, 0, 0) == BST_CHECKED);
+		config.recursive =
+			(SendMessageW(g_checkboxRecursiveIndex, BM_GETCHECK, 0, 0) == BST_CHECKED);
+	}
 
 	config.renameMap.clear();
 	const auto& sources = config.renameSources;

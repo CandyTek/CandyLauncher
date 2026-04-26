@@ -139,6 +139,15 @@ plugins/BrowserHistory/
 
 `IPluginHost` 提供主程序的功能供插件调用。
 
+#### 受限插件管理 API
+
+主程序额外暴露了两个插件管理 API：
+
+- `GetPluginCatalogEntries(callerPluginId)` - 获取当前插件目录及启用状态
+- `SetPluginEnabled(callerPluginId, packageName, enabled)` - 切换指定插件启用状态
+
+这两个 API 目前只允许固定包名 `com.candytek.pluginbrowserplugin` 调用。主程序会按 `callerPluginId` 反查实际包名并拒绝其他插件访问。
+
 ---
 
 ## 创建插件步骤
@@ -227,6 +236,8 @@ list(APPEND PLUGIN_DEPENDENCIES YourPlugin)
 | `TraverseFilesSimpleForEverythingSDK()` | 遍历文件（Everything SDK） | Folder 插件                                          |
 | `ChangeEditTextText()`                  | 修改搜索框文本              | CalcExprtk 插件                                      |
 | `LoadResIconAsBitmap()`                 | 加载资源图标               | FeatureLaunch 插件                                   |
+| `GetPluginCatalogEntries()`            | 获取插件目录和启用状态         | PluginBrowser 插件                                   |
+| `SetPluginEnabled()`                   | 切换插件启用状态            | PluginBrowser 插件                                   |
 
 **详细用法**: 请参考 `plugins/Plugin.hpp` 中的 IPluginHost 接口定义和各插件的实现。
 
@@ -423,6 +434,7 @@ list(APPEND PLUGIN_DEPENDENCIES YourPlugin)
 | VSCodeWorkspaces    | JSON 数据库读取       | 低   |
 | UnitConverter       | 静态数据和计算逻辑        | 低   |
 | ValueGenerator      | UUID 生成和编码转换     | 低   |
+| PluginBrowser       | 浏览插件和回车切换开关     | 低   |
 
 ---
 

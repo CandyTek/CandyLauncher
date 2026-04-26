@@ -38,10 +38,6 @@
 
 // Static variable definitions
 inline HIMAGELIST g_listFileImageList = nullptr;
-// 用于显示的列表
-inline std::vector<std::shared_ptr<BaseAction>> allActions;
-inline std::vector<std::shared_ptr<BaseAction>> baseAppLaunchActions;
-inline std::vector<std::shared_ptr<BaseAction>> filteredActions;
 
 // inline HBRUSH hNormalBrush = CreateSolidBrush(COLOR_UI_BG);
 // inline HBRUSH hSelectedBrush = CreateSolidBrush(COLOR_UI_BG_DEEP);
@@ -287,7 +283,7 @@ static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, co
 	InitCommonControlsEx(&icex);
 
 	const DWORD style = LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_CHILD | WS_VISIBLE | LVS_OWNERDRAWFIXED |
-		WS_VSCROLL |
+		WS_VSCROLL |ES_AUTOVSCROLL|
 		LVS_NOCOLUMNHEADER | LVS_OWNERDATA;
 	g_listViewHwnd = CreateWindowExW(0, WC_LISTVIEW, L"", style,
 									x, y, width, height, parent, reinterpret_cast<HMENU>(2), hInstance, nullptr);
@@ -320,6 +316,15 @@ static void addActionDone() {
 	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
 }
 
+static void clearVisibleActionReferences() {
+	filteredActions.clear();
+	allActions.clear();
+	if (g_listViewHwnd) {
+		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	}
+}
+
 // 编辑框筛选列表内容
 inline void actionFilter(const std::wstring& keyword) {
 	filteredActions.clear();
@@ -327,7 +332,7 @@ inline void actionFilter(const std::wstring& keyword) {
 	allActions = baseAppLaunchActions;
 	PluginManager::GetAllPluginActions(allActions);
 
-	ConsolePrintln(L"项目数量" + std::to_wstring(allActions.size()));
+	// ConsolePrintln(L"项目数量" + std::to_wstring(allActions.size()));
 	TextMatch(keyword, allActions, filteredActions);
 	// 关键方法，用于提交列表数据更新
 	addActionDone();
@@ -721,10 +726,19 @@ inline void editTextInput() {
 	editTextBuffer.resize(1000, L'\0');
 	editTextBuffer.resize(GetWindowTextW(g_editHwnd, &editTextBuffer[0], 1000));
 	if (editTextBuffer.empty()) {
+		clearVisibleActionReferences();
 		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 		return;
 	}
 	SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0);
 	textMatching();
 	SendMessage(g_listViewHwnd, WM_SETREDRAW, TRUE, 0);
+}
+
+inline void refreshVisibleActionsFromCurrentInput() {
+	if (!g_editHwnd || !g_listViewHwnd) {
+		return;
+	}
+	refreshPluginRunner();
+	editTextInput();
 }

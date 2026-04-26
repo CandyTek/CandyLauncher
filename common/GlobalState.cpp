@@ -15,6 +15,10 @@ ULONGLONG APP_STARTUP_TIME = 0;
 
 // 用于拖放文件时延迟关闭窗口
 HHOOK g_mouseHook = nullptr;
+#ifndef BUILDING_PLUGIN_DLL
+HHOOK g_toggleMainPanelKeyboardHook = nullptr;
+HHOOK g_toggleMainPanelMouseHook = nullptr;
+#endif
 
 HotkeyMap g_hotkeyMap = {};
 // 下列两变量不展开 expand
@@ -30,6 +34,7 @@ std::wstring USER_SETTINGS_PATH = EXE_FOLDER_PATH + LR"(\user_settings.json)";
 std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
 std::string pref_hotkey_toggle_main_panel;
+std::string pref_hotkey_toggle_main_panel_mode = "key_combination";
 
 bool pref_show_window_and_release_modifier_key = false;
 bool pref_ctrl_number_launch_item = false;

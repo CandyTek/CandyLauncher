@@ -268,6 +268,8 @@ static int GetSysImageIndex2(const std::wstring& filePath) {
 }
 
 static int GetSysImageIndex(const std::wstring& filePath) {
+	static const std::wstring ext = L".lnk";
+
 	if (filePath.empty()) {
 		return -1;
 	}
@@ -286,9 +288,31 @@ static int GetSysImageIndex(const std::wstring& filePath) {
 		sizeof(sfi),
 		SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES
 	);
+	// 做一个兜底，有些lnk图标获取有问题，必须先获取targetpath才能获得index，不知道为什
+	if (sfi.iIcon == 0) {
+		if (EndsWithIgnoreCase(filePath, ext)) {
+			if (const std::wstring resolvedPath = GetShortcutTarget(filePath); !resolvedPath.empty()) {
+				attr = GetFileAttributesW(resolvedPath.c_str());
+				if (attr == INVALID_FILE_ATTRIBUTES) {
+					attr = FILE_ATTRIBUTE_NORMAL;
+				}
+				SHGetFileInfoW(
+					resolvedPath.c_str(),
+					attr,
+					&sfi,
+					sizeof(sfi),
+					SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES
+				);
+			}
+		}
+	}
 	return sfi.iIcon;
 }
 
+inline void RefreshIconCache(const std::wstring& filePath) {
+	// 通知系统刷新该文件路径的图标
+	SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATH, filePath.c_str(), NULL);
+}
 
 // 从 shell32.dll 加载指定索引的图标，可以获取 16 和 32尺寸
 static HBITMAP LoadShell32IconProperAsBitmap(int index, int cx = 16, int cy = 16) {
@@ -297,4 +321,194 @@ static HBITMAP LoadShell32IconProperAsBitmap(int index, int cx = 16, int cy = 16
 	ExtractIconExW(L"shell32.dll", index, &hLarge, &hSmall, 1);
 	if (cx <= 16) return IconToBitmap2(hSmall);
 	return IconToBitmap2(hLarge);
+}
+
+
+// #include <windows.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+
+#pragma comment(lib, "windowscodecs.lib")
+
+
+static HBITMAP LoadPngAsHBITMAP(
+    const wchar_t* absolutePath,
+    UINT targetWidth,
+    UINT targetHeight
+) {
+using Microsoft::WRL::ComPtr;
+    if (!absolutePath || targetWidth == 0 || targetHeight == 0)
+        return nullptr;
+
+    ComPtr<IWICImagingFactory> factory;
+    HRESULT hr = CoCreateInstance(
+        CLSID_WICImagingFactory,
+        nullptr,
+        CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(&factory)
+    );
+    if (FAILED(hr)) return nullptr;
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    hr = factory->CreateDecoderFromFilename(
+        absolutePath,
+        nullptr,
+        GENERIC_READ,
+        WICDecodeMetadataCacheOnDemand,
+        &decoder
+    );
+    if (FAILED(hr)) return nullptr;
+
+    ComPtr<IWICBitmapFrameDecode> frame;
+    hr = decoder->GetFrame(0, &frame);
+    if (FAILED(hr)) return nullptr;
+
+    ComPtr<IWICBitmapSource> source = frame;
+
+    ComPtr<IWICBitmapScaler> scaler;
+    hr = factory->CreateBitmapScaler(&scaler);
+    if (FAILED(hr)) return nullptr;
+
+    hr = scaler->Initialize(
+        source.Get(),
+        targetWidth,
+        targetHeight,
+        WICBitmapInterpolationModeFant
+    );
+    if (FAILED(hr)) return nullptr;
+
+    ComPtr<IWICFormatConverter> converter;
+    hr = factory->CreateFormatConverter(&converter);
+    if (FAILED(hr)) return nullptr;
+
+    hr = converter->Initialize(
+        scaler.Get(),
+        GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapDitherTypeNone,
+        nullptr,
+        0.0,
+        WICBitmapPaletteTypeCustom
+    );
+    if (FAILED(hr)) return nullptr;
+
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = static_cast<LONG>(targetWidth);
+    bmi.bmiHeader.biHeight = -static_cast<LONG>(targetHeight); // top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HBITMAP hBitmap = CreateDIBSection(
+        nullptr,
+        &bmi,
+        DIB_RGB_COLORS,
+        &bits,
+        nullptr,
+        0
+    );
+
+    if (!hBitmap || !bits)
+        return nullptr;
+
+    const UINT stride = targetWidth * 4;
+    const UINT imageSize = stride * targetHeight;
+
+    hr = converter->CopyPixels(
+        nullptr,
+        stride,
+        imageSize,
+        static_cast<BYTE*>(bits)
+    );
+
+    if (FAILED(hr)) {
+        DeleteObject(hBitmap);
+        return nullptr;
+    }
+
+    return hBitmap;
+}
+
+#include <lunasvg.h>
+
+static HBITMAP LoadSvgAsHBITMAP(
+    const wchar_t* absolutePath,
+    UINT targetWidth,
+    UINT targetHeight
+) {
+    if (!absolutePath || targetWidth == 0 || targetHeight == 0)
+        return nullptr;
+
+    auto document = lunasvg::Document::loadFromFile(wide_to_utf8(absolutePath));
+    if (!document)
+        return nullptr;
+
+    auto bitmap = document->renderToBitmap(targetWidth, targetHeight);
+    if (bitmap.isNull())
+        return nullptr;
+
+    // Create top-down 32bpp HBITMAP.
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = static_cast<LONG>(targetWidth);
+    bmi.bmiHeader.biHeight = -static_cast<LONG>(targetHeight); // top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HBITMAP hBitmap = CreateDIBSection(
+        nullptr,
+        &bmi,
+        DIB_RGB_COLORS,
+        &bits,
+        nullptr,
+        0
+    );
+
+    if (!hBitmap || !bits) {
+        return nullptr;
+    }
+
+    // lunasvg uses ARGB32 premultiplied (BGRA in memory on little-endian)
+    // which matches Windows DIB format.
+    const int stride = bitmap.stride();
+    const int dstStride = targetWidth * 4;
+    for (UINT y = 0; y < targetHeight; ++y) {
+        memcpy(static_cast<BYTE*>(bits) + y * dstStride, bitmap.data() + y * stride, dstStride);
+    }
+
+    return hBitmap;
+}
+
+
+static HBITMAP CopyHBitmap(HBITMAP src)
+{
+	if (!src) return nullptr;
+
+	return static_cast<HBITMAP>(
+		CopyImage(
+			src,
+			IMAGE_BITMAP,
+			0,
+			0,
+			LR_CREATEDIBSECTION
+		)
+	);
+}
+
+static void LogBitmapInfo(HBITMAP iconBitmap) {
+	if (iconBitmap) {
+		BITMAP bmp = {};
+		int ret = GetObject(iconBitmap, sizeof(BITMAP), &bmp);
+
+		if (ret != 0) {
+			ConsolePrintln(L"Bitmap 有效\t" L"宽度: \t" + std::to_wstring(bmp.bmWidth) +L"\t高度: \t" + std::to_wstring(bmp.bmHeight) + L"\t每像素位数: \t"+std::to_wstring(bmp.bmBitsPixel));
+		} else {
+			ConsolePrintln(L"GetObject 失败");
+		}
+	} else {
+		ConsolePrintln(L"iconBitmap 是 NULL");
+	}
 }

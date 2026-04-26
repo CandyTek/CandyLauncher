@@ -89,9 +89,32 @@
 		},
 		{
 			"key": "pref_hotkey_toggle_main_panel",
-			"title": "主面板显示、隐藏",
+			"title": "主面板显示、隐藏快捷键",
 			"title_en": "Toggle main panel",
 			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": ""
+		},
+		{
+			"key": "pref_hotkey_toggle_main_panel_mode",
+			"title": "主面板显示、隐藏快捷键模式",
+			"title_en": "Toggle main panel",
+			"type": "list",
+			"entries": [
+				"组合键",
+				"单击键",
+				"双击键"
+			],
+			"entries_en": [
+				"key combination",
+				"one click",
+				"double click"
+			],
+			"entryValues": [
+				"key_combination",
+				"one_click",
+				"double_click"
+			],
 			"subPage": "hotkey",
 			"defValue": ""
 		},

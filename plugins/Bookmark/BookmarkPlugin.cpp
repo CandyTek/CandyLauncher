@@ -5,6 +5,61 @@
 #include "BookmarkPluginData.hpp"
 #include "BookmarkUtil.hpp"
 #include "../../util/StringUtil.hpp"
+#include "util/LogUtil.hpp"
+
+namespace {
+std::wstring EscapeHtmlText(const std::wstring& input) {
+	std::wstring result;
+	result.reserve(input.size());
+	for (const wchar_t ch : input) {
+		switch (ch) {
+		case L'&':
+			result += L"&amp;";
+			break;
+		case L'<':
+			result += L"&lt;";
+			break;
+		case L'>':
+			result += L"&gt;";
+			break;
+		case L'"':
+			result += L"&quot;";
+			break;
+		default:
+			result += ch;
+			break;
+		}
+	}
+	return result;
+}
+
+std::wstring EscapeRtfText(const std::wstring& input) {
+	std::wstring result;
+	result.reserve(input.size() * 2);
+	for (const wchar_t ch : input) {
+		if (ch == L'\\' || ch == L'{' || ch == L'}') {
+			result += L'\\';
+			result += ch;
+			continue;
+		}
+		if (ch == L'\r') {
+			continue;
+		}
+		if (ch == L'\n') {
+			result += L"\\line ";
+			continue;
+		}
+		if (ch >= 0 && ch <= 0x7f) {
+			result += ch;
+			continue;
+		}
+		result += L"\\u";
+		result += std::to_wstring(static_cast<short>(ch));
+		result += L"?";
+	}
+	return result;
+}
+}
 
 class BookmarkPlugin : public IPlugin {
 private:
@@ -120,6 +175,32 @@ public:
 		// system(wide_to_utf8(command).c_str());
 		return true;
 	}
+	bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) override {
+		auto bookmarkAction = std::dynamic_pointer_cast<BookmarkAction>(action);
+		if (!m_host || !bookmarkAction) {
+			return false;
+		}
+
+		const std::wstring url = bookmarkAction->url;
+		if (url.empty()) {
+			return false;
+		}
+
+		const std::wstring title = bookmarkAction->title.empty() ? url : bookmarkAction->title;
+		const std::wstring escapedTitle = EscapeHtmlText(title);
+		const std::wstring escapedUrl = EscapeHtmlText(url);
+
+		OleDragDropData dragData;
+		dragData.text = title + L"\r\n" + url;
+		dragData.url = url;
+		dragData.html = L"<a href=\"" + escapedUrl + L"\">" + escapedTitle + L"</a>";
+		dragData.rtf = L"{\\rtf1\\ansi\\deff0 {\\field{\\*\\fldinst HYPERLINK \"" +
+			EscapeRtfText(url) + L"\"}{\\fldrslt " + EscapeRtfText(title) + L"}}}";
+
+		ConsolePrintln(L"BookmarkPlugin", L"Begin OLE drag drop url=" + url);
+		return m_host->BeginOleDragDropData(dragData, sourceHwnd);
+	}
+
 };
 
 PLUGIN_EXPORT IPlugin* CreatePlugin() {

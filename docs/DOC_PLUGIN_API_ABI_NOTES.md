@@ -10,7 +10,7 @@
 - C++ 虚函数依赖 vtable 顺序，向接口中间插入虚函数会改变后续虚函数槽位。
 - 如果主程序和某个插件 DLL 没有完全同步编译，或者旧插件仍按旧 vtable 布局运行，主程序可能调用到错误的虚函数槽位。
 - 表现可能不是崩溃，而是“事件看似没触发”“回调返回 false”“菜单不显示”等难排查现象。
-- 所以新增的右键虚函数要放到 `IPlugin` 末尾，并通过 `GetPluginApiVersion()` 做能力判断。
+- 所以新增的右键虚函数要放到 `IPlugin` 末尾
 
 本次修复还增加了右键路径日志，用于确认链路：
 
@@ -57,29 +57,9 @@ public:
 };
 ```
 
-### 2. 新能力必须提升 Plugin API version
+### 2. 新能力API
 
-如果主程序要调用新增虚函数，插件的 `GetPluginApiVersion()` 必须返回新的版本号。
-
-示例：
-
-```cpp
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 2;
-}
-```
-
-主程序派发前必须判断：
-
-```cpp
-if (!info.loaded || !info.plugin || info.apiVersion < 2) {
-	return false;
-}
-
-return info.plugin->NewMethod(...);
-```
-
-不要在未判断 version 的情况下直接调用新虚函数。
+如果主程序要调用新增虚函数，放在末尾
 
 ### 3. 主程序和插件 DLL 必须一起编译和部署
 
@@ -131,7 +111,6 @@ virtual bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HW
 - 返回 `true` 表示插件已处理。
 - 返回 `false` 表示插件不处理该 action。
 - 插件内部要先 `dynamic_pointer_cast` 到自己认识的 action 类型。
-- 当前右键能力要求 `GetPluginApiVersion() >= 2`。
 
 文件夹插件当前行为：
 
@@ -155,7 +134,7 @@ virtual bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HW
 - 看起来像“插件没响应”
 - 某些机器正常，某些机器异常
 
-所以这类必须用 GetPluginApiVersion()、末尾追加虚函数、主程序按 version 判断能力。
+末尾追加虚函数。
 
 2. ../../util/BaseTools.hpp 这类 header-only 公共工具：也有风险，但主要是“行为/布局/二进制依赖”风险
    如果插件只是把 BaseTools.hpp 编译进自己的 DLL，主程序运行时不会直接调用插件 DLL 里的 BaseTools 函数，也不会共享这些 inline 函数的二进制实现。那么主程序改了 BaseTools.hpp 后，旧插件 DLL 不会因为这个改动自动崩溃。

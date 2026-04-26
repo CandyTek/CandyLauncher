@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Plugin.hpp"
 #include <map>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <functional>
@@ -17,6 +18,7 @@
 #include "util/PinyinHelper.hpp"
 #include "util/MainTools.hpp"
 #include "util/MyToastUtil.hpp"
+#include "util/OleFileDragDrop.hpp"
 
 struct PluginInfo {
 	HMODULE handle = nullptr;
@@ -37,23 +39,18 @@ struct PluginInfo {
 	GetPluginApiVersionFunc getVersionFunc = nullptr;
 };
 
-struct PluginCatalogInfo {
-	std::wstring name;
-	std::wstring version;
-	std::wstring pkgName;
-	std::wstring filePath;
-	std::wstring defaultSettingJson;
-	bool enabled = true;
-};
+using PluginCatalogInfo = IPluginHost::PluginCatalogEntry;
 
 inline std::unordered_map<uint16_t, PluginInfo> m_plugins = {};
 inline std::vector<PluginCatalogInfo> g_pluginCatalog = {};
 inline uint16_t pluginCount = 0;
 static std::wstring TAG = L"PluginManager";
+constexpr const wchar_t* PLUGIN_BROWSER_PACKAGE_NAME = L"com.candytek.pluginbrowserplugin";
 
 class PluginManager : public IPluginHost {
 private:
 	std::function<void()> m_onActionsChanged;
+	std::function<void()> m_beforePluginUnload;
 	bool m_suppressNotifications = false;
 
 public:
@@ -273,6 +270,7 @@ public:
 
 	bool UnloadPlugin(const uint16_t pluginId) {
 		if (m_plugins.find(pluginId) != m_plugins.end()) {
+			NotifyBeforePluginUnload();
 			UnloadSinglePlugin(m_plugins[pluginId]);
 			m_plugins.erase(pluginId);
 			RebuildPluginIndices();
@@ -289,7 +287,7 @@ public:
 	}
 
 	void LoadAllPlugins(const std::wstring& pluginDir) {
-		ConsolePrintln(TAG, L"LoadAllPlugins start, dir: " + pluginDir);
+		ConsolePrintln(TAG, L"LoadAllPlugins start");
 		g_pluginCatalog.clear();
 
 		if (!std::filesystem::exists(pluginDir)) {
@@ -313,7 +311,7 @@ public:
 				g_pluginCatalog.push_back(catalogInfo);
 
 				if (!catalogInfo.enabled) {
-					ConsolePrintln(TAG, L"Skip disabled plugin: " + catalogInfo.pkgName + L", file: " + entry.path().filename().wstring());
+					ConsolePrintln(TAG, L"Skip disabled plugin: " + catalogInfo.pkgName);
 					continue;
 				}
 
@@ -342,11 +340,15 @@ public:
 
 
 	void UnloadAllPlugins() {
+		if (!m_plugins.empty()) {
+			NotifyBeforePluginUnload();
+		}
 		for (auto& pair : m_plugins) {
 			UnloadSinglePlugin(pair.second);
 		}
 		m_plugins.clear();
-		NotifyActionsChanged();
+		allActions.clear();
+		filteredActions.clear();
 	}
 
 	void RefreshAllActions() {
@@ -403,10 +405,10 @@ public:
 		}
 		PluginInfo& info = m_plugins[action->pluginId];
 		ConsolePrintln(TAG,
-			L"DispatchItemRightClick pluginId=" + std::to_wstring(action->pluginId) +
-			L", apiVersion=" + std::to_wstring(info.apiVersion) +
-			L", loaded=" + std::to_wstring(info.loaded) +
-			L", plugin=" + std::to_wstring(info.plugin != nullptr));
+						L"DispatchItemRightClick pluginId=" + std::to_wstring(action->pluginId) +
+						L", apiVersion=" + std::to_wstring(info.apiVersion) +
+						L", loaded=" + std::to_wstring(info.loaded) +
+						L", plugin=" + std::to_wstring(info.plugin != nullptr));
 		if (!info.loaded || !info.plugin) {
 			return false;
 		}
@@ -420,14 +422,25 @@ public:
 		}
 		PluginInfo& info = m_plugins[action->pluginId];
 		ConsolePrintln(TAG,
-			L"DispatchItemShiftRightClick pluginId=" + std::to_wstring(action->pluginId) +
-			L", apiVersion=" + std::to_wstring(info.apiVersion) +
-			L", loaded=" + std::to_wstring(info.loaded) +
-			L", plugin=" + std::to_wstring(info.plugin != nullptr));
+						L"DispatchItemShiftRightClick pluginId=" + std::to_wstring(action->pluginId) +
+						L", apiVersion=" + std::to_wstring(info.apiVersion) +
+						L", loaded=" + std::to_wstring(info.loaded) +
+						L", plugin=" + std::to_wstring(info.plugin != nullptr));
 		if (!info.loaded || !info.plugin) {
 			return false;
 		}
 		return info.plugin->OnItemShiftRightClick(action, parentHwnd, screenPt);
+	}
+
+	bool DispatchItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) {
+		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+			return false;
+		}
+		PluginInfo& info = m_plugins[action->pluginId];
+		if (!info.loaded || !info.plugin) {
+			return false;
+		}
+		return info.plugin->OnItemBeginDrag(action, sourceHwnd, screenPt);
 	}
 
 	static bool DispatchActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) {
@@ -469,6 +482,73 @@ public:
 		return nullptr;
 	}
 
+	std::vector<PluginCatalogEntry> GetPluginCatalogEntries(uint16_t callerPluginId) override {
+		if (!CanUseRestrictedPluginBrowserApi(callerPluginId)) {
+			return {};
+		}
+		return g_pluginCatalog;
+	}
+
+	bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) override {
+		if (!CanUseRestrictedPluginBrowserApi(callerPluginId) || packageName.empty()) {
+			return false;
+		}
+		if (packageName == PLUGIN_BROWSER_PACKAGE_NAME && !enabled) {
+			ConsolePrintln(TAG, L"Reject disabling plugin browser itself");
+			return false;
+		}
+
+		// 提前清除插件引用，防止全局列表索引的 action出现内存错误
+		filteredActions.clear();
+		allActions.clear();
+		bool foundCatalog = false;
+		for (auto& catalogInfo : g_pluginCatalog) {
+			if (catalogInfo.pkgName == packageName) {
+				catalogInfo.enabled = enabled;
+				foundCatalog = true;
+				break;
+			}
+		}
+		if (!foundCatalog) {
+			return false;
+		}
+
+		SavePluginEnabledState(packageName, enabled);
+		auto it = g_settings_map.find(wide_to_utf8(packageName));
+		if (it != g_settings_map.end()) {
+			it->second.boolValue = enabled;
+		} else {
+			SettingItem setting;
+			setting.key = wide_to_utf8(packageName);
+			setting.type = "expandswitch";
+			setting.boolValue = enabled;
+			g_settings_map[setting.key] = setting;
+		}
+
+		SyncPluginsWithSettings();
+		NotifyUserSettingsLoadDone();
+		// RefreshAllActions(); // TODO:  不要刷新全部，只刷新需要的插件
+		if (!enabled) {
+		}
+
+
+		return true;
+	}
+
+	void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) override {
+		// SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0); // 不要使用暂停重绘，反而会造成列表闪烁
+		filteredActions = list;
+		ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		if (!filteredActions.empty()) {
+			// 设置第一项为选中状态
+			ListView_SetItemState(g_listViewHwnd, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			// 确保第一项可见
+			ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
+		}
+		InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	}
+
+
 	void SyncPluginPrioritiesFromSettings() {
 		for (auto& [pluginId, info] : m_plugins) {
 			if (!info.pkgName.empty()) {
@@ -489,6 +569,29 @@ public:
 	}
 
 	void SyncPluginsWithSettings() {
+		bool needsUnload = false;
+		for (const auto& catalogInfo : g_pluginCatalog) {
+			bool shouldEnable = catalogInfo.enabled;
+			if (!catalogInfo.pkgName.empty()) {
+				const auto it = g_settings_map.find(wide_to_utf8(catalogInfo.pkgName));
+				if (it != g_settings_map.end()) {
+					shouldEnable = it->second.boolValue;
+				}
+			}
+
+			const PluginInfo* loadedPlugin = !catalogInfo.pkgName.empty()
+												? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+												: FindLoadedPluginByFilePath(catalogInfo.filePath);
+			if (!shouldEnable && loadedPlugin) {
+				needsUnload = true;
+				break;
+			}
+		}
+
+		if (needsUnload) {
+			NotifyBeforePluginUnload();
+		}
+
 		for (auto& catalogInfo : g_pluginCatalog) {
 			bool shouldEnable = catalogInfo.enabled;
 			if (!catalogInfo.pkgName.empty()) {
@@ -499,17 +602,20 @@ public:
 			}
 
 			const PluginInfo* loadedPlugin = !catalogInfo.pkgName.empty()
-				? FindLoadedPluginByPackageName(catalogInfo.pkgName)
-				: FindLoadedPluginByFilePath(catalogInfo.filePath);
+												? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+												: FindLoadedPluginByFilePath(catalogInfo.filePath);
 
 			if (shouldEnable) {
 				if (!loadedPlugin && !catalogInfo.filePath.empty()) {
 					const bool loadResult = LoadPlugin(catalogInfo.filePath);
 					ConsolePrintln(TAG, L"SyncPluginsWithSettings load plugin: " + catalogInfo.filePath +
-						L", result: " + (loadResult ? L"SUCCESS" : L"FAILED"));
+									L", result: " + (loadResult ? L"SUCCESS" : L"FAILED"));
 					loadedPlugin = !catalogInfo.pkgName.empty()
-						? FindLoadedPluginByPackageName(catalogInfo.pkgName)
-						: FindLoadedPluginByFilePath(catalogInfo.filePath);
+										? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+										: FindLoadedPluginByFilePath(catalogInfo.filePath);
+					if (loadResult) {
+						loadedPlugin->plugin->RefreshAllActions();
+					}
 				}
 
 				if (loadedPlugin) {
@@ -541,7 +647,7 @@ public:
 		}
 		return {};
 	}
-
+	
 	static void GetAllPluginActions(std::vector<std::shared_ptr<BaseAction>>& allActions) {
 		std::vector<std::pair<int32_t, const PluginInfo*>> sortedPlugins;
 		for (const auto& pair : m_plugins) {
@@ -550,7 +656,9 @@ public:
 			}
 		}
 		std::stable_sort(sortedPlugins.begin(), sortedPlugins.end(),
-			[](const auto& a, const auto& b) { return a.first > b.first; });
+						[](const auto& a, const auto& b) {
+							return a.first > b.first;
+						});
 
 		for (const auto& [priority, pluginInfo] : sortedPlugins) {
 			std::vector<std::shared_ptr<BaseAction>> temp = pluginInfo->plugin->GetTextMatchActions();
@@ -563,6 +671,10 @@ public:
 
 	void SetActionsChangedCallback(std::function<void()> callback) {
 		m_onActionsChanged = callback;
+	}
+
+	void SetBeforePluginUnloadCallback(std::function<void()> callback) {
+		m_beforePluginUnload = callback;
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> GetSuccessfullyMatchingTextActions(const std::wstring& input,
@@ -655,7 +767,28 @@ public:
 		MyShowSimpleToast(title, msg);
 #endif
 	}
-	
+
+	bool BeginOleDragDropFiles(const std::vector<std::wstring>& filePaths, HWND sourceHwnd) override {
+		OleDragDropData data;
+		data.filePaths = filePaths;
+		return BeginOleDragDropData(data, sourceHwnd);
+	}
+
+	bool BeginOleDragDropData(const OleDragDropData& data, HWND sourceHwnd) override {
+		if (sourceHwnd) {
+			SetForegroundWindow(sourceHwnd);
+		}
+		const bool dragHandled = BeginOleDataDragDrop(data);
+		const bool shouldHideAfterDrag = sourceHwnd
+			&& IsWindow(sourceHwnd)
+			&& GetForegroundWindow() != g_mainHwnd
+			&& g_settings_map["pref_close_on_dismiss_focus"].stringValue != "null";
+		if (shouldHideAfterDrag) {
+			HideWindow();
+		}
+		return dragHandled;
+	}
+
 	void ChangeEditTextText(const std::wstring& basic_string) override {
 		SetWindowTextW(g_editHwnd, basic_string.c_str());
 		// 将光标移到文本末尾
@@ -665,6 +798,11 @@ public:
 	}
 
 private:
+	bool CanUseRestrictedPluginBrowserApi(uint16_t callerPluginId) const {
+		const auto it = m_plugins.find(callerPluginId);
+		return it != m_plugins.end() && it->second.pkgName == PLUGIN_BROWSER_PACKAGE_NAME;
+	}
+
 	static void RebuildPluginIndices() {
 		std::vector<std::pair<uint16_t, PluginInfo>> pluginList;
 		pluginList.reserve(m_plugins.size());
@@ -708,6 +846,25 @@ private:
 			Loge(TAG, L"LoadUserPluginConfig parse error", e.what());
 			return {};
 		}
+	}
+
+	static void SavePluginEnabledState(const std::wstring& pkgName, bool enabled) {
+		if (pkgName.empty()) {
+			return;
+		}
+
+		nlohmann::json mergedConfig = LoadUserPluginConfig();
+		if (!mergedConfig.is_object()) {
+			mergedConfig = nlohmann::json::object();
+		}
+		mergedConfig[wide_to_utf8(pkgName)] = enabled;
+
+		std::ofstream out(std::filesystem::path(USER_SETTINGS_PATH), std::ios::binary);
+		if (!out) {
+			ConsolePrintln(TAG, L"SavePluginEnabledState open file failed: " + USER_SETTINGS_PATH);
+			return;
+		}
+		out << mergedConfig.dump(4) << std::endl;
 	}
 
 	static bool IsPluginEnabledByConfig(const std::wstring& pkgName, const nlohmann::json& userConfig) {
@@ -764,7 +921,7 @@ private:
 	}
 
 	bool LoadSinglePlugin(const std::wstring& dllPath, PluginInfo& info) {
-		ConsolePrintln(TAG, L"LoadSinglePlugin start: " + dllPath);
+		ConsolePrintln(TAG, L"LoadSinglePlugin start: " + info.name);
 
 		info.handle = LoadLibraryW(dllPath.c_str());
 		if (!info.handle) {
@@ -787,7 +944,7 @@ private:
 		if (info.getVersionFunc) {
 			info.apiVersion = info.getVersionFunc();
 		}
-		ConsolePrintln(TAG, L"Plugin API version: " + std::to_wstring(info.apiVersion));
+		// ConsolePrintln(TAG, L"Plugin API version: " + std::to_wstring(info.apiVersion));
 
 		IPlugin* pluginPtr = info.createFunc();
 		if (!pluginPtr) {
@@ -833,7 +990,7 @@ private:
 
 		info.loaded = false;
 	}
-	
+
 	std::wstring& GetEditTextText() override {
 		return editTextBuffer;
 	}
@@ -854,6 +1011,12 @@ private:
 		}
 		if (m_onActionsChanged) {
 			m_onActionsChanged();
+		}
+	}
+
+	void NotifyBeforePluginUnload() {
+		if (m_beforePluginUnload) {
+			m_beforePluginUnload();
 		}
 	}
 };
