@@ -38,10 +38,6 @@
 
 // Static variable definitions
 inline HIMAGELIST g_listFileImageList = nullptr;
-// 用于显示的列表
-inline std::vector<std::shared_ptr<BaseAction>> allActions;
-inline std::vector<std::shared_ptr<BaseAction>> baseAppLaunchActions;
-inline std::vector<std::shared_ptr<BaseAction>> filteredActions;
 
 // inline HBRUSH hNormalBrush = CreateSolidBrush(COLOR_UI_BG);
 // inline HBRUSH hSelectedBrush = CreateSolidBrush(COLOR_UI_BG_DEEP);
@@ -52,6 +48,40 @@ inline std::vector<std::shared_ptr<BaseAction>> filteredActions;
 inline bool listViewFontsInitialized = false;
 
 typedef HRESULT (WINAPI *SHGetImageListPtr)(int iImageList, REFIID riid, void** ppv);
+
+static int getListItemFontStyle(const std::string& styleKey,
+								const std::string& boldKey,
+								const std::string& italicKey,
+								const std::string& underlineKey,
+								const bool defaultBold = true) {
+	int style = Gdiplus::FontStyleRegular;
+	if (g_skinJson.contains(styleKey)) {
+		std::string styleValue = MyToLower(g_skinJson.value(styleKey, ""));
+		std::stringstream ss(styleValue);
+		std::string token;
+		while (std::getline(ss, token, '|')) {
+			token = MyTrim(token);
+			if (token == "bold") {
+				style |= Gdiplus::FontStyleBold;
+			} else if (token == "it" || token == "italic") {
+				style |= Gdiplus::FontStyleItalic;
+			} else if (token == "underline") {
+				style |= Gdiplus::FontStyleUnderline;
+			}
+		}
+	} else {
+		if (g_skinJson.value(boldKey, defaultBold)) {
+			style |= Gdiplus::FontStyleBold;
+		}
+		if (g_skinJson.value(italicKey, false)) {
+			style |= Gdiplus::FontStyleItalic;
+		}
+		if (g_skinJson.value(underlineKey, false)) {
+			style |= Gdiplus::FontStyleUnderline;
+		}
+	}
+	return style;
+}
 
 static void listViewInitializeGraphicsResources() {
 	listViewFontsInitialized = true;
@@ -65,6 +95,10 @@ static void listViewInitializeGraphicsResources() {
 	std::string itemFontColor2 = "#666666";
 	std::string itemBgColor = "#FFFFFF";
 	std::string itemBgColorSelected = "#DDDDDD";
+	int itemFontStyle1 = Gdiplus::FontStyleBold;
+	int itemFontStyle2 = Gdiplus::FontStyleBold;
+	int itemFontStyleSelected1 = Gdiplus::FontStyleBold;
+	int itemFontStyleSelected2 = Gdiplus::FontStyleBold;
 
 
 	if (g_skinJson != nullptr) {
@@ -99,6 +133,17 @@ static void listViewInitializeGraphicsResources() {
 		g_item_font_size_2 = g_skinJson.value("item_font_size_2", 12.0);
 		g_item_font_size_selected_1 = g_skinJson.value("item_font_size_selected_1", 14.0);
 		g_item_font_size_selected_2 = g_skinJson.value("item_font_size_selected_2", 12.0);
+
+		itemFontStyle1 = getListItemFontStyle("item_font_style_1", "item_font_bold_1", "item_font_italic_1",
+											"item_font_underline_1");
+		itemFontStyle2 = getListItemFontStyle("item_font_style_2", "item_font_bold_2", "item_font_italic_2",
+											"item_font_underline_2");
+		itemFontStyleSelected1 = getListItemFontStyle("item_font_style_selected_1", "item_font_bold_selected_1",
+													"item_font_italic_selected_1",
+													"item_font_underline_selected_1");
+		itemFontStyleSelected2 = getListItemFontStyle("item_font_style_selected_2", "item_font_bold_selected_2",
+													"item_font_italic_selected_2",
+													"item_font_underline_selected_2");
 	} else {
 	}
 
@@ -123,15 +168,15 @@ static void listViewInitializeGraphicsResources() {
 	Gdiplus::FontFamily fontFamilySelected1(itemFontFamilySelected1.c_str());
 	Gdiplus::FontFamily fontFamilySelected2(itemFontFamilySelected2.c_str());
 	g_listItemFont1 = std::make_unique<Gdiplus::Font>(&fontFamily1, static_cast<float>(g_item_font_size_1),
-													Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+													itemFontStyle1, Gdiplus::UnitPixel);
 	g_listItemFont2 = std::make_unique<Gdiplus::Font>(&fontFamily2, static_cast<float>(g_item_font_size_2),
-													Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+													itemFontStyle2, Gdiplus::UnitPixel);
 	g_listItemFontSelected1 = std::make_unique<Gdiplus::Font>(&fontFamilySelected1,
 															static_cast<float>(g_item_font_size_selected_1),
-															Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+															itemFontStyleSelected1, Gdiplus::UnitPixel);
 	g_listItemFontSelected2 = std::make_unique<Gdiplus::Font>(&fontFamilySelected2,
 															static_cast<float>(g_item_font_size_selected_2),
-															Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+															itemFontStyleSelected2, Gdiplus::UnitPixel);
 }
 
 static void refreshAppLaunchAction() {
@@ -230,6 +275,7 @@ static HIMAGELIST GetSystemImageList(bool largeIcon) {
 	return reinterpret_cast<HIMAGELIST>(SHGetFileInfoW(L".txt", FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi), flags));
 }
 
+
 static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, const int y, const int width,
 								const int height) {
 	// 初始化 Common Controls
@@ -237,7 +283,7 @@ static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, co
 	InitCommonControlsEx(&icex);
 
 	const DWORD style = LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_CHILD | WS_VISIBLE | LVS_OWNERDRAWFIXED |
-		WS_VSCROLL |
+		WS_VSCROLL |ES_AUTOVSCROLL|
 		LVS_NOCOLUMNHEADER | LVS_OWNERDATA;
 	g_listViewHwnd = CreateWindowExW(0, WC_LISTVIEW, L"", style,
 									x, y, width, height, parent, reinterpret_cast<HMENU>(2), hInstance, nullptr);
@@ -256,6 +302,7 @@ static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, co
 }
 
 
+
 static void addActionDone() {
 	ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 	if (!filteredActions.empty()) {
@@ -269,6 +316,15 @@ static void addActionDone() {
 	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
 }
 
+static void clearVisibleActionReferences() {
+	filteredActions.clear();
+	allActions.clear();
+	if (g_listViewHwnd) {
+		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	}
+}
+
 // 编辑框筛选列表内容
 inline void actionFilter(const std::wstring& keyword) {
 	filteredActions.clear();
@@ -276,7 +332,7 @@ inline void actionFilter(const std::wstring& keyword) {
 	allActions = baseAppLaunchActions;
 	PluginManager::GetAllPluginActions(allActions);
 
-	ConsolePrintln(L"项目数量" + std::to_wstring(allActions.size()));
+	// ConsolePrintln(L"项目数量" + std::to_wstring(allActions.size()));
 	TextMatch(keyword, allActions, filteredActions);
 	// 关键方法，用于提交列表数据更新
 	addActionDone();
@@ -620,7 +676,7 @@ static void refreshPluginRunner() {
 inline void textMatching() {
 	// 通知插件用户输入变化
 	std::wstring editTextBuffer2;
-	if (MyStartsWith2(editTextBuffer, LR"({"arg":")")) {
+	if (StartsWith(editTextBuffer, LR"({"arg":")")) {
 		if (const size_t end = find_json_end(editTextBuffer); end != std::wstring::npos) {
 			const std::wstring json_part = editTextBuffer.substr(0, end + 1);
 			bool isSuccess = false;
@@ -670,10 +726,19 @@ inline void editTextInput() {
 	editTextBuffer.resize(1000, L'\0');
 	editTextBuffer.resize(GetWindowTextW(g_editHwnd, &editTextBuffer[0], 1000));
 	if (editTextBuffer.empty()) {
+		clearVisibleActionReferences();
 		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 		return;
 	}
 	SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0);
 	textMatching();
 	SendMessage(g_listViewHwnd, WM_SETREDRAW, TRUE, 0);
+}
+
+inline void refreshVisibleActionsFromCurrentInput() {
+	if (!g_editHwnd || !g_listViewHwnd) {
+		return;
+	}
+	refreshPluginRunner();
+	editTextInput();
 }

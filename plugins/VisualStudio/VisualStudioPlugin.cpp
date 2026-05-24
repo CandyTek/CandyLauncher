@@ -106,7 +106,7 @@ public:
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if (!startStr.empty() && MyStartsWith2(input, startStr)) {
+		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
 			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()), allPluginActions);
 		}

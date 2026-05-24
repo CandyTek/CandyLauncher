@@ -6,11 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 插件源文件
 set(PLUGIN_SOURCES
-		Main.cpp
+		JbPlugin.cpp
 		../Plugin.hpp
-		PluginAction.hpp
-		PluginData.hpp
-		PluginUtil.hpp
+		JbAction.hpp
+		JbPluginData.hpp
+		JbPluginUtil.hpp
 		${CMAKE_SOURCE_DIR}/3rdparty/pugixml/src/pugixml.cpp
 )
 

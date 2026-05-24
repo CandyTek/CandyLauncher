@@ -20,32 +20,27 @@
 #include <stdexcept>
 #include <array>
 #include <dwmapi.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #include <io.h>
 #include <fcntl.h>
 #include <shlwapi.h>
 #include <tlhelp32.h>
 
 #include "BaseTools.hpp"
+#include "ShortcutUtil.hpp"
 #include "../common/Constants.hpp"
 #include "../common/GlobalState.hpp"
 #include "../plugins/BaseAction.hpp"
 #include "../model/TraverseOptions.hpp"
+#include <propvarutil.h>
+
+#include "ShortCutDetectUtil.hpp"
 
 struct MonitorData {
 	HMONITOR hMonitor;
 	MONITORINFOEX mi;
 	bool isPrimary;
-};
-
-enum : UINT {
-	// 防止和弹出菜单的esc 0 值冲突
-	IDM_REMOVE_ITEM = 9999,
-	IDM_RENAME_ITEM,
-	IDM_RUN_AS_ADMIN,
-	IDM_OPEN_IN_CONSOLE,
-	IDM_KILL_PROCESS,
-	IDM_COPY_PATH,
-	IDM_COPY_TARGET_PATH
 };
 
 static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
@@ -375,36 +370,35 @@ static void ReleaseAltKey() {
 	keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
 }
 
-struct ComInitGuard {
-	ComInitGuard() {
-		hr = CoInitialize(nullptr);
-	}
-
-	~ComInitGuard() {
-		if (SUCCEEDED(hr)) CoUninitialize();
-	}
-
-	HRESULT hr;
-};
-
 static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const POINT& ptScreen) {
+	ConsolePrintln(L"ShellMenu", L"enter path=" + filePath +
+		L", x=" + std::to_wstring(ptScreen.x) +
+		L", y=" + std::to_wstring(ptScreen.y));
 	ComInitGuard guard;
-	if (FAILED(guard.hr)) return;
+	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"CoInitialize failed hr=" + std::to_wstring(guard.hr));
+		return;
+	}
 
 	PIDLIST_ABSOLUTE pidl = nullptr;
 	SFGAOF sfgao;
 	guard.hr = SHParseDisplayName(filePath.c_str(), nullptr, &pidl, 0, &sfgao);
-	if (FAILED(guard.hr)) return;
+	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"SHParseDisplayName failed hr=" + std::to_wstring(guard.hr));
+		return;
+	}
 
 	IShellFolder* desktopFolder = nullptr;
 	guard.hr = SHGetDesktopFolder(&desktopFolder);
 	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"SHGetDesktopFolder failed hr=" + std::to_wstring(guard.hr));
 		CoTaskMemFree(pidl);
 		return;
 	}
 
 	PIDLIST_ABSOLUTE pidlParent = ILClone(pidl);
 	if (!pidlParent) {
+		ConsolePrintln(L"ShellMenu", L"ILClone failed");
 		desktopFolder->Release();
 		CoTaskMemFree(pidl);
 		return;
@@ -421,6 +415,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		(void**)&parentFolder
 	);
 	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"SHBindToObject failed hr=" + std::to_wstring(guard.hr));
 		desktopFolder->Release();
 		CoTaskMemFree(pidl);
 		CoTaskMemFree(pidlParent);
@@ -431,6 +426,9 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 
 	IContextMenu* contextMenu = nullptr;
 	guard.hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void**)&contextMenu);
+	if (FAILED(guard.hr)) {
+		ConsolePrintln(L"ShellMenu", L"GetUIObjectOf failed hr=" + std::to_wstring(guard.hr));
+	}
 	if (SUCCEEDED(guard.hr)) {
 		IContextMenu2* contextMenu2 = nullptr;
 		if (SUCCEEDED(contextMenu->QueryInterface(IID_IContextMenu2, (void **) &contextMenu2))) {
@@ -456,10 +454,15 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		UINT idCmdFirst = 1;
 		UINT idCmdLast = 0x7FFF;
 
-		contextMenu->QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, CMF_NORMAL);
+		const HRESULT queryHr = contextMenu->QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, CMF_NORMAL);
+		ConsolePrintln(L"ShellMenu", L"QueryContextMenu hr=" + std::to_wstring(queryHr) +
+			L", count=" + std::to_wstring(GetMenuItemCount(hMenu)));
 
+		SetForegroundWindow(hwnd);
 		int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
 								ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
+		PostMessageW(hwnd, WM_NULL, 0, 0);
+		ConsolePrintln(L"ShellMenu", L"TrackPopupMenu cmd=" + std::to_wstring(cmd));
 
 		if (cmd >= static_cast<int>(idCmdFirst) && cmd <= static_cast<int>(idCmdLast)) {
 			CMINVOKECOMMANDINFOEX cmi = {0};
@@ -474,6 +477,8 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		}
 
 		DestroyMenu(hMenu);
+	} else {
+		ConsolePrintln(L"ShellMenu", L"CreatePopupMenu failed err=" + std::to_wstring(GetLastError()));
 	}
 
 	contextMenu->Release();
@@ -567,6 +572,7 @@ static void ShowShellContextMenu2(HWND hwnd, const std::wstring& filePath, const
 	// CoUninitialize();
 }
 
+
 static int GetLabelHeight(HWND hwnd, std::wstring text, int maxWidth, HFONT hFontD) {
 	// 1. 创建 RECT 结构体，设置最大宽度，高度初始为0
 	HDC hdc = GetDC(hwnd);
@@ -616,7 +622,9 @@ inline bool IsRectOnAnyMonitor(const RECT& rc) {
 	return MonitorFromRect(&rc, MONITOR_DEFAULTTONULL) != nullptr;
 }
 
-static bool IsShortcutInvalid(const std::wstring& shortcutPath) {
+
+[[deprecated(L"会误伤一些快捷方式")]]
+static bool IsShortcutInvalid2(const std::wstring& shortcutPath) {
 	ComInitGuard guard;
 	if (FAILED(guard.hr)) return true;
 
@@ -638,7 +646,8 @@ static bool IsShortcutInvalid(const std::wstring& shortcutPath) {
 		pShellLink->Release();
 		return true;
 	}
-
+	hr = pShellLink->Resolve(nullptr, SLR_NO_UI | SLR_NOSEARCH | SLR_NOTRACK);
+	
 	wchar_t targetPath[MAX_PATH] = {0};
 	hr = pShellLink->GetPath(targetPath, MAX_PATH, nullptr, 0);
 
@@ -662,8 +671,8 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 	if (cmd.contains("folder") && cmd["folder"].is_string()) {
 		traverseOptions.folder = Utf8ToWString(cmd["folder"].get<std::string>());cmd.value("folder", cmd["folder"].get<std::string>());
 	}
-	if (cmd.contains("command") && cmd["command"].is_string()) {
-		traverseOptions.command = Utf8ToWString(cmd["command"].get<std::string>());
+	if (cmd.contains("name") && cmd["name"].is_string()) {
+		traverseOptions.name = Utf8ToWString(cmd["name"].get<std::string>());
 	}
 	if (cmd.contains("type") && cmd["type"].is_string()) {
 		traverseOptions.type = Utf8ToWString(cmd["type"].get<std::string>());
@@ -672,6 +681,11 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 		traverseOptions.recursive = cmd["is_contain_subfolder"].get<bool>();
 	} else {
 		traverseOptions.recursive = true;
+	}
+	if (cmd.contains("index_files_only") && cmd["index_files_only"].is_boolean()) {
+		traverseOptions.indexFilesOnly = cmd["index_files_only"].get<bool>();
+	} else {
+		traverseOptions.indexFilesOnly = true;
 	}
 
 
@@ -685,8 +699,6 @@ static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 				traverseOptions.extensions.push_back(Utf8ToWString(ext));
 			}
 		}
-	} else {
-		traverseOptions.extensions = {L".exe", L".lnk"};
 	}
 
 	if (cmd.contains("excludes") && cmd["excludes"].is_array()) {
@@ -743,39 +755,229 @@ inline bool OpenConsoleHere(const std::wstring& targetPath) {
 	return ShellExecuteExW(&sei) != FALSE;
 }
 
-// 从类似 "Ctrl+Alt+A(3)(65)" 字符串中提取并注册全局热键
-static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId) {
-	UINT modifiers = 0;
-	UINT vk = 0;
+static bool ParseHotkeyString(const std::string& hotkeyStr, UINT& modifiers, UINT& vk) {
+	modifiers = 0;
+	vk = 0;
 
-	// 查找括号中的 VK 值
 	size_t posStart = hotkeyStr.rfind('(');
 	size_t posEnd = hotkeyStr.rfind(')');
 
-	if (posStart == std::wstring::npos || posEnd == std::wstring::npos || posEnd <= posStart + 1) {
+	if (posStart == std::string::npos || posEnd == std::string::npos || posEnd <= posStart + 1) {
 		return false;
 	}
 
-	std::string vkStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
+	const std::string vkStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
 	try {
 		vk = std::stoi(vkStr);
 	} catch (...) {
 		return false;
 	}
 
-	// 查找 modifiers 值
+	if (posStart == 0) return true;
+
 	posEnd = posStart - 1;
 	posStart = hotkeyStr.rfind('(', posEnd);
-	if (posStart == std::wstring::npos || posEnd <= posStart + 1) {
-		return false;
+	if (posStart == std::string::npos || posEnd <= posStart + 1) {
+		return true;
 	}
 
-	std::string modStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
+	const std::string modStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
 	try {
 		modifiers = std::stoi(modStr);
 	} catch (...) {
 		return false;
 	}
+	return true;
+}
+
+static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId);
+
+#ifndef BUILDING_PLUGIN_DLL
+inline static UINT g_toggleMainPanelHookModifiers = 0;
+inline static UINT g_toggleMainPanelHookVk = 0;
+inline static bool g_toggleMainPanelHookUseDoubleClick = false;
+inline static bool g_toggleMainPanelHookUseMouse = false;
+inline static bool g_toggleMainPanelHookKeyDown = false;
+inline static DWORD g_toggleMainPanelHookLastTriggerTick = 0;
+
+static UINT NormalizeHotkeyVk(UINT vk) {
+	if (vk == VK_LSHIFT || vk == VK_RSHIFT) return VK_SHIFT;
+	if (vk == VK_LCONTROL || vk == VK_RCONTROL) return VK_CONTROL;
+	if (vk == VK_LMENU || vk == VK_RMENU) return VK_MENU;
+	return vk;
+}
+
+static UINT GetCurrentHotkeyModifiers() {
+	UINT modifiers = 0;
+	if (GetAsyncKeyState(VK_CONTROL) & 0x8000) modifiers |= MOD_CONTROL;
+	if (GetAsyncKeyState(VK_MENU) & 0x8000) modifiers |= MOD_ALT;
+	if (GetAsyncKeyState(VK_SHIFT) & 0x8000) modifiers |= MOD_SHIFT;
+	if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000)) modifiers |= MOD_WIN;
+	return modifiers;
+}
+
+static UINT NormalizeTriggerModifiers(const UINT vk, UINT modifiers) {
+	if (vk == VK_CONTROL) modifiers &= ~MOD_CONTROL;
+	else if (vk == VK_SHIFT) modifiers &= ~MOD_SHIFT;
+	else if (vk == VK_MENU) modifiers &= ~MOD_ALT;
+	else if (vk == VK_LWIN || vk == VK_RWIN) modifiers &= ~MOD_WIN;
+	return modifiers;
+}
+
+static bool IsMouseHotkeyVk(const UINT vk) {
+	return vk == VK_MBUTTON || vk == VK_XBUTTON1 || vk == VK_XBUTTON2 || vk == VK_LBUTTON || vk == VK_RBUTTON;
+}
+
+static void ResetMainPanelToggleHookState() {
+	g_toggleMainPanelHookKeyDown = false;
+	g_toggleMainPanelHookLastTriggerTick = 0;
+}
+
+static void TriggerMainPanelToggleHotkey() {
+	if (g_mainHwnd != nullptr) {
+		PostMessageW(g_mainHwnd, WM_HOTKEY, HOTKEY_ID_TOGGLE_MAIN_PANEL, 0);
+	}
+}
+
+static bool TryTriggerMainPanelToggleHook(const UINT modifiers, const UINT vk) {
+	const UINT normalizedModifiers = NormalizeTriggerModifiers(vk, modifiers);
+	if (normalizedModifiers != g_toggleMainPanelHookModifiers || vk != g_toggleMainPanelHookVk) {
+		return false;
+	}
+
+	if (!g_toggleMainPanelHookUseDoubleClick) {
+		TriggerMainPanelToggleHotkey();
+		return true;
+	}
+
+	const DWORD now = GetTickCount();
+	const UINT doubleClickTime = GetDoubleClickTime();
+	if (g_toggleMainPanelHookLastTriggerTick != 0 &&
+		now - g_toggleMainPanelHookLastTriggerTick <= doubleClickTime) {
+		g_toggleMainPanelHookLastTriggerTick = 0;
+		TriggerMainPanelToggleHotkey();
+		return true;
+	}
+
+	g_toggleMainPanelHookLastTriggerTick = now;
+	return false;
+}
+
+static LRESULT CALLBACK ToggleMainPanelKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+	if (nCode >= 0 && !g_toggleMainPanelHookUseMouse) {
+		const auto* info = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+		if (info != nullptr) {
+			const UINT normalizedVk = NormalizeHotkeyVk(static_cast<UINT>(info->vkCode));
+			if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+				if (normalizedVk == g_toggleMainPanelHookVk) {
+					g_toggleMainPanelHookKeyDown = false;
+				}
+			} else if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+				if (normalizedVk == g_toggleMainPanelHookVk) {
+					if (!g_toggleMainPanelHookKeyDown) {
+						g_toggleMainPanelHookKeyDown = true;
+						const UINT modifiers = GetCurrentHotkeyModifiers();
+						if (TryTriggerMainPanelToggleHook(modifiers, normalizedVk)) {
+							return 1;
+						}
+					}
+				} else {
+					g_toggleMainPanelHookKeyDown = false;
+				}
+			}
+		}
+	}
+	return CallNextHookEx(g_toggleMainPanelKeyboardHook, nCode, wParam, lParam);
+}
+
+static LRESULT CALLBACK ToggleMainPanelMouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+	UNREFERENCED_PARAMETER(lParam);
+	if (nCode >= 0 && g_toggleMainPanelHookUseMouse) {
+		UINT vk = 0;
+		if (wParam == WM_MBUTTONDOWN) {
+			vk = VK_MBUTTON;
+		} else if (wParam == WM_XBUTTONDOWN) {
+			const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
+			if (info == nullptr) {
+				return CallNextHookEx(g_toggleMainPanelMouseHook, nCode, wParam, lParam);
+			}
+			const WORD xButton = HIWORD(info->mouseData);
+			if (xButton == XBUTTON1) vk = VK_XBUTTON1;
+			else if (xButton == XBUTTON2) vk = VK_XBUTTON2;
+		}
+
+		if (vk != 0) {
+			const UINT modifiers = GetCurrentHotkeyModifiers();
+			if (TryTriggerMainPanelToggleHook(modifiers, vk)) {
+				return 1;
+			}
+		}
+	}
+	return CallNextHookEx(g_toggleMainPanelMouseHook, nCode, wParam, lParam);
+}
+
+static void UnregisterMainPanelToggleHotkey(HWND hWnd) {
+	UnregisterHotKey(hWnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+	if (g_toggleMainPanelKeyboardHook != nullptr) {
+		UnhookWindowsHookEx(g_toggleMainPanelKeyboardHook);
+		g_toggleMainPanelKeyboardHook = nullptr;
+	}
+	if (g_toggleMainPanelMouseHook != nullptr) {
+		UnhookWindowsHookEx(g_toggleMainPanelMouseHook);
+		g_toggleMainPanelMouseHook = nullptr;
+	}
+	ResetMainPanelToggleHookState();
+}
+
+static bool ConfigureMainPanelToggleHotkey(HWND hWnd, const std::string& mode, const std::string& hotkeyStr) {
+	UnregisterMainPanelToggleHotkey(hWnd);
+
+	if (hotkeyStr.empty()) return false;
+
+	if (mode.empty() || mode == "key_combination") {
+		return RegisterHotkeyFromString(hWnd, hotkeyStr, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+	}
+
+	UINT modifiers = 0;
+	UINT vk = 0;
+	if (!ParseHotkeyString(hotkeyStr, modifiers, vk)) {
+		return false;
+	}
+
+	g_toggleMainPanelHookModifiers = modifiers;
+	g_toggleMainPanelHookVk = vk;
+	g_toggleMainPanelHookUseDoubleClick = (mode == "double_click");
+	g_toggleMainPanelHookUseMouse = IsMouseHotkeyVk(vk);
+	ResetMainPanelToggleHookState();
+
+	if (g_toggleMainPanelHookUseMouse) {
+		g_toggleMainPanelMouseHook = SetWindowsHookExW(WH_MOUSE_LL, ToggleMainPanelMouseHookProc, g_hInst, 0);
+		return g_toggleMainPanelMouseHook != nullptr;
+	}
+
+	g_toggleMainPanelKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, ToggleMainPanelKeyboardHookProc, g_hInst, 0);
+	return g_toggleMainPanelKeyboardHook != nullptr;
+}
+#else
+static void UnregisterMainPanelToggleHotkey(HWND hWnd) {
+	UnregisterHotKey(hWnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+}
+
+static bool ConfigureMainPanelToggleHotkey(HWND hWnd, const std::string& mode, const std::string& hotkeyStr) {
+	UNREFERENCED_PARAMETER(mode);
+	if (hotkeyStr.empty()) {
+		UnregisterHotKey(hWnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+		return false;
+	}
+	return RegisterHotkeyFromString(hWnd, hotkeyStr, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+}
+#endif
+
+// 从类似 "Ctrl+Alt+A(3)(65)" 字符串中提取并注册全局热键
+static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId) {
+	UINT modifiers = 0;
+	UINT vk = 0;
+	if (!ParseHotkeyString(hotkeyStr, modifiers, vk)) return false;
 
 	// 取消旧的热键（可选）
 	UnregisterHotKey(hWnd, hotkeyId);
@@ -824,12 +1026,26 @@ inline void ShowMainWindowSimple() {
 	RestoreWindowIfMinimized(g_mainHwnd);
 	SetFocus(g_editHwnd);
 	MyMoveWindow(g_mainHwnd);
+	if (!pref_ignore_popup_sound && g_skinJson != nullptr) {
+		std::string soundRelPath = g_skinJson.value("popup_sound", "");
+		if (!soundRelPath.empty()) {
+			std::wstring soundPath = utf8_to_wide(soundRelPath);
+			if (soundPath[0] != L'\\' && soundPath[0] != L'/' && soundPath.size() >= 2 && soundPath[1] != L':') {
+				soundPath = utf8_to_wide(g_skinJson.value("skin_folder", "")) + L"\\" + soundPath;
+			}
+			PlaySoundW(soundPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+		}
+	}
 	// if (g_BgImage != nullptr) {
 	// 	RedrawWindow(g_mainHwnd, nullptr, nullptr,
 	// 				RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
 	// }
 	SetForegroundWindow(g_mainHwnd);
 	if (g_hklIme != nullptr) PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM)g_hklIme);
+	if (g_editHwnd && g_listViewHwnd) {
+		PostMessageW(g_mainHwnd, WM_COMMAND, MAKEWPARAM(1, EN_CHANGE), reinterpret_cast<LPARAM>(g_editHwnd));
+	}
+
 }
 
 /**
@@ -938,7 +1154,7 @@ static bool RelaunchAsAdmin() {
 
 static void ChangeEditTextArg(const std::wstring& arg2) {
 	std::wstring editTextBuffer2;
-	if (MyStartsWith2(editTextBuffer, LR"({"arg":")")) {
+	if (StartsWith(editTextBuffer, LR"({"arg":")")) {
 		if (const size_t end = find_json_end(editTextBuffer); end != std::wstring::npos) {
 			const std::wstring json_part = editTextBuffer.substr(0, end + 1);
 			bool isSuccess = false;

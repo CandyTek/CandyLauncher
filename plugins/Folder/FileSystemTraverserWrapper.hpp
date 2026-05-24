@@ -40,7 +40,7 @@ static void TraverseFiles(
 
 	// addFile lambda 保持不变，可以完美复用
 	auto addFile = [&](const fs::path &path) {
-		std::wstring filename = path.stem().wstring(); // without extension
+		std::wstring filename = path.filename().wstring(); // without extension
 
 		if (shouldExclude(options, filename)) return;
 

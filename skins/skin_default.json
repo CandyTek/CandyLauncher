@@ -2,7 +2,7 @@
 	"version":1,
 	"window_width":500,
 	"window_height":500,
-	"window_bg_picture":"C:\\Users\\Administrator\\source\\repos\\WindowsProject1\\myskin\\bg.9.png",
+	"window_bg_picture":"\\myskin\\bg.9.png",
 	"window_bg_color":"#888888",
 	"window_opacity":255,
 
@@ -52,11 +52,16 @@
 	"item_font_size_2":10,
 	"item_font_size_selected_1":18,
 	"item_font_size_selected_2":12,
+	"listview_hide_scrollbar":true,
 
 	"item_font_family_1":"微软雅黑",
 	"item_font_family_2":"微软雅黑",
 	"item_font_family_selected_1":"微软雅黑",
 	"item_font_family_selected_2":"微软雅黑",
+	"item_font_style_1":"bold",
+	"item_font_style_2":"bold",
+	"item_font_style_selected_1":"bold",
+	"item_font_style_selected_2":"bold",
 	"item_font_color_1":"#000000",
 	"item_font_color_2":"#888888",
 	"item_font_color_selected_1":"#000000",
@@ -65,5 +70,5 @@
 	"item_bg_color":"#F9F9F9",
 	"item_bg_color_selected":"#E9E9FF",
 	"item_bg_picture":"",
-	"item_bg_picture_selected":"C:\\Users\\Administrator\\source\\repos\\WindowsProject1\\myskin\\item.9.png"
+	"item_bg_picture_selected":"\\myskin\\item.9.png"
 }

@@ -407,7 +407,7 @@ private:
 																} else {
 																	path = url;
 																}
-																if (MyStartsWith2(path, L"file:")) {
+																if (StartsWith(path, L"file:")) {
 																	path = path.substr(5);
 																}
 

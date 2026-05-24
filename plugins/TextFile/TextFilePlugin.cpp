@@ -133,7 +133,7 @@ public:
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if ((!startStr.empty() && MyStartsWith2(input, startStr)) || (startStr.empty() && MyStartsWith2(input, L"text "))) {
+		if ((!startStr.empty() && StartsWith(input, startStr)) || (startStr.empty() && StartsWith(input, L"text "))) {
 			if (allPluginActions.empty()) {
 				std::dynamic_pointer_cast<TextFileAction>(emptyResultActions[0])->title = L"未索引任何文件";
 				std::dynamic_pointer_cast<TextFileAction>(emptyResultActions[0])->subTitle = L"请检查设置 > 本插件 > 文件夹路径是否正确";

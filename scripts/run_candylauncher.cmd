@@ -13,3 +13,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 @REM echo ================== CandyLauncher 输出 ==================
 @REM type output_log.txt
 @REM echo ========================================================
+cd ..

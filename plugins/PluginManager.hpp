@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Plugin.hpp"
 #include <map>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <functional>
@@ -17,6 +18,7 @@
 #include "util/PinyinHelper.hpp"
 #include "util/MainTools.hpp"
 #include "util/MyToastUtil.hpp"
+#include "util/OleFileDragDrop.hpp"
 
 struct PluginInfo {
 	HMODULE handle = nullptr;
@@ -26,30 +28,29 @@ struct PluginInfo {
 	std::wstring pkgName;
 	std::wstring filePath;
 	uint16_t pluginId = 65535;
+	int apiVersion = 1;
 	bool loaded = false;
+	uint64_t loadTimeMs = 0;
+	uint64_t refreshTimeMs = 0;
+	int32_t priority = 0;
 
 	CreatePluginFunc createFunc = nullptr;
 	DestroyPluginFunc destroyFunc = nullptr;
 	GetPluginApiVersionFunc getVersionFunc = nullptr;
 };
 
-struct PluginCatalogInfo {
-	std::wstring name;
-	std::wstring version;
-	std::wstring pkgName;
-	std::wstring filePath;
-	std::wstring defaultSettingJson;
-	bool enabled = true;
-};
+using PluginCatalogInfo = IPluginHost::PluginCatalogEntry;
 
 inline std::unordered_map<uint16_t, PluginInfo> m_plugins = {};
 inline std::vector<PluginCatalogInfo> g_pluginCatalog = {};
 inline uint16_t pluginCount = 0;
 static std::wstring TAG = L"PluginManager";
+constexpr const wchar_t* PLUGIN_BROWSER_PACKAGE_NAME = L"com.candytek.pluginbrowserplugin";
 
 class PluginManager : public IPluginHost {
 private:
 	std::function<void()> m_onActionsChanged;
+	std::function<void()> m_beforePluginUnload;
 	bool m_suppressNotifications = false;
 
 public:
@@ -64,6 +65,7 @@ public:
 		bool recursive, // 是否递归
 		const std::vector<std::wstring>& extensions, // 扩展名过滤
 		const std::wstring& nameFilter, // 文件名关键字，可为空
+		bool isIndexFilesOnly, // 是否只索引文件
 		std::function<void(const std::wstring& name,
 							const std::wstring& fullPath,
 							const std::wstring& parent,
@@ -72,7 +74,9 @@ public:
 		if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
 
 		std::wstringstream query;
-
+		if (isIndexFilesOnly) {
+			query << L"file: ";
+		}
 		// 指定搜索目录（递归或非递归）
 		if (recursive) query << L"\"" << folderPath << L"\"";
 		else query << L"parent:\"" << folderPath << L"\"";
@@ -126,7 +130,7 @@ public:
 
 		auto addFile = [&](const fs::path& path) {
 			std::wstring filename = path.stem().wstring();
-			if (shouldExclude(options, filename)) return;
+			if (shouldExclude(options, path.filename().wstring())) return;
 
 			if (const auto it = options.renameMap.find(filename); it != options.renameMap.end()) filename = it->second;
 
@@ -143,6 +147,9 @@ public:
 		// 构造更高效的搜索查询
 		// 例如: parent:"C:\ProgramData\Microsoft\Windows\Start Menu\Programs" ext:exe;lnk
 		std::wstringstream search_query;
+		if (options.indexFilesOnly) {
+			search_query << L"file: ";
+		}
 		if (options.recursive) {
 			// 如果是递归搜索，则使用原始的路径搜索
 			search_query << L"\"" << folderPath << L"\" ";
@@ -200,7 +207,7 @@ public:
 			if (GetFileAttributesW(fullPath) != INVALID_FILE_ATTRIBUTES) {
 				FileInfo candidate;
 				candidate.file_path = fullPath;
-				candidate.label = PathFindFileNameW(fullPath);
+				candidate.label = candidate.file_path.stem().wstring();
 				candidates.push_back(candidate);
 			}
 		}
@@ -239,8 +246,31 @@ public:
 		return appLaunchActionCallBacks;
 	}
 
+	void RegisterAppLaunchActionCallback(const std::string& key, std::function<void()> callback) override {
+		appLaunchActionCallBacks[key] = std::move(callback);
+	}
+
+	void UnregisterAppLaunchActionCallback(const std::string& key) override {
+		appLaunchActionCallBacks.erase(key);
+	}
+
+	bool IsPluginEnabledByPackageName(const std::wstring& packageName) const override {
+		if (packageName.empty()) {
+			return false;
+		}
+
+		for (const auto& catalogInfo : g_pluginCatalog) {
+			if (catalogInfo.pkgName == packageName) {
+				return catalogInfo.enabled;
+			}
+		}
+
+		return FindLoadedPluginByPackageName(packageName) != nullptr;
+	}
+
 	bool UnloadPlugin(const uint16_t pluginId) {
 		if (m_plugins.find(pluginId) != m_plugins.end()) {
+			NotifyBeforePluginUnload();
 			UnloadSinglePlugin(m_plugins[pluginId]);
 			m_plugins.erase(pluginId);
 			RebuildPluginIndices();
@@ -257,7 +287,7 @@ public:
 	}
 
 	void LoadAllPlugins(const std::wstring& pluginDir) {
-		ConsolePrintln(TAG, L"LoadAllPlugins start, dir: " + pluginDir);
+		ConsolePrintln(TAG, L"LoadAllPlugins start");
 		g_pluginCatalog.clear();
 
 		if (!std::filesystem::exists(pluginDir)) {
@@ -281,17 +311,22 @@ public:
 				g_pluginCatalog.push_back(catalogInfo);
 
 				if (!catalogInfo.enabled) {
-					ConsolePrintln(TAG, L"Skip disabled plugin: " + catalogInfo.pkgName + L", file: " + entry.path().filename().wstring());
+					ConsolePrintln(TAG, L"Skip disabled plugin: " + catalogInfo.pkgName);
 					continue;
 				}
 
+				const auto pluginLoadStart = GetTickCount64();
 				bool loadResult = LoadPlugin(entry.path().wstring());
-				if (loadResult && (g_pluginCatalog.back().pkgName.empty() || g_pluginCatalog.back().defaultSettingJson.empty())) {
+				const uint64_t pluginLoadTime = GetTickCount64() - pluginLoadStart;
+				if (loadResult) {
 					if (const PluginInfo* loadedPlugin = FindLoadedPluginByFilePath(entry.path().wstring())) {
-						g_pluginCatalog.back().name = loadedPlugin->name;
-						g_pluginCatalog.back().version = loadedPlugin->version;
-						g_pluginCatalog.back().pkgName = loadedPlugin->pkgName;
-						g_pluginCatalog.back().defaultSettingJson = loadedPlugin->plugin->DefaultSettingJson();
+						m_plugins[loadedPlugin->pluginId].loadTimeMs = pluginLoadTime;
+						if (g_pluginCatalog.back().pkgName.empty() || g_pluginCatalog.back().defaultSettingJson.empty()) {
+							g_pluginCatalog.back().name = loadedPlugin->name;
+							g_pluginCatalog.back().version = loadedPlugin->version;
+							g_pluginCatalog.back().pkgName = loadedPlugin->pkgName;
+							g_pluginCatalog.back().defaultSettingJson = loadedPlugin->plugin->DefaultSettingJson();
+						}
 					}
 				}
 				ConsolePrintln(TAG, "Load result for " + entry.path().filename().string() + ": " + (loadResult ? "SUCCESS" : "FAILED"));
@@ -305,11 +340,15 @@ public:
 
 
 	void UnloadAllPlugins() {
+		if (!m_plugins.empty()) {
+			NotifyBeforePluginUnload();
+		}
 		for (auto& pair : m_plugins) {
 			UnloadSinglePlugin(pair.second);
 		}
 		m_plugins.clear();
-		NotifyActionsChanged();
+		allActions.clear();
+		filteredActions.clear();
 	}
 
 	void RefreshAllActions() {
@@ -319,7 +358,9 @@ public:
 		for (auto& pair : m_plugins) {
 			if (pair.second.loaded && pair.second.plugin) {
 				ConsolePrintln(TAG, L"Loading actions from plugin: " + pair.second.name);
+				const auto refreshStart = GetTickCount64();
 				pair.second.plugin->RefreshAllActions();
+				pair.second.refreshTimeMs = GetTickCount64() - refreshStart;
 				// ConsolePrintln(TAG, L"After loading, total actions: " + std::to_wstring(m_allActions.size()));
 			}
 		}
@@ -355,6 +396,51 @@ public:
 			return 0;
 		}
 		return m_plugins[action->pluginId].plugin->OnSendHotKey(action, vk, uint, wparam);
+	}
+
+	bool DispatchItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
+		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+			ConsolePrintln(TAG, L"DispatchItemRightClick skipped: action/plugin not found");
+			return false;
+		}
+		PluginInfo& info = m_plugins[action->pluginId];
+		ConsolePrintln(TAG,
+						L"DispatchItemRightClick pluginId=" + std::to_wstring(action->pluginId) +
+						L", apiVersion=" + std::to_wstring(info.apiVersion) +
+						L", loaded=" + std::to_wstring(info.loaded) +
+						L", plugin=" + std::to_wstring(info.plugin != nullptr));
+		if (!info.loaded || !info.plugin) {
+			return false;
+		}
+		return info.plugin->OnItemRightClick(action, parentHwnd, screenPt);
+	}
+
+	bool DispatchItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
+		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+			ConsolePrintln(TAG, L"DispatchItemShiftRightClick skipped: action/plugin not found");
+			return false;
+		}
+		PluginInfo& info = m_plugins[action->pluginId];
+		ConsolePrintln(TAG,
+						L"DispatchItemShiftRightClick pluginId=" + std::to_wstring(action->pluginId) +
+						L", apiVersion=" + std::to_wstring(info.apiVersion) +
+						L", loaded=" + std::to_wstring(info.loaded) +
+						L", plugin=" + std::to_wstring(info.plugin != nullptr));
+		if (!info.loaded || !info.plugin) {
+			return false;
+		}
+		return info.plugin->OnItemShiftRightClick(action, parentHwnd, screenPt);
+	}
+
+	bool DispatchItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) {
+		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+			return false;
+		}
+		PluginInfo& info = m_plugins[action->pluginId];
+		if (!info.loaded || !info.plugin) {
+			return false;
+		}
+		return info.plugin->OnItemBeginDrag(action, sourceHwnd, screenPt);
 	}
 
 	static bool DispatchActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) {
@@ -396,7 +482,85 @@ public:
 		return nullptr;
 	}
 
+	std::vector<PluginCatalogEntry> GetPluginCatalogEntries(uint16_t callerPluginId) override {
+		if (!CanUseRestrictedPluginBrowserApi(callerPluginId)) {
+			return {};
+		}
+		return g_pluginCatalog;
+	}
+
+	bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) override {
+		if (!CanUseRestrictedPluginBrowserApi(callerPluginId) || packageName.empty()) {
+			return false;
+		}
+		if (packageName == PLUGIN_BROWSER_PACKAGE_NAME && !enabled) {
+			ConsolePrintln(TAG, L"Reject disabling plugin browser itself");
+			return false;
+		}
+
+		// 提前清除插件引用，防止全局列表索引的 action出现内存错误
+		filteredActions.clear();
+		allActions.clear();
+		bool foundCatalog = false;
+		for (auto& catalogInfo : g_pluginCatalog) {
+			if (catalogInfo.pkgName == packageName) {
+				catalogInfo.enabled = enabled;
+				foundCatalog = true;
+				break;
+			}
+		}
+		if (!foundCatalog) {
+			return false;
+		}
+
+		SavePluginEnabledState(packageName, enabled);
+		auto it = g_settings_map.find(wide_to_utf8(packageName));
+		if (it != g_settings_map.end()) {
+			it->second.boolValue = enabled;
+		} else {
+			SettingItem setting;
+			setting.key = wide_to_utf8(packageName);
+			setting.type = "expandswitch";
+			setting.boolValue = enabled;
+			g_settings_map[setting.key] = setting;
+		}
+
+		SyncPluginsWithSettings();
+		NotifyUserSettingsLoadDone();
+		// RefreshAllActions(); // TODO:  不要刷新全部，只刷新需要的插件
+		if (!enabled) {
+		}
+
+
+		return true;
+	}
+
+	void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) override {
+		// SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0); // 不要使用暂停重绘，反而会造成列表闪烁
+		filteredActions = list;
+		ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		if (!filteredActions.empty()) {
+			// 设置第一项为选中状态
+			ListView_SetItemState(g_listViewHwnd, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			// 确保第一项可见
+			ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
+		}
+		InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	}
+
+
+	void SyncPluginPrioritiesFromSettings() {
+		for (auto& [pluginId, info] : m_plugins) {
+			if (!info.pkgName.empty()) {
+				const std::string priorityKey = wide_to_utf8(info.pkgName) + ".priority";
+				const auto it = g_settings_map.find(priorityKey);
+				info.priority = (it != g_settings_map.end()) ? static_cast<int32_t>(it->second.intValue) : 0;
+			}
+		}
+	}
+
 	void NotifyUserSettingsLoadDone() {
+		SyncPluginPrioritiesFromSettings();
 		for (auto& [pluginId, info] : m_plugins) {
 			if (info.loaded && info.plugin) {
 				info.plugin->OnUserSettingsLoadDone();
@@ -405,6 +569,29 @@ public:
 	}
 
 	void SyncPluginsWithSettings() {
+		bool needsUnload = false;
+		for (const auto& catalogInfo : g_pluginCatalog) {
+			bool shouldEnable = catalogInfo.enabled;
+			if (!catalogInfo.pkgName.empty()) {
+				const auto it = g_settings_map.find(wide_to_utf8(catalogInfo.pkgName));
+				if (it != g_settings_map.end()) {
+					shouldEnable = it->second.boolValue;
+				}
+			}
+
+			const PluginInfo* loadedPlugin = !catalogInfo.pkgName.empty()
+												? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+												: FindLoadedPluginByFilePath(catalogInfo.filePath);
+			if (!shouldEnable && loadedPlugin) {
+				needsUnload = true;
+				break;
+			}
+		}
+
+		if (needsUnload) {
+			NotifyBeforePluginUnload();
+		}
+
 		for (auto& catalogInfo : g_pluginCatalog) {
 			bool shouldEnable = catalogInfo.enabled;
 			if (!catalogInfo.pkgName.empty()) {
@@ -415,17 +602,20 @@ public:
 			}
 
 			const PluginInfo* loadedPlugin = !catalogInfo.pkgName.empty()
-				? FindLoadedPluginByPackageName(catalogInfo.pkgName)
-				: FindLoadedPluginByFilePath(catalogInfo.filePath);
+												? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+												: FindLoadedPluginByFilePath(catalogInfo.filePath);
 
 			if (shouldEnable) {
 				if (!loadedPlugin && !catalogInfo.filePath.empty()) {
 					const bool loadResult = LoadPlugin(catalogInfo.filePath);
 					ConsolePrintln(TAG, L"SyncPluginsWithSettings load plugin: " + catalogInfo.filePath +
-						L", result: " + (loadResult ? L"SUCCESS" : L"FAILED"));
+									L", result: " + (loadResult ? L"SUCCESS" : L"FAILED"));
 					loadedPlugin = !catalogInfo.pkgName.empty()
-						? FindLoadedPluginByPackageName(catalogInfo.pkgName)
-						: FindLoadedPluginByFilePath(catalogInfo.filePath);
+										? FindLoadedPluginByPackageName(catalogInfo.pkgName)
+										: FindLoadedPluginByFilePath(catalogInfo.filePath);
+					if (loadResult) {
+						loadedPlugin->plugin->RefreshAllActions();
+					}
 				}
 
 				if (loadedPlugin) {
@@ -444,6 +634,7 @@ public:
 				catalogInfo.enabled = false;
 			}
 		}
+		SyncPluginPrioritiesFromSettings();
 	}
 
 	static std::vector<std::shared_ptr<BaseAction>> IsInterceptInputShowResultsDirectly(const std::wstring& input) {
@@ -456,18 +647,34 @@ public:
 		}
 		return {};
 	}
-
+	
 	static void GetAllPluginActions(std::vector<std::shared_ptr<BaseAction>>& allActions) {
+		std::vector<std::pair<int32_t, const PluginInfo*>> sortedPlugins;
 		for (const auto& pair : m_plugins) {
 			if (pair.second.loaded && pair.second.plugin) {
-				const std::vector<std::shared_ptr<BaseAction>> temp = pair.second.plugin->GetTextMatchActions();
-				allActions.insert(allActions.end(), temp.begin(), temp.end());
+				sortedPlugins.emplace_back(pair.second.priority, &pair.second);
 			}
+		}
+		std::stable_sort(sortedPlugins.begin(), sortedPlugins.end(),
+						[](const auto& a, const auto& b) {
+							return a.first > b.first;
+						});
+
+		for (const auto& [priority, pluginInfo] : sortedPlugins) {
+			std::vector<std::shared_ptr<BaseAction>> temp = pluginInfo->plugin->GetTextMatchActions();
+			for (auto& action : temp) {
+				action->pluginPriority = priority;
+			}
+			allActions.insert(allActions.end(), temp.begin(), temp.end());
 		}
 	}
 
 	void SetActionsChangedCallback(std::function<void()> callback) {
 		m_onActionsChanged = callback;
+	}
+
+	void SetBeforePluginUnloadCallback(std::function<void()> callback) {
+		m_beforePluginUnload = callback;
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> GetSuccessfullyMatchingTextActions(const std::wstring& input,
@@ -560,7 +767,28 @@ public:
 		MyShowSimpleToast(title, msg);
 #endif
 	}
-	
+
+	bool BeginOleDragDropFiles(const std::vector<std::wstring>& filePaths, HWND sourceHwnd) override {
+		OleDragDropData data;
+		data.filePaths = filePaths;
+		return BeginOleDragDropData(data, sourceHwnd);
+	}
+
+	bool BeginOleDragDropData(const OleDragDropData& data, HWND sourceHwnd) override {
+		if (sourceHwnd) {
+			SetForegroundWindow(sourceHwnd);
+		}
+		const bool dragHandled = BeginOleDataDragDrop(data);
+		const bool shouldHideAfterDrag = sourceHwnd
+			&& IsWindow(sourceHwnd)
+			&& GetForegroundWindow() != g_mainHwnd
+			&& g_settings_map["pref_close_on_dismiss_focus"].stringValue != "null";
+		if (shouldHideAfterDrag) {
+			HideWindow();
+		}
+		return dragHandled;
+	}
+
 	void ChangeEditTextText(const std::wstring& basic_string) override {
 		SetWindowTextW(g_editHwnd, basic_string.c_str());
 		// 将光标移到文本末尾
@@ -570,6 +798,11 @@ public:
 	}
 
 private:
+	bool CanUseRestrictedPluginBrowserApi(uint16_t callerPluginId) const {
+		const auto it = m_plugins.find(callerPluginId);
+		return it != m_plugins.end() && it->second.pkgName == PLUGIN_BROWSER_PACKAGE_NAME;
+	}
+
 	static void RebuildPluginIndices() {
 		std::vector<std::pair<uint16_t, PluginInfo>> pluginList;
 		pluginList.reserve(m_plugins.size());
@@ -613,6 +846,25 @@ private:
 			Loge(TAG, L"LoadUserPluginConfig parse error", e.what());
 			return {};
 		}
+	}
+
+	static void SavePluginEnabledState(const std::wstring& pkgName, bool enabled) {
+		if (pkgName.empty()) {
+			return;
+		}
+
+		nlohmann::json mergedConfig = LoadUserPluginConfig();
+		if (!mergedConfig.is_object()) {
+			mergedConfig = nlohmann::json::object();
+		}
+		mergedConfig[wide_to_utf8(pkgName)] = enabled;
+
+		std::ofstream out(std::filesystem::path(USER_SETTINGS_PATH), std::ios::binary);
+		if (!out) {
+			ConsolePrintln(TAG, L"SavePluginEnabledState open file failed: " + USER_SETTINGS_PATH);
+			return;
+		}
+		out << mergedConfig.dump(4) << std::endl;
 	}
 
 	static bool IsPluginEnabledByConfig(const std::wstring& pkgName, const nlohmann::json& userConfig) {
@@ -669,7 +921,7 @@ private:
 	}
 
 	bool LoadSinglePlugin(const std::wstring& dllPath, PluginInfo& info) {
-		ConsolePrintln(TAG, L"LoadSinglePlugin start: " + dllPath);
+		ConsolePrintln(TAG, L"LoadSinglePlugin start: " + info.name);
 
 		info.handle = LoadLibraryW(dllPath.c_str());
 		if (!info.handle) {
@@ -688,6 +940,11 @@ private:
 			info.handle = nullptr;
 			return false;
 		}
+
+		if (info.getVersionFunc) {
+			info.apiVersion = info.getVersionFunc();
+		}
+		// ConsolePrintln(TAG, L"Plugin API version: " + std::to_wstring(info.apiVersion));
 
 		IPlugin* pluginPtr = info.createFunc();
 		if (!pluginPtr) {
@@ -733,7 +990,7 @@ private:
 
 		info.loaded = false;
 	}
-	
+
 	std::wstring& GetEditTextText() override {
 		return editTextBuffer;
 	}
@@ -754,6 +1011,12 @@ private:
 		}
 		if (m_onActionsChanged) {
 			m_onActionsChanged();
+		}
+	}
+
+	void NotifyBeforePluginUnload() {
+		if (m_beforePluginUnload) {
+			m_beforePluginUnload();
 		}
 	}
 };

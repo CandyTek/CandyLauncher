@@ -15,6 +15,10 @@ ULONGLONG APP_STARTUP_TIME = 0;
 
 // 用于拖放文件时延迟关闭窗口
 HHOOK g_mouseHook = nullptr;
+#ifndef BUILDING_PLUGIN_DLL
+HHOOK g_toggleMainPanelKeyboardHook = nullptr;
+HHOOK g_toggleMainPanelMouseHook = nullptr;
+#endif
 
 HotkeyMap g_hotkeyMap = {};
 // 下列两变量不展开 expand
@@ -30,6 +34,7 @@ std::wstring USER_SETTINGS_PATH = EXE_FOLDER_PATH + LR"(\user_settings.json)";
 std::wstring EDIT_HINT_TEXT;
 std::string pref_force_ime_mode = "null";
 std::string pref_hotkey_toggle_main_panel;
+std::string pref_hotkey_toggle_main_panel_mode = "key_combination";
 
 bool pref_show_window_and_release_modifier_key = false;
 bool pref_ctrl_number_launch_item = false;
@@ -44,6 +49,7 @@ bool pref_single_click_to_open = false;
 bool pref_fuzzy_match = false;
 bool pref_last_search_term_selected = true;
 bool pref_close_after_open_item = true;
+bool pref_ignore_popup_sound = false;
 
 
 int64_t pref_max_search_results = 0;
@@ -80,7 +86,7 @@ std::unique_ptr<Gdiplus::Font> g_listItemFont1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFont2 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2 = nullptr;
-std::wstring g_currectSkinFilePath = DEFAULT_SKIN_PATH;
+std::wstring g_currectSkinFilePath = L"default";
 
 int g_lastWindowOpacity = 255;
 
@@ -111,6 +117,7 @@ int MAIN_WINDOW_HEIGHT = 480;
 
 int g_listItemWidth = 580;
 int g_listItemHeight = 35;
+bool g_listViewHideScrollbar = false;
 
 std::unordered_map<std::string, std::function<void()>> appLaunchActionCallBacks;
 

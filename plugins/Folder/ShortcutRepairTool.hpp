@@ -77,25 +77,18 @@ static bool FixShortcut(const std::wstring &shortcutPath, const std::wstring &ne
 
 
 static void RefreshInvalidListView() {
+	namespace fs = std::filesystem;
 	// 遍历当前文件集合，检测.lnk文件
 	g_invalidShortcuts.clear();
 	for (const auto &fileInfo: g_sourceShortcuts) {
-		std::wstring filePath = fileInfo.file_path;
 
 		// 检查是否是快捷方式文件
-		if (filePath.size() > 4 &&
-			_wcsicmp(filePath.substr(filePath.size() - 4).c_str(), L".lnk") == 0) {
+		if (fileInfo.file_path.extension().wstring() == L".lnk") {
 			// 调用MainTools.hpp中的IsShortcutInvalid方法
-			if (IsShortcutInvalid(filePath)) {
+			if (IsShortcutInvalid(fileInfo.file_path.wstring())) {
 				FileInfo fileInfo1;
-				fileInfo1.file_path = filePath;
-
-				std::wstring fileName = fileInfo.file_path.substr(fileInfo.file_path.find_last_of(L"\\/") + 1);
-				if (fileName.size() > 4 && fileName.substr(fileName.size() - 4) == L".lnk") {
-					fileName = fileName.substr(0, fileName.size() - 4);
-				}
-
-				fileInfo1.label = fileName;
+				fileInfo1.file_path = fileInfo.file_path;
+				fileInfo1.label = fileInfo.file_path.stem().wstring();
 				g_invalidShortcuts.push_back(fileInfo1);
 			}
 		}
@@ -267,7 +260,7 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 
 				if (selectedCandidate >= 0 && selectedInvalid >= 0) {
 					std::wstring message =
-							L"是否使用路径 \"" + g_candidates[selectedCandidate].file_path + L"\" 修复快捷方式？";
+							L"是否使用路径 \"" + g_candidates[selectedCandidate].file_path.wstring() + L"\" 修复快捷方式？";
 					int result = MessageBoxW(hwnd, message.c_str(), L"确认修复", MB_YESNO | MB_ICONQUESTION);
 
 					if (result == IDYES) {

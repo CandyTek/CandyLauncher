@@ -1,3 +1,5 @@
+# CandyLauncher
+
 ## Build Commands
 
 > No reading required @CMakePresets.json

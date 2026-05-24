@@ -130,11 +130,26 @@ static LRESULT CALLBACK EnhancedComboBoxSubclassProc(HWND hWnd, UINT uMsg, WPARA
 				}
 			}
 
-			HPEN hPen = CreatePen(PS_SOLID, 1, borderColor);
+			HPEN hPen = CreatePen(PS_SOLID, 2, borderColor);
 			HPEN hOldPen = (HPEN)SelectObject(memDC, hPen);
 			HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, GetStockObject(NULL_BRUSH));
 
-			Rectangle(memDC, rect.left, rect.top, rect.right, rect.bottom);
+			// 手动画 4 条边，保证 2px 一致
+			// 上
+			MoveToEx(memDC, rect.left, rect.top+1, NULL);
+			LineTo(memDC, rect.right, rect.top+1);
+
+			// 左
+			MoveToEx(memDC, rect.left+1, rect.top, NULL);
+			LineTo(memDC, rect.left+1, rect.bottom);
+
+			// 右
+			MoveToEx(memDC, rect.right - 1, rect.top, NULL);
+			LineTo(memDC, rect.right - 1, rect.bottom);
+
+			// 下
+			MoveToEx(memDC, rect.left, rect.bottom - 1, NULL);
+			LineTo(memDC, rect.right, rect.bottom - 1);
 
 			SelectObject(memDC, hOldBrush);
 			SelectObject(memDC, hOldPen);

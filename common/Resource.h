@@ -10,17 +10,27 @@
 #define IDD_ABOUTBOX			103
 #define IDM_ABOUT				104
 #define IDM_EXIT				105
-#define IDI_SMALL				111
-// #define IDI_CANDYLAUNCHER		112
-#define IDI_CLOSE				113
-#define IDI_REFRESH				114
-//#define IDI_RESTART				(IDI_SMALL+4)
 
-#define IDC_CANDYLAUNCHER		120
+#define IDI_SMALL					200
+#define IDI_CLOSE					201
+#define IDI_REFRESH					202
+#define IDI_SETTINGS_TAB_PLUGIN		203
+#define IDI_SETTINGS_TAB_NORMAL		204
+#define IDI_SETTINGS_TAB_FEATURE	205
+#define IDI_SETTINGS_TAB_SKIN		206
+#define IDI_SETTINGS_TAB_OTHER		207
+#define IDI_SETTINGS_TAB_HOTKEY		208
+#define IDI_SETTINGS_TAB_ABOUT		209
+
+
+// 更改了ico图标源文件，需要在这里和 .rc 里增加几个空行，以触发cmake构建更新
+// (IDI_SMALL+9)，不能使用IDI_SMALL+n，这种方法；以及数字不能被括号包裹，不然就不能正确引用图标
+
 #define IDR_SETTINGS_JSON 131
 #define IDC_MYICON				2
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1
+#define IDC_CANDYLAUNCHER		120
 #endif
 // 新对象的下一组默认值
 //

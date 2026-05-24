@@ -102,12 +102,12 @@ public:
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if (!startStr.empty() && MyStartsWith2(input, startStr)) {
+		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
 			std::wstring searchText = input.substr(startStr.size());
 
 			// 支持状态过滤：status:运行中
-			if (MyStartsWith2(searchText, L"status:") || MyStartsWith2(searchText, L"状态:")) {
+			if (StartsWithAny(searchText,{L"status:",L"状态:"})) {
 				size_t colonPos = searchText.find(L':');
 				if (colonPos != std::wstring::npos && colonPos + 1 < searchText.size()) {
 					std::wstring statusFilter = searchText.substr(colonPos + 1);
@@ -125,7 +125,7 @@ public:
 			}
 
 			// 支持启动模式过滤：startup:自动
-			if (MyStartsWith2(searchText, L"startup:") || MyStartsWith2(searchText, L"启动:")) {
+			if (StartsWithAny(searchText, {L"启动:",L"startup:"})) {
 				size_t colonPos = searchText.find(L':');
 				if (colonPos != std::wstring::npos && colonPos + 1 < searchText.size()) {
 					std::wstring startupFilter = searchText.substr(colonPos + 1);

@@ -44,7 +44,7 @@ static void Fuzzymatch_MultiThreaded2(const std::wstring& keyword, const std::ve
 
 		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword, searchableText); score >=
 			pref_fuzzy_match_score_threshold) {
-			tmp[i] = ScoredAction{action, score};
+			tmp[i] = ScoredAction{action, score, action->pluginPriority};
 		}
 	});
 
@@ -89,7 +89,7 @@ static void Fuzzymatch(const std::wstring& keyword, const std::vector<std::share
 		// WRatio 对于不同长度的字符串和乱序的单词有很好的效果，是通用的优选。
 		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword, action->matchText); score >=
 			pref_fuzzy_match_score_threshold) {
-			scoredActions.push_back({action, score});
+			scoredActions.push_back({action, score, action->pluginPriority});
 		}
 	}
 
@@ -97,7 +97,7 @@ static void Fuzzymatch(const std::wstring& keyword, const std::vector<std::share
 	std::sort(scoredActions.begin(), scoredActions.end(), std::greater<>());
 
 	int matchedCount = 0;
-	for (const auto& [action, score] : scoredActions) {
+	for (const auto& [action, score, priority] : scoredActions) {
 		filteredActions.push_back(action);
 		if (pref_max_search_results > 0) {
 			matchedCount++;
@@ -160,8 +160,8 @@ static void Fuzzymatch_MultiThreaded(const std::wstring& keyword, const std::vec
 	// 并行计算分数
 	// 确定要使用的线程数，通常基于硬件核心数
 	// hardware_concurrency() 可能返回0，所以至少保证1个线程
-	unsigned int numThreads = std::thread::hardware_concurrency();
-	if (numThreads == 0) {
+	unsigned long long numThreads = std::min<size_t>(std::thread::hardware_concurrency(), allActions.size());
+	if (numThreads <= 0) {
 		numThreads = 1;
 	}
 
@@ -187,7 +187,7 @@ static void Fuzzymatch_MultiThreaded(const std::wstring& keyword, const std::vec
 
 		// std::async 启动一个异步任务
 		// 注意 lambda 的捕获列表，使用 start_iterator 和 end_iterator
-		futures.push_back(poolFuzzyMatch.enqueue([&, start_iterator, end_iterator]()
+		futures.push_back(poolFuzzyMatch.enqueue([&lowerKeyword,start_iterator, end_iterator]()
 			// futures.push_back(std::async(std::launch::async, [start_iterator, end_iterator, &lowerKeyword, this]() 
 			{
 				std::vector<ScoredAction> localScoredActions;
@@ -277,19 +277,22 @@ static void Exactmatch(const std::wstring& keyword, const std::vector<std::share
 
 inline void TextMatch(const std::wstring& keyword, const std::vector<std::shared_ptr<BaseAction>>& allActions,
 					std::vector<std::shared_ptr<BaseAction>>& filteredActions) {
+	if (allActions.empty()) {
+		return;
+	}
 	if (pref_fuzzy_match) {
-		MethodTimerStart();
+		MethodTimerStart(L"fuzzymatch");
 #if defined(DEBUG) || _DEBUG
 		Fuzzymatch(keyword, allActions, filteredActions);
 #else
 		// Fuzzymatch_MultiThreaded(keyword);
 		Fuzzymatch_MultiThreaded2(keyword,allActions,filteredActions);
 #endif
-		MethodTimerEnd(L"fuzzymatch");
+		// MethodTimerEnd(L"fuzzymatch");
 	} else {
-		MethodTimerStart();
+		MethodTimerStart(L"Exactmatch");
 		// Exactmatch(keyword);
 		Exactmatch_Optimized(keyword, allActions, filteredActions);
-		MethodTimerEnd(L"Exactmatch");
+		// MethodTimerEnd(L"Exactmatch");
 	}
 }

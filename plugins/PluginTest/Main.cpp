@@ -48,6 +48,18 @@ public:
 		return callbacks;
 	}
 
+	void RegisterAppLaunchActionCallback(const std::string& key, std::function<void()> callback) override {
+		callbacks[key] = std::move(callback);
+	}
+
+	void UnregisterAppLaunchActionCallback(const std::string& key) override {
+		callbacks.erase(key);
+	}
+
+	bool IsPluginEnabledByPackageName(const std::wstring& packageName) const override {
+		return true;
+	}
+
 	std::wstring GetTheProcessedMatchingText(const std::wstring& source) override {
 		// 简单返回原文本（实际应该处理拼音等）
 		return source;
@@ -58,6 +70,7 @@ public:
 		bool recursive,
 		const std::vector<std::wstring>& extensions,
 		const std::wstring& nameFilter,
+		bool isIndexOnlyFile,
 		std::function<void(const std::wstring&, const std::wstring&, const std::wstring&, const std::wstring&)> callback) override {
 		// Mock implementation
 	}
@@ -83,12 +96,24 @@ public:
 		return {};
 	}
 
+	bool BeginOleDragDropFiles(const std::vector<std::wstring>& filePaths, HWND sourceHwnd) override {
+		return !filePaths.empty();
+	}
+
 	HBITMAP LoadResIconAsBitmap(int nResID, int cx, int cy) override {
 		return nullptr;
 	}
 
 	void ShowSimpleToast(const std::wstring& title, const std::wstring& msg) override {
 		TestLog(L"[Toast] " + title + L": " + msg);
+	}
+
+	std::vector<PluginCatalogEntry> GetPluginCatalogEntries(uint16_t callerPluginId) override {
+		return {};
+	}
+
+	bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) override {
+		return false;
 	}
 
 	std::wstring& GetEditTextText() override {

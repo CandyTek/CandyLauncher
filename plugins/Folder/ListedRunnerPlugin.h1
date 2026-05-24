@@ -92,7 +92,7 @@ static void loadRunnerJsonConfig()
 			std::make_shared<ActionNormal>(L"查看所有软件配置 JSON 文件", L"打开settings.json文件", IDI_CLOSE,
 											appLaunchActionCallBacks["viewAllSettings"]));
 		runnerActionSource.push_back(
-			std::make_shared<ActionNormal>(L"查看用户索引配置 JSON 文件", L"打开runner.json文件", IDI_CLOSE,
+			std::make_shared<ActionNormal>(L"查看用户索引配置 JSON 文件", L"config_folder_plugin.json文件", IDI_CLOSE,
 											appLaunchActionCallBacks["viewIndexConfig"]));
 		runnerActionSource.push_back(std::make_shared<ActionNormal>(L"软件帮助文档", L"前往浏览器查看帮助文档", IDI_CLOSE,
 															appLaunchActionCallBacks["openHelp"]));

@@ -8,6 +8,7 @@
 
 #include "util/BitmapUtil.hpp"
 #include "util/MainTools.hpp"
+#include "common/Resource.h"
 
 #define WM_TRAYICON (WM_USER + 1)
 
@@ -23,8 +24,9 @@ constexpr int TRAY_MENU_ID_ABOUT = 10008;
 constexpr int TRAY_MENU_ID_RESTART = 10005;
 constexpr int TRAY_MENU_ID_EXIT = 10006;
 constexpr int TRAY_MENU_ID_HELP = 10007;
+constexpr int TRAY_MENU_ID_CHECK_UPDATE = 10009;
 constexpr int TRAY_MENU_ID_SETTINGS = 10010;
-constexpr int TRAY_MENU_ID_BASE_END = 10011;
+constexpr int TRAY_MENU_ID_BASE_END = 10012;
 
 static HMENU g_hTrayMenu = nullptr;
 static HMENU g_hMoreSub = nullptr;
@@ -48,6 +50,7 @@ static HBITMAP gBmpSettings = nullptr;
 static HBITMAP gBmpExit = nullptr;
 static HBITMAP gBmpMore = nullptr, gBmpEdit = nullptr, gBmpFolder = nullptr, gBmpGithub = nullptr, gBmpRestart = nullptr;
 static HBITMAP gBmpAbout = nullptr;
+static HBITMAP gBmpCheckUpdate = nullptr;
 
 // ---- 构建托盘菜单（用 SetMenuItemBitmaps 绑定位图）----
 static void Init(HWND parent, HINSTANCE hInstance) {
@@ -61,6 +64,7 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 	gBmpGithub = LoadShell32IconProperAsBitmap(220, 16, 16);
 	gBmpRestart = LoadShell32IconProperAsBitmap(238, 16, 16);
 	gBmpAbout = LoadShell32IconProperAsBitmap(277, 16, 16);
+	gBmpCheckUpdate = LoadShell32IconProperAsBitmap(239, 16, 16);
 
 	// 主菜单
 	g_hTrayMenu = CreatePopupMenu();
@@ -79,13 +83,16 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_OPEN_FOLDER, L"在资源管理器打开路径(&I)");
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_OPEN_FOLDER, MF_BYCOMMAND, gBmpFolder, gBmpFolder);
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB, L"打开 Github 主页");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB, L"打开 Github 主页(&G)");
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_GITHUB, MF_BYCOMMAND, gBmpGithub, gBmpGithub);
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_ABOUT, L"关于");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_ABOUT, L"关于(&A)");
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_ABOUT, MF_BYCOMMAND, gBmpAbout, gBmpAbout);
 
 	AppendMenuW(g_hMoreSub, MF_SEPARATOR, 0, nullptr);
+
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_CHECK_UPDATE, L"检查更新(&C)");
+	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_CHECK_UPDATE, MF_BYCOMMAND, gBmpCheckUpdate, gBmpCheckUpdate);
 
 	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_RESTART, L"重启软件(&R)");
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_RESTART, MF_BYCOMMAND, gBmpRestart, gBmpRestart);
@@ -94,12 +101,13 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 	int posMore = GetMenuItemCount(g_hTrayMenu);
 	AppendMenuW(g_hTrayMenu, MF_STRING | MF_POPUP, (UINT_PTR)g_hMoreSub, L"更多...(&M)");
 	SetMenuItemBitmaps(g_hTrayMenu, posMore, MF_BYPOSITION, gBmpMore, gBmpMore);
+	AppendMenuW(g_hTrayMenu, MF_SEPARATOR, 0, nullptr);
 
 	// 设置 & 退出
 	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_SETTINGS, L"设置(&S)");
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_SETTINGS, MF_BYCOMMAND, gBmpSettings, gBmpSettings);
 
-	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_EXIT, L"退出(&E)");
+	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_EXIT, L"退出(&X)");
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_EXIT, MF_BYCOMMAND, gBmpExit, gBmpExit);
 }
 
@@ -130,6 +138,7 @@ static void TrayMenuDestroy() {
 	SAFE_DEL_BMP(gBmpFolder);
 	SAFE_DEL_BMP(gBmpGithub);
 	SAFE_DEL_BMP(gBmpRestart);
+	SAFE_DEL_BMP(gBmpCheckUpdate);
 
 	if (g_hMoreSub) {
 		DestroyMenu(g_hMoreSub);
@@ -143,7 +152,16 @@ static void TrayMenuDestroy() {
 
 static void ShowTrayIcon() {
 	g_nid.hWnd = g_mainHwnd;
-	g_nid.hIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_CANDYLAUNCHER));
+	const HICON hTrayIcon = (HICON)LoadImageW(
+		g_hInst,
+		MAKEINTRESOURCEW(IDI_CANDYLAUNCHER),
+		IMAGE_ICON,
+		GetSystemMetrics(SM_CXSMICON),
+		GetSystemMetrics(SM_CYSMICON),
+		LR_DEFAULTCOLOR
+	);
+
+	g_nid.hIcon = hTrayIcon;
 
 	if (!Shell_NotifyIconW(NIM_MODIFY, &g_nid)) {
 		// 修改失败，说明图标不存在，执行添加

@@ -292,7 +292,6 @@ static ATOM MyScrollViewRegisterClass() {
 	wcex.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
 	wcex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1); // 用系统白背景更稳
 	//	 wcex.hbrBackground = CreateSolidBrush(RGB(255, 255, 255)); // 例如纯白色
-	//	wcex.hbrBackground = CreateSolidBrush(RGB(240, 240, 240));
 
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.cbWndExtra = 0;

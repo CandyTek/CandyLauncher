@@ -58,7 +58,7 @@ public:
 		arguments(std::move(args)) {
 		matchText = g_host->GetTheProcessedMatchingText(justName);
 		title = (justName);
-		pluginId=m_pluginId;
+		pluginId = m_pluginId;
 
 		if (!targetFilePath.empty()) subTitle = (targetFilePath + L" " + arguments);
 		else subTitle = (justName + L" " + arguments);
@@ -77,37 +77,39 @@ public:
 
 	// 运行命令
 	void InvokeWithTarget(const wchar_t* target, bool isForceAdmin) {
-		HINSTANCE hInst = ShellExecuteW(
-			nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : L"open",
-			targetFilePath.c_str(), target,
-			workingDirectory.c_str(), SW_SHOWNORMAL);
-		//char const* temp=WStringToConstChar(targetFilePath);
-		//	 system(temp);
-		INT_PTR result = reinterpret_cast<INT_PTR>(hInst);
-		if (result <= 32) {
-			// 当使用管理员模式打开失败后，回退到正常模式打开
-			if (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) {
-				if (result == SE_ERR_NOASSOC) // 1155
-				{
-					// 再尝试用 open 打开
-					HINSTANCE hInst2 = ShellExecuteW(nullptr, L"open",
-													targetFilePath.c_str(), target,
-													workingDirectory.c_str(), SW_SHOWNORMAL);
-					result = reinterpret_cast<INT_PTR>(hInst2);
-					if (result <= 32) {
-						ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst2), targetFilePath);
-						return;
+		std::thread([this, target = std::move(target), isForceAdmin]() {
+			HINSTANCE hInst = ShellExecuteW(
+				nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : L"open",
+				targetFilePath.c_str(), target,
+				workingDirectory.c_str(), SW_SHOWNORMAL);
+			//char const* temp=WStringToConstChar(targetFilePath);
+			//	 system(temp);
+			INT_PTR result = reinterpret_cast<INT_PTR>(hInst);
+			if (result <= 32) {
+				// 当使用管理员模式打开失败后，回退到正常模式打开
+				if (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) {
+					if (result == SE_ERR_NOASSOC) // 1155
+					{
+						// 再尝试用 open 打开
+						HINSTANCE hInst2 = ShellExecuteW(nullptr, L"open",
+														targetFilePath.c_str(), target,
+														workingDirectory.c_str(), SW_SHOWNORMAL);
+						result = reinterpret_cast<INT_PTR>(hInst2);
+						if (result <= 32) {
+							ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst2), targetFilePath);
+							return;
+						}
 					}
+				} else {
+					// 错误，可能权限不够、路径不存在等
+					ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst), targetFilePath);
 				}
-			} else {
-				// 错误，可能权限不够、路径不存在等
-				ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst), targetFilePath);
 			}
-		}
+		}).detach();
 	}
 
 	// 运行命令
-	 void Invoke() {
+	void Invoke() {
 		InvokeWithTarget(nullptr, false);
 	}
 
@@ -144,7 +146,6 @@ public:
 	}
 
 
-
 	std::wstring& getTitle() override {
 		return title;
 	}
@@ -175,6 +176,7 @@ public:
 			iconBitmap = nullptr;
 		}
 	}
+
 	HBITMAP iconBitmap = nullptr;
 	std::wstring uwpSource;
 

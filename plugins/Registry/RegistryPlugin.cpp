@@ -104,7 +104,7 @@ public:
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
 		if (!m_host || startStr.empty()) return {};
 
-		if (!MyStartsWith2(input, startStr)) {
+		if (!StartsWith(input, startStr)) {
 			return {};
 		}
 		MethodTimerStart();

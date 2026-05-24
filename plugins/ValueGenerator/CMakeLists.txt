@@ -6,11 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 插件源文件
 set(PLUGIN_SOURCES
-		Main.cpp
+		ValueGeneratorPlugin.cpp
 		../Plugin.hpp
-		PluginAction.hpp
-		PluginData.hpp
-		PluginUtil.hpp
+		ValueGeneratorAction.hpp
+		ValueGeneratorPluginData.hpp
+		ValueGeneratorUtil.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

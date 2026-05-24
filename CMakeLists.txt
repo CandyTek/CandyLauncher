@@ -12,6 +12,8 @@ add_executable(CandyLauncher WIN32
 		common/framework.h
 		util/json.hpp
 		common/Resource.h
+		common/I18n.hpp
+		common/I18nResource.h
 		common/targetver.h
 		CandyLauncher.cpp
 		util/PinyinHelper.hpp
@@ -30,7 +32,14 @@ add_executable(CandyLauncher WIN32
 		icons/close.ico
 		icons/small.ico
 		icons/refresh.ico
-		settings.json
+		icons/tab_plugin.ico
+		icons/tab_normal.ico
+		icons/tab_feature.ico
+		icons/tab_skin.ico
+		icons/tab_other.ico
+		icons/tab_hotkey.ico
+		icons/tab_about.ico
+		common/settings.json
 		view/ScrollViewController.hpp
 		util/ShortcutUtil.hpp
 		common/AppController.hpp
@@ -72,7 +81,28 @@ add_executable(CandyLauncher WIN32
 		model/ScoredAction.hpp
 		util/MyToastUtil.hpp
 		util/TaskWorker.hpp
+		view/CustomEdit.hpp
+		util/FullScreenDetectUtil.hpp
+		util/ShortCutDetectUtil.hpp
 
+)
+
+add_library(CandyLauncherLangZh SHARED
+		lang/ResourceDllEntry.cpp #平时去掉可以加快编译速度，资源改动时取消注释
+		lang/zh-CN.rc
+)
+set_target_properties(CandyLauncherLangZh PROPERTIES
+		OUTPUT_NAME "zh-CN"
+		PREFIX ""
+)
+
+add_library(CandyLauncherLangEn SHARED
+		lang/ResourceDllEntry.cpp
+		lang/en-US.rc
+)
+set_target_properties(CandyLauncherLangEn PROPERTIES
+		OUTPUT_NAME "en-US"
+		PREFIX ""
 )
 
 target_precompile_headers(CandyLauncher
@@ -89,6 +119,8 @@ target_compile_definitions(CandyLauncher PRIVATE UNICODE _UNICODE
 		$<$<CONFIG:Debug>:DEBUG=1>
 		$<$<CONFIG:Release>:NDEBUG=1>
 )
+target_compile_definitions(CandyLauncherLangZh PRIVATE UNICODE _UNICODE)
+target_compile_definitions(CandyLauncherLangEn PRIVATE UNICODE _UNICODE)
 
 # Add /bigobj flag for MSVC to handle large object files (ExprTk)
 if (MSVC)
@@ -99,6 +131,8 @@ if (MSVC)
 	# 禁用特定的第三方库警告
 	#    target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4819)
 	target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4996)
+	target_compile_options(CandyLauncherLangZh PRIVATE /bigobj /wd4251 /wd4996)
+	target_compile_options(CandyLauncherLangEn PRIVATE /bigobj /wd4251 /wd4996)
 endif ()
 
 
@@ -145,7 +179,8 @@ endif ()
 #set(CMAKE_GENERATOR_PLATFORM x64)  # 或者 x86，依据需要设置
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
 #add_compile_definitions(_WIN32_WINNT=0x0600)
-add_compile_definitions(NTDDI_VERSION=0x06010000)
+#add_compile_definitions(NTDDI_VERSION=0x06010000)
+add_compile_definitions(NTDDI_VERSION=0x0A000003)
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 8) # 64-bit
 	set(EVERYTHING_LIB ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/lib/Everything64.lib)
@@ -180,6 +215,8 @@ target_link_libraries(CandyLauncher PRIVATE
 		runtimeobject.lib
 		WinToast
 		oledb
+		autoupdater::autoupdater
+		lunasvg::lunasvg
 )
 if (MSVC)
 	target_link_libraries(CandyLauncher PRIVATE oledb WinToast)
@@ -208,6 +245,18 @@ add_custom_command(TARGET CandyLauncher POST_BUILD
 		$<TARGET_FILE:cpp-pinyin>
 		$<TARGET_FILE_DIR:CandyLauncher>)
 
+add_custom_command(TARGET CandyLauncher POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory
+		$<TARGET_FILE_DIR:CandyLauncher>/lang
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		$<TARGET_FILE:CandyLauncherLangZh>
+		$<TARGET_FILE_DIR:CandyLauncher>/lang
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		$<TARGET_FILE:CandyLauncherLangEn>
+		$<TARGET_FILE_DIR:CandyLauncher>/lang
+)
+#add_dependencies(CandyLauncher CandyLauncherLangZh CandyLauncherLangEn)
+
 # 复制多音字拼音库字典
 add_custom_command(TARGET CandyLauncher POST_BUILD
 		COMMAND ${CMAKE_COMMAND}
@@ -235,6 +284,15 @@ add_subdirectory(3rdparty/pugixml)
 if (MSVC)
 add_subdirectory(3rdparty/WinToast)
 endif ()
+add_subdirectory(3rdparty/github-releases-autoupdater)
+set(LUNASVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(PLUTOVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+# Force static build for lunasvg and plutovg
+set(BUILD_SHARED_LIBS_OLD ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+add_subdirectory(3rdparty/lunasvg)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_OLD})
+
 
 #plugins
 add_subdirectory(plugins/RunningApp)
@@ -242,6 +300,7 @@ add_subdirectory(plugins/CalcExprtk)
 add_subdirectory(plugins/Example)
 add_subdirectory(plugins/Folder)
 add_subdirectory(plugins/FeatureLaunch)
+add_subdirectory(plugins/PluginBrowser)
 add_subdirectory(plugins/Bookmark)
 add_subdirectory(plugins/CherryTree)
 add_subdirectory(plugins/UnitConverter)
@@ -257,14 +316,19 @@ add_subdirectory(plugins/TextFile)
 add_subdirectory(plugins/EverNote)
 add_subdirectory(plugins/VisualStudio)
 add_subdirectory(plugins/SmallToolBox)
+add_subdirectory(plugins/WebSearch)
+add_subdirectory(plugins/NodeJsPlugin)
 
 
 add_subdirectory(plugins/PluginTest)
 # Plugins that are rarely changed can be commented to speed up compilation.
 set(PLUGIN_DEPENDENCIES)
 
-list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
+#list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
+list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES PluginBrowserPlugin)
+list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
+list(APPEND PLUGIN_DEPENDENCIES NodeJsPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
@@ -273,44 +337,42 @@ list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ExamplePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VSCodeWorkspacesPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES JetbrainsWorkspacesPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES FolderPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
+list(APPEND PLUGIN_DEPENDENCIES FolderPlugin)
+list(APPEND PLUGIN_DEPENDENCIES RunningAppPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES CherryTreePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES UnitConverterPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES CalcPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ValueGeneratorPlugin)
-#list(APPEND PLUGIN_DEPENDENCIES BookmarkPlugin)
+list(APPEND PLUGIN_DEPENDENCIES BookmarkPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES RegistryPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES ServicePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES WindowsSearchPlugin)
 
 
-if (PLUGIN_DEPENDENCIES)
-	#add_dependencies(CandyLauncher ${PLUGIN_DEPENDENCIES})
-endif ()
-
 if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 	#	message(WARNING "come here")
-	set(PLUGIN_DEPENDENCIES
-			FeatureLaunchPlugin
-			EverNotePlugin
-			VisualStudioPlugin
-			BrowserHistoryPlugin
-			TextFilePlugin
-			ExamplePlugin
-			VSCodeWorkspacesPlugin
-			JetbrainsWorkspacesPlugin
-			FolderPlugin
-			RunningAppPlugin
-			CherryTreePlugin
-			UnitConverterPlugin
-			CalcPlugin
-			ValueGeneratorPlugin
-			BookmarkPlugin
-			RegistryPlugin
-			ServicePlugin
-			WindowsSearchPlugin
-	)
+	 set(PLUGIN_DEPENDENCIES
+	 		FeatureLaunchPlugin
+	 		PluginBrowserPlugin
+	 		EverNotePlugin
+	 		VisualStudioPlugin
+	 		BrowserHistoryPlugin
+	 		TextFilePlugin
+	 		ExamplePlugin
+	 		VSCodeWorkspacesPlugin
+	 		JetbrainsWorkspacesPlugin
+	 		FolderPlugin
+	 		RunningAppPlugin
+	 		CherryTreePlugin
+	 		UnitConverterPlugin
+	 		CalcPlugin
+	 		ValueGeneratorPlugin
+	 		BookmarkPlugin
+	 		RegistryPlugin
+	 		ServicePlugin
+	 		WindowsSearchPlugin
+			NodeJsPlugin
+	 )
 
 	set(PLUGIN_OUTPUT_DIR $<TARGET_FILE_DIR:CandyLauncher>/plugins)
 

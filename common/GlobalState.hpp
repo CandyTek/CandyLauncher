@@ -9,6 +9,7 @@
 #include "../util/json.hpp"
 #include "../model/SettingItem.hpp"
 #include "../util/FileUtil.hpp"
+#include "../Plugins/BaseAction.hpp"
 
 // 将修饰符和虚拟键码打包成一个 64 位键
 #define MAKE_HOTKEY_KEY(modifiers, vk) \
@@ -28,6 +29,10 @@ extern HINSTANCE g_hInst;
 
 // 用于拖放文件时延迟关闭窗口
 extern HHOOK g_mouseHook;
+#ifndef BUILDING_PLUGIN_DLL
+extern HHOOK g_toggleMainPanelKeyboardHook;
+extern HHOOK g_toggleMainPanelMouseHook;
+#endif
 
 extern HotkeyMap g_hotkeyMap;
 // 把 settings.json 里有序的配置项一一转成有序的配置列表，用来实现UI
@@ -44,6 +49,7 @@ extern const std::wstring NIGHT_SKIN_PATH;
 extern std::wstring EDIT_HINT_TEXT;
 extern std::string pref_force_ime_mode;
 extern std::string pref_hotkey_toggle_main_panel;
+extern std::string pref_hotkey_toggle_main_panel_mode;
 
 extern bool pref_show_window_and_release_modifier_key;
 extern bool pref_ctrl_number_launch_item;
@@ -58,6 +64,7 @@ extern bool pref_single_click_to_open;
 extern bool pref_fuzzy_match;
 extern bool pref_last_search_term_selected;
 extern bool pref_close_after_open_item;
+extern bool pref_ignore_popup_sound;
 
 extern int64_t pref_max_search_results;
 extern int last_open_window_position_x;
@@ -146,6 +153,7 @@ extern int MAIN_WINDOW_HEIGHT;
 
 extern int g_listItemWidth;
 extern int g_listItemHeight;
+extern bool g_listViewHideScrollbar;
 
 constexpr int DEFAULT_MAIN_WINDOW_WIDTH = 620;
 constexpr int DEFAULT_MAIN_WINDOW_HEIGHT = 480;
@@ -171,3 +179,8 @@ static uint8_t GetTabIndexForSetting(const std::string& name) {
 
 // 编辑框文本缓存
 inline std::wstring editTextBuffer;
+
+// 用于显示的列表
+inline std::vector<std::shared_ptr<BaseAction>> allActions;
+inline std::vector<std::shared_ptr<BaseAction>> baseAppLaunchActions;
+inline std::vector<std::shared_ptr<BaseAction>> filteredActions;

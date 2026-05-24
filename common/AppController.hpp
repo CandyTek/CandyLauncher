@@ -7,16 +7,26 @@
 #include "dwmapi.h"
 #include "../window/SettingsWindow.hpp"
 #include "../util/ShortcutUtil.hpp"
+#include "../util/UpdateManager.hpp"
 // #include "ListedRunnerPlugin.h"
 #include "../manager/ListViewManager.hpp"
 #include <atomic>
 
+#include "util/FullScreenDetectUtil.hpp"
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+constexpr bool needOpenDebugCmd = false;
+constexpr bool needOpenShell32IconViewer = false;
+constexpr bool needOpenIndexedManager = false;
+constexpr bool needOpenSettingWindow = false;
+constexpr bool needMinimizeSettingWindow = true;
+#else
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
 constexpr bool needOpenSettingWindow = false;
 constexpr bool needMinimizeSettingWindow = false;
-
+#endif
 
 // --- (在此处粘贴上面定义的 MAKE_HOTKEY_KEY, HotkeyMap) ---
 #define MAKE_HOTKEY_KEY(modifiers, vk) (static_cast<UINT64>(modifiers) << 32 | static_cast<UINT64>(vk))
@@ -67,93 +77,6 @@ static bool AddHotkey(const std::wstring& hotkeyStr, UINT64 action) {
 
 static bool AddHotkey(const std::string& hotkeyStr, UINT64 action) {
 	return AddHotkey(utf8_to_wide(hotkeyStr), action);
-}
-
-static bool shouldShowInCurrentWindowMode(HWND hwnd) {
-	if (hwnd == nullptr) {
-		return true;
-	}
-	// 获取窗口样式
-	const LONG style = GetWindowLong(hwnd, GWL_STYLE);
-	const LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-	if (style & WS_CAPTION || style & WS_THICKFRAME || exStyle & WS_EX_WINDOWEDGE) {
-		// 如果有这些样式，基本可以确定不是全屏
-		return true;
-	}
-
-	// 获取窗口所在屏幕
-	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-	MONITORINFO monitorInfo = {};
-	monitorInfo.cbSize = sizeof(monitorInfo);
-	GetMonitorInfo(hMonitor, &monitorInfo);
-	RECT screenRect = monitorInfo.rcMonitor;
-
-	// 获取窗口位置
-	RECT windowRect;
-	// 获取失败，默认窗口模式
-	if (!GetWindowRect(hwnd, &windowRect)) return true;
-
-	// 检查是否为无边框全屏
-	if ((style & WS_BORDER) == 0 &&
-		windowRect.left == screenRect.left &&
-		windowRect.top == screenRect.top &&
-		windowRect.right == screenRect.right &&
-		windowRect.bottom == screenRect.bottom) {
-		// 检查是否是桌面（类名为 "Progman"）
-		char className[256];
-		GetClassNameA(hwnd, className, sizeof(className));
-		if (std::string(className) == "Progman") {
-			return true;
-		}
-		return false;
-	}
-
-	// 检查是否全屏（隐藏任务栏等）
-	if ((style & WS_CAPTION) == 0 &&
-		windowRect.left == screenRect.left &&
-		windowRect.top == screenRect.top &&
-		windowRect.right == screenRect.right &&
-		windowRect.bottom == screenRect.bottom) {
-		return false;
-	}
-
-	return true;
-}
-
-static bool shouldShowInCurrentWindowTopmostMode(HWND hwnd) {
-	if (hwnd == nullptr) {
-		return true;
-	}
-	// 获取窗口样式
-	const LONG style = GetWindowLong(hwnd, GWL_STYLE);
-	const LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-	if (style & WS_CAPTION || style & WS_THICKFRAME || exStyle & WS_EX_WINDOWEDGE) {
-		// 如果有这些样式，基本可以确定不是全屏
-		return true;
-	}
-
-	// 获取窗口所在屏幕
-	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-	MONITORINFO monitorInfo = {};
-	monitorInfo.cbSize = sizeof(monitorInfo);
-	GetMonitorInfo(hMonitor, &monitorInfo);
-	RECT screenRect = monitorInfo.rcMonitor;
-
-	// 获取窗口位置
-	RECT windowRect;
-	// 获取失败，默认窗口模式
-	if (!GetWindowRect(hwnd, &windowRect)) return true;
-
-	// 检查是否为无边框全屏
-	if (exStyle & WS_EX_TOPMOST &&
-		windowRect.left == screenRect.left &&
-		windowRect.top == screenRect.top &&
-		windowRect.right == screenRect.right &&
-		windowRect.bottom == screenRect.bottom) {
-		return false;
-	}
-
-	return true;
 }
 
 static void userSettingsAfterTheAppStart() {
@@ -248,107 +171,6 @@ static void doPrefChanged() {
 	}
 }
 
-inline void DoMyContextMenuAction(UINT cmd, int index, std::shared_ptr<BaseAction>& action) {
-	switch (cmd) {
-	case IDM_REMOVE_ITEM:
-		{
-			// 从 ListView 以及你的数据结构移除
-			//			ListView_DeleteItem(ListViewManager::hListView, index);
-			//			ListViewManager::filteredActions.erase(ListViewManager::filteredActions.begin() + index);
-		}
-		break;
-	case IDM_RENAME_ITEM:
-		{
-			// A. 只改 ListView 的显示名：启动就地编辑
-			//			ListView_EditLabel(ListViewManager::hListView, index);
-			// B. 如果你想真的重命名文件：
-			//    建议在 LVN_ENDLABELEDIT 里拿到新名字，调用 MoveFileExW(old, new, 0)
-		}
-		break;
-	case IDM_RUN_AS_ADMIN:
-		// action->InvokeWithTarget(nullptr, true);
-		// action->Invoke();
-		break;
-	case IDM_OPEN_IN_CONSOLE:
-		// OpenConsoleHere(SaveGetShortcutTargetAndReturn(action->GetTargetPath()));
-		break;
-	case IDM_KILL_PROCESS:
-		{
-			// std::wstring actualPath = GetShortcutTarget(action->GetTargetPath());
-			// if (systemProcesses.find(MyToLower(actualPath)) != systemProcesses.end()) {
-			// 	MessageBoxW(nullptr, (actualPath + L" 是系统关键进程，不建议终止。").c_str(),
-			// 				L"警告", MB_OK | MB_ICONWARNING | MB_TOPMOST);
-			// } else {
-			// 	int n = KillProcessByImagePath(actualPath);
-			// 	using namespace std::string_literals;
-			// 	Println(L"终止"s + std::to_wstring(n));
-			// }
-		}
-		break;
-	case IDM_COPY_PATH:
-		// CopyTextToClipboard(g_mainHwnd, action->GetTargetPath());
-		break;
-	case IDM_COPY_TARGET_PATH:
-		{
-			// std::wstring actualPath = GetShortcutTarget(action->GetTargetPath());
-			// CopyTextToClipboard(g_mainHwnd, actualPath);
-		}
-		break;
-	default: break;
-	}
-}
-
-static UINT ShowMyContextMenu(HWND hWnd, const std::wstring& path, POINT screenPt) {
-	HMENU hMenu = CreatePopupMenu();
-	// todo: 写完索引管理器时，来完善这个菜单项
-	AppendMenuW(hMenu, MF_STRING, IDM_REMOVE_ITEM, L"排除该索引(未完善)");
-	AppendMenuW(hMenu, MF_STRING, IDM_RENAME_ITEM, L"重映射命名该索引(未完善)");
-	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-	AppendMenuW(hMenu, MF_STRING, IDM_RUN_AS_ADMIN, L"以管理员身份运行");
-	AppendMenuW(hMenu, MF_STRING, IDM_OPEN_IN_CONSOLE, L"在控制台打开该项");
-	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-
-	AppendMenuW(hMenu, MF_STRING, IDM_KILL_PROCESS, L"杀死进程");
-
-	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-	AppendMenuW(hMenu, MF_STRING, IDM_COPY_PATH, L"复制路径");
-
-	AppendMenuW(hMenu, MF_STRING, IDM_COPY_TARGET_PATH, L"复制目标路径");
-
-	// 根据上下文可禁用一些项（举例：路径不存在则灰掉）
-	DWORD attr = GetFileAttributesW(path.c_str());
-	if (attr == INVALID_FILE_ATTRIBUTES) {
-		EnableMenuItem(hMenu, IDM_RUN_AS_ADMIN, MF_BYCOMMAND | MF_GRAYED);
-		EnableMenuItem(hMenu, IDM_OPEN_IN_CONSOLE, MF_BYCOMMAND | MF_GRAYED);
-		EnableMenuItem(hMenu, IDM_KILL_PROCESS, MF_BYCOMMAND | MF_GRAYED);
-		EnableMenuItem(hMenu, IDM_COPY_TARGET_PATH, MF_BYCOMMAND | MF_GRAYED);
-	} else {
-		if (MyEndsWith(path, {L".lnk"})) {
-			std::wstring actualPath = GetShortcutTarget(path);
-			if (!MyEndsWith(actualPath, {L".exe"})) {
-				EnableMenuItem(hMenu, IDM_KILL_PROCESS, MF_BYCOMMAND | MF_GRAYED);
-			}
-		} else {
-			EnableMenuItem(hMenu, IDM_COPY_TARGET_PATH, MF_BYCOMMAND | MF_GRAYED);
-			if (!MyEndsWith(path, {L".exe"})) {
-				EnableMenuItem(hMenu, IDM_KILL_PROCESS, MF_BYCOMMAND | MF_GRAYED);
-			}
-		}
-	}
-
-
-	SetForegroundWindow(hWnd); // 避免菜单失焦
-	UINT cmd = TrackPopupMenuEx(
-		hMenu,
-		TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NOANIMATION,
-		screenPt.x, screenPt.y,
-		hWnd,
-		nullptr
-	);
-	DestroyMenu(hMenu);
-	return cmd; // 0 表示没点任何命令（点了空白/ESC）
-}
-
 static void TrayMenuClick(const int position) {
 	switch (position) {
 	case TRAY_MENU_ID_ABOUT: // 
@@ -378,10 +200,16 @@ static void TrayMenuClick(const int position) {
 		}
 		break;
 	case TRAY_MENU_ID_HELP: // 打开 Github wiki 页面
-		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki", nullptr, nullptr, SW_SHOW);
+		if (g_uiLanguageCode == L"zh-CN") {
+			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/%E4%B8%AD%E6%96%87", nullptr, nullptr, SW_SHOW);
+		} else {
+			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/English", nullptr, nullptr, SW_SHOW);
+		}
 		break;
 	case TRAY_MENU_ID_GITHUB: // 打开 Github 页面
 		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher", nullptr, nullptr, SW_SHOW);
+		break;
+	case TRAY_MENU_ID_CHECK_UPDATE: AppUpdate::StartCheckForUpdates(true);
 		break;
 	case TRAY_MENU_ID_RESTART: // 重启
 		{
@@ -455,9 +283,7 @@ inline std::unordered_map<std::string, std::function<void()>> getAppLaunchAction
 	};
 
 	callbacks["checkUpdate"] = []() {
-		// 打开项目主页检查更新
-		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/releases", nullptr, nullptr,
-					SW_SHOW);
+		AppUpdate::StartCheckForUpdates(true);
 	};
 
 	callbacks["feedback"] = []() {
@@ -521,14 +347,14 @@ inline int mainWindowHotkey(WPARAM wParam) {
 	switch (wParam) {
 	case HOTKEY_ID_TOGGLE_MAIN_PANEL:
 		{
-			ConsolePrintln(L"Hotkey Alt + K");
+			ConsolePrintln(L"Hotkey 切换主面板");
 			if (IsWindowVisible(g_mainHwnd)) {
 				HideWindow();
 			} else {
 				// 判断全屏应用模式
 				bool shouldShow = true;
 				if (pref_hide_in_fullscreen) shouldShow = shouldShowInCurrentWindowMode(GetForegroundWindow());
-				else if (pref_hide_in_topmost_fullscreen) shouldShow = shouldShowInCurrentWindowTopmostMode(GetForegroundWindow());
+				else if (pref_hide_in_topmost_fullscreen) shouldShow = !isLikelyFullscreenGame(GetForegroundWindow());
 
 				if (shouldShow) {
 					if (pref_show_window_and_release_modifier_key) ReleaseAltKey();

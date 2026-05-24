@@ -72,63 +72,24 @@ static std::string MyTrim(const std::string& str) {
 	return str.substr(first, last - first + 1);
 }
 
-// 大小写不敏感的 wstring 后缀判断
-inline bool MyEndsWith(const std::wstring& str, const std::wstring& suffix) {
-	if (str.size() < suffix.size()) return false;
-
-	auto itStr = str.end() - static_cast<int>(suffix.size());
-	auto itSuf = suffix.begin();
-
-	while (itSuf != suffix.end()) {
-		if (towlower(*itStr) != towlower(*itSuf)) return false;
-		++itStr;
-		++itSuf;
-	}
-	return true;
-}
-
-// 多个后缀匹配
-inline bool MyEndsWith(const std::wstring& str,
-						std::initializer_list<std::wstring> suffixes) {
-	for (const auto& suffix : suffixes) {
-		if (MyEndsWith(str, suffix)) return true;
-	}
-	return false;
+inline std::wstring NormalizePath(std::wstring path) {
+	std::replace(path.begin(), path.end(), L'/', L'\\');
+	return path;
 }
 
 // 大小写敏感的 wstring 前缀判断
-inline bool MyStartsWith2(const std::wstring& str, const std::wstring& prefix) {
+inline bool StartsWith(const std::wstring& str, const std::wstring& prefix) {
 	if (prefix.size() > str.size()) return false;
 	return str.compare(0, prefix.size(), prefix) == 0;
 }
 
-// 大小写敏感的 wstring 前缀判断
-inline bool MyEndsWith2(const std::wstring& str, const std::wstring& prefix) {
+inline bool StartsWith(const std::string& str, const std::string& prefix) {
 	if (prefix.size() > str.size()) return false;
-	return str.compare(str.size() - prefix.size(), prefix.size(), prefix) == 0;
-}
-// 大小写敏感的 wstring 前缀判断
-inline bool MyEndsWith2(const std::string& str, const std::string& prefix) {
-	if (prefix.size() > str.size()) return false;
-	return str.compare(str.size() - prefix.size(), prefix.size(), prefix) == 0;
-}
-
-inline bool MyStartsWith3(const std::wstring& str, const std::wstring& prefix) {
-	if (str.size() < prefix.size()) return false;
-
-	auto itStr = str.begin();
-	auto itPrefix = prefix.begin();
-
-	while (itPrefix != prefix.end()) {
-		if (*itStr != *itPrefix) return false;
-		++itStr;
-		++itPrefix;
-	}
-	return true;
+	return str.compare(0, prefix.size(), prefix) == 0;
 }
 
 // 大小写不敏感的 wstring 前缀判断
-inline bool MyStartsWith(const std::wstring& str, const std::wstring& prefix) {
+inline bool StartsWithIgnoreCase(const std::wstring& str, const std::wstring& prefix) {
 	if (str.size() < prefix.size()) return false;
 
 	auto itStr = str.begin();
@@ -142,14 +103,86 @@ inline bool MyStartsWith(const std::wstring& str, const std::wstring& prefix) {
 	return true;
 }
 
-// 多个后缀匹配
-inline bool MyStartsWith(const std::wstring& str,
-						std::initializer_list<std::wstring> suffixes) {
-	for (const auto& suffix : suffixes) {
-		if (MyEndsWith(str, suffix)) return true;
+// 多个前缀匹配
+inline bool StartsWithAny(const std::wstring& str,
+						std::initializer_list<std::wstring> prefixes) {
+	for (const auto& prefix : prefixes) {
+		if (StartsWith(str, prefix)) return true;
 	}
 	return false;
 }
+
+
+// 大小写敏感的 wstring 后缀判断
+inline bool EndsWith(const std::wstring& str, const std::wstring& prefix) {
+	if (prefix.size() > str.size()) return false;
+	return str.compare(str.size() - prefix.size(), prefix.size(), prefix) == 0;
+}
+
+inline bool EndsWith(const std::string& str, const std::string& prefix) {
+	if (prefix.size() > str.size()) return false;
+	return str.compare(str.size() - prefix.size(), prefix.size(), prefix) == 0;
+}
+
+// 大小写不敏感的 wstring 后缀判断
+[[deprecated]]
+inline bool EndsWithIgnoreCase2(const std::wstring& str, const std::wstring& suffix) {
+	if (str.size() < suffix.size()) return false;
+
+	auto itStr = str.end() - static_cast<int>(suffix.size());
+	auto itSuf = suffix.begin();
+
+	while (itSuf != suffix.end()) {
+		if (towlower(*itStr) != towlower(*itSuf)) return false;
+		++itStr;
+		++itSuf;
+	}
+	return true;
+}
+
+inline bool EndsWithIgnoreCase(std::wstring_view str, std::wstring_view suffix)
+{
+	const size_t strSize = str.size();
+	const size_t suffixSize = suffix.size();
+
+	if (strSize < suffixSize) {
+		return false;
+	}
+
+	const wchar_t* pStr = str.data() + (strSize - suffixSize);
+	const wchar_t* pSuf = suffix.data();
+
+	for (size_t i = 0; i < suffixSize; ++i) {
+		if (std::towlower(pStr[i]) != std::towlower(pSuf[i])) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+// 多个后缀匹配
+inline bool EndsWithAny(const std::wstring& str,
+						std::initializer_list<std::wstring> suffixes) {
+	for (const auto& suffix : suffixes) {
+		if (EndsWith(str, suffix)) return true;
+	}
+	return false;
+}
+inline bool EndsWithAnyIgnoreCase(
+	std::wstring_view str,
+	std::initializer_list<std::wstring_view> suffixes)
+{
+	for (std::wstring_view suffix : suffixes) {
+		if (EndsWithIgnoreCase(str, suffix)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 
 inline bool IsChineseChar2(const std::wstring& str) {
 	return str[0] >= 0x4E00 && str[0] <= 0x9FFF;
@@ -344,4 +377,3 @@ inline std::wstring sanitizeVisible(const std::wstring& input) {
 	if (start == std::wstring::npos) return L"";
 	return result.substr(start, end - start + 1);
 }
-
