@@ -6,6 +6,7 @@
 #include "BookmarkUtil.hpp"
 #include "../../util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
+#include "util/HotkeyUtils.h"
 
 namespace {
 std::wstring EscapeHtmlText(const std::wstring& input) {
@@ -59,12 +60,29 @@ std::wstring EscapeRtfText(const std::wstring& input) {
 	}
 	return result;
 }
+
+static bool LaunchBookmarkUrl(const std::wstring& url, const bool useSubBrowser) {
+	const std::wstring& configuredBrowser = useSubBrowser
+		? (g_subbrowser.empty() ? g_browser : g_subbrowser)
+		: g_browser;
+
+	if (configuredBrowser.empty()) {
+		return reinterpret_cast<INT_PTR>(
+			ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL)
+		) > 32;
+	}
+
+	return reinterpret_cast<INT_PTR>(
+		ShellExecuteW(nullptr, L"open", configuredBrowser.c_str(), url.c_str(), nullptr, SW_SHOWNORMAL)
+	) > 32;
+}
 }
 
 class BookmarkPlugin : public IPlugin {
 private:
 	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
 	std::wstring startStr = L"bm ";
+	ParsedHotkey hkOpenWithSubBrowser;
 
 public:
 	BookmarkPlugin() = default;
@@ -124,6 +142,20 @@ public:
 			"title": "浏览器书签文件路径",
 			"subPage": "plugin",
 			"defValue": "chrome"
+		},
+		{
+			"key": "com.candytek.bookmarkplugin.mainbrowser",
+			"title": "指定主浏览器路径",
+			"type": "string",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.bookmarkplugin.subbrowser",
+			"title": "指定副浏览器路径（Alt + Enter）",
+			"type": "string",
+			"subPage": "plugin",
+			"defValue": ""
 		}
 	]
 }
@@ -134,6 +166,9 @@ public:
 	void OnUserSettingsLoadDone() override {
 		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.start_str").stringValue);
 		isMatchTextUrl = m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.matchtext_url").boolValue;
+		g_browser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.mainbrowser").stringValue);
+		g_subbrowser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.subbrowser").stringValue);
+		hkOpenWithSubBrowser = ParseHotkeyString("xx(1)(13)");
 		
 		// auto it = settings_map.find("pref_pinyin_mode");
 		// if (it != settings_map.end()) {
@@ -162,18 +197,25 @@ public:
 		return {};
 	}
 
+	int OnSendHotKey(const std::shared_ptr<BaseAction> action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+		if (hkOpenWithSubBrowser.matches(vk, currentModifiers)) {
+			auto bookmarkAction = std::dynamic_pointer_cast<BookmarkAction>(action);
+			if (!m_host || !bookmarkAction || bookmarkAction->url.empty()) return 0;
+			LaunchBookmarkUrl(bookmarkAction->url, true);
+			m_host->PluginTaskDone();
+			return 1;
+		}
+		return 0;
+	}
+
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
 		auto action1 = std::dynamic_pointer_cast<BookmarkAction>(action);
 		if (!action1) return false;
-		try {
-			ShellExecuteW(NULL, L"open", (action1->url).c_str(), NULL, NULL, SW_SHOWNORMAL);
-		} catch (...) {
-			return false;
-		}
+		if (action1->url.empty()) return false;
 		// const std::wstring command = L"start " + action1->url;
 		// system(wide_to_utf8(command).c_str());
-		return true;
+		return LaunchBookmarkUrl(action1->url, false);
 	}
 	bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) override {
 		auto bookmarkAction = std::dynamic_pointer_cast<BookmarkAction>(action);
