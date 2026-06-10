@@ -15,4 +15,5 @@ struct SearchEngineInfo {
 
 inline std::vector<SearchEngineInfo> g_searchEngines;
 inline std::wstring g_browser; // empty = use default browser
+inline std::wstring g_subbrowser; // empty = use default browser
 

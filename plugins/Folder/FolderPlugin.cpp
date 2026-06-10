@@ -26,6 +26,8 @@
 #include <mutex>
 #include <atomic>
 
+#include "util/HotkeyUtils.h"
+
 
 // 任务队列系统
 constexpr const char* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = "openFolderIndexedManager";
@@ -148,47 +150,6 @@ inline bool DeleteSendToEntry(const std::wstring& shortcutName) {
 	return ok;
 }
 
-
-struct ParsedHotkey {
-	UINT vk = 0;
-	UINT mod = 0;
-	bool valid = false;
-
-	bool matches(UINT inVk, UINT inMod) const {
-		return valid && inVk == vk && inMod == mod;
-	}
-};
-
-static ParsedHotkey ParseHotkeyString(const std::string& utf8Str) {
-	if (utf8Str.empty()) return {};
-	std::wstring str = utf8_to_wide(utf8Str);
-
-	size_t posEnd = str.rfind(L')');
-	size_t posStart = str.rfind(L'(', posEnd);
-	if (posStart == std::wstring::npos || posEnd == std::wstring::npos || posEnd <= posStart + 1) return {};
-
-	ParsedHotkey h;
-	try {
-		h.vk = static_cast<UINT>(std::stoi(str.substr(posStart + 1, posEnd - posStart - 1)));
-	} catch (...) {
-		return {};
-	}
-
-	if (posStart > 0) {
-		size_t posEnd2 = posStart - 1;
-		size_t posStart2 = str.rfind(L'(', posEnd2);
-		if (posStart2 != std::wstring::npos && posEnd2 > posStart2) {
-			try {
-				h.mod = static_cast<UINT>(std::stoi(str.substr(posStart2 + 1, posEnd2 - posStart2 - 1)));
-			} catch (...) {
-			}
-		}
-	}
-
-	h.valid = true;
-	return h;
-}
-
 static std::wstring NormalizeActionTitleForDedup(const std::wstring& title) {
 	std::wstring normalized = title;
 	std::transform(normalized.begin(), normalized.end(), normalized.begin(), towlower);
@@ -263,7 +224,7 @@ public:
 		}
 		// 确定要使用的线程数，通常基于硬件核心数
 		// hardware_concurrency() 可能返回0，所以至少保证1个线程
-		unsigned int numThreads = std::min<size_t>(std::thread::hardware_concurrency(), shareds.size());
+		size_t numThreads = std::min<size_t>(std::thread::hardware_concurrency(), shareds.size());
 		if (numThreads == 0) {
 			numThreads = 1;
 		}

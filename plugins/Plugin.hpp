@@ -68,6 +68,7 @@ public:
 	virtual std::vector<PluginCatalogEntry> GetPluginCatalogEntries(uint16_t callerPluginId) = 0;
 	virtual bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) = 0;
 	virtual void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) = 0;
+	virtual void PluginTaskDone() = 0;
 };
 
 class IPlugin {
@@ -113,7 +114,7 @@ public:
 
 	virtual void OnUserInput(const std::wstring& input) {
 	}
-	
+	// 插件在这里监听 item 选中时的快捷键事件
 	virtual int OnSendHotKey(const std::shared_ptr<BaseAction> action,const UINT vk,const UINT currentModifiers,const WPARAM wparam) {
 		return 0;
 	}

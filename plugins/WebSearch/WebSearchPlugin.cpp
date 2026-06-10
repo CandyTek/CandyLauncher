@@ -7,6 +7,7 @@
 #include "WebSearchHotkeyManager.hpp"
 #include "SearchManagerWindow.hpp"
 #include "util/StringUtil.hpp"
+#include "util/HotkeyUtils.h"
 
 // HotkeyEditView.hpp (via SearchManagerWindow.hpp) includes GlobalState.hpp which
 // declares extern g_mainHwnd. Provide a local stub — the code path that uses it
@@ -15,10 +16,27 @@ HWND g_mainHwnd = nullptr;
 
 inline std::vector<std::shared_ptr<BaseAction>> allEngineActions;
 
+static bool LaunchWebSearchUrl(const std::wstring& url, bool useSubBrowser) {
+	const std::wstring& configuredBrowser = useSubBrowser
+		? (g_subbrowser.empty() ? g_browser : g_subbrowser)
+		: g_browser;
+
+	if (configuredBrowser.empty()) {
+		return reinterpret_cast<INT_PTR>(
+			ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL)
+		) > 32;
+	}
+
+	return reinterpret_cast<INT_PTR>(
+		ShellExecuteW(nullptr, L"open", configuredBrowser.c_str(), url.c_str(), nullptr, SW_SHOWNORMAL)
+	) > 32;
+}
+
 class WebSearchPlugin : public IPlugin {
 public:
 	WebSearchPlugin() = default;
 	~WebSearchPlugin() override = default;
+	ParsedHotkey hkOpenWithSubBrowser;
 
 	std::wstring GetPluginName() const override {
 		return L"网络搜索";
@@ -51,8 +69,15 @@ public:
 	"version": 1,
 	"prefList": [
 		{
-			"key": "com.candytek.websearchplugin.browser",
-			"title": "指定浏览器路径（留空使用默认浏览器）",
+			"key": "com.candytek.websearchplugin.mainbrowser",
+			"title": "指定主浏览器路径",
+			"type": "string",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.websearchplugin.subbrowser",
+			"title": "指定副浏览器路径（Alt + Enter）",
 			"type": "string",
 			"subPage": "plugin",
 			"defValue": ""
@@ -70,7 +95,9 @@ public:
 	}
 
 	void OnUserSettingsLoadDone() override {
-		g_browser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.websearchplugin.browser").stringValue);
+		g_browser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.websearchplugin.mainbrowser").stringValue);
+		g_subbrowser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.websearchplugin.subbrowser").stringValue);
+		hkOpenWithSubBrowser = ParseHotkeyString("xx(1)(13)");
 	}
 
 	void OnSettingItemExecute(const SettingItem* setting, HWND parentHwnd) override {
@@ -94,8 +121,8 @@ public:
 			action->matchText = m_host->GetTheProcessedMatchingText(engine.key + L" " + engine.name);
 			allEngineActions.push_back(action);
 		}
-
-		WS_StartHotkeyThread();
+		// 暂时还不知道用作什么
+		// WS_StartHotkeyThread();
 
 		ConsolePrintln(L"WebSearch Plugin", L"Loaded " + std::to_wstring(allEngineActions.size()) + L" engines");
 	}
@@ -130,19 +157,24 @@ public:
 
 		return {};
 	}
+	
+	int OnSendHotKey(const std::shared_ptr<BaseAction> action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+		if (hkOpenWithSubBrowser.matches(vk, currentModifiers)) {
+			auto a = std::dynamic_pointer_cast<WebSearchAction>(action);
+			if (!a || a->searchUrl.empty()) return false;
+			LaunchWebSearchUrl(a->searchUrl, true);
+			m_host->PluginTaskDone();
+			return 1;
+		}
+		return 0;
+	}
 
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
 		auto a = std::dynamic_pointer_cast<WebSearchAction>(action);
 		if (!a || a->searchUrl.empty()) return false;
 
-		if (g_browser.empty()) {
-			ShellExecuteW(NULL, L"open", a->searchUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
-		} else {
-			ShellExecuteW(NULL, L"open", g_browser.c_str(), a->searchUrl.c_str(), NULL, SW_SHOWNORMAL);
-		}
-
-		return true;
+		return LaunchWebSearchUrl(a->searchUrl, false);
 	}
 
 	void Shutdown() override {

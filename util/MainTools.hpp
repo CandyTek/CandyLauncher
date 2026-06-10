@@ -35,6 +35,7 @@
 #include "../model/TraverseOptions.hpp"
 #include <propvarutil.h>
 
+#include "HotkeyUtils.h"
 #include "ShortCutDetectUtil.hpp"
 
 struct MonitorData {
@@ -753,41 +754,6 @@ inline bool OpenConsoleHere(const std::wstring& targetPath) {
 	sei.lpDirectory = dir;
 	sei.nShow = SW_SHOWNORMAL;
 	return ShellExecuteExW(&sei) != FALSE;
-}
-
-static bool ParseHotkeyString(const std::string& hotkeyStr, UINT& modifiers, UINT& vk) {
-	modifiers = 0;
-	vk = 0;
-
-	size_t posStart = hotkeyStr.rfind('(');
-	size_t posEnd = hotkeyStr.rfind(')');
-
-	if (posStart == std::string::npos || posEnd == std::string::npos || posEnd <= posStart + 1) {
-		return false;
-	}
-
-	const std::string vkStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
-	try {
-		vk = std::stoi(vkStr);
-	} catch (...) {
-		return false;
-	}
-
-	if (posStart == 0) return true;
-
-	posEnd = posStart - 1;
-	posStart = hotkeyStr.rfind('(', posEnd);
-	if (posStart == std::string::npos || posEnd <= posStart + 1) {
-		return true;
-	}
-
-	const std::string modStr = hotkeyStr.substr(posStart + 1, posEnd - posStart - 1);
-	try {
-		modifiers = std::stoi(modStr);
-	} catch (...) {
-		return false;
-	}
-	return true;
 }
 
 static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId);

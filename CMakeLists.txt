@@ -84,6 +84,7 @@ add_executable(CandyLauncher WIN32
 		view/CustomEdit.hpp
 		util/FullScreenDetectUtil.hpp
 		util/ShortCutDetectUtil.hpp
+		util/HotkeyUtils.h
 
 )
 

@@ -91,15 +91,6 @@ static void userSettingsAfterTheAppStart() {
 	}
 
 	bool pref_show_tray_icon = (g_settings_map["pref_show_tray_icon"].boolValue);
-	std::wstring pref_hotkey_open_file_location = utf8_to_wide(
-		g_settings_map["pref_hotkey_open_file_location"].stringValue);
-	std::wstring pref_hotkey_open_target_location = utf8_to_wide(
-		g_settings_map["pref_hotkey_open_target_location"].stringValue);
-	std::wstring pref_hotkey_open_with_clipboard_params = utf8_to_wide(
-		g_settings_map["pref_hotkey_open_with_clipboard_params"].stringValue);
-	std::wstring pref_hotkey_run_item_as_admin = utf8_to_wide(
-		g_settings_map["pref_hotkey_run_item_as_admin"].stringValue);
-
 	if (pref_show_tray_icon) {
 		ShowTrayIcon();
 		//		AddTrayIcon(g_mainHwnd);
@@ -111,12 +102,6 @@ static void userSettingsAfterTheAppStart() {
 	// 这里重新注册快捷键的话要设置一下延时，不然不生效
 	SetTimer(g_mainHwnd, TIMER_SET_GLOBAL_HOTKEY, 100, nullptr);
 	g_hotkeyMap.clear();
-	if (!pref_hotkey_open_file_location.empty()) AddHotkey(pref_hotkey_open_file_location, HOTKEY_ID_OPEN_FILE_LOCATION);
-	if (!pref_hotkey_open_target_location.empty()) AddHotkey(pref_hotkey_open_target_location, HOTKEY_ID_OPEN_TARGET_LOCATION);
-	if (!pref_hotkey_open_with_clipboard_params.empty())
-		AddHotkey(pref_hotkey_open_with_clipboard_params,
-				HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS);
-	if (!pref_hotkey_run_item_as_admin.empty()) AddHotkey(pref_hotkey_run_item_as_admin, HOTKEY_ID_RUN_ITEM_AS_ADMIN);
 	if (!(g_settings_map["pref_hotkey_show_setting"].stringValue).empty())
 		AddHotkey(
 			g_settings_map["pref_hotkey_show_setting"].stringValue, HOTKEY_ID_SHOW_SETTING_WINDOW);
@@ -383,20 +368,7 @@ inline void editControlHotkey(WPARAM wParam) {
 		bool needHide = true;
 		switch (wParam) {
 		case HOTKEY_ID_RUN_ITEM:
-			// it->Invoke();
 			needHide = PluginManager::DispatchActionExecute(it, currectActionArg);
-			break;
-		case HOTKEY_ID_OPEN_FILE_LOCATION:
-			// it->InvokeOpenFolder();
-			break;
-		case HOTKEY_ID_OPEN_TARGET_LOCATION:
-			// it->InvokeOpenGoalFolder();
-			break;
-		case HOTKEY_ID_RUN_ITEM_AS_ADMIN:
-			// it->InvokeWithTarget(nullptr, TRUE);
-			break;
-		case HOTKEY_ID_OPEN_WITH_CLIPBOARD_PARAMS:
-			// it->InvokeWithTargetClipBoard();
 			break;
 		case HOTKEY_ID_SHOW_SETTING_WINDOW: ShowSettingsWindow(g_hInst, nullptr);
 			break;
