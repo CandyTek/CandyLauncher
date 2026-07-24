@@ -319,6 +319,7 @@ add_subdirectory(plugins/VisualStudio)
 add_subdirectory(plugins/SmallToolBox)
 add_subdirectory(plugins/WebSearch)
 add_subdirectory(plugins/NodeJsPlugin)
+add_subdirectory(plugins/AirPods)
 
 
 add_subdirectory(plugins/PluginTest)
@@ -330,6 +331,7 @@ list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
 list(APPEND PLUGIN_DEPENDENCIES PluginBrowserPlugin)
 list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
 list(APPEND PLUGIN_DEPENDENCIES NodeJsPlugin)
+list(APPEND PLUGIN_DEPENDENCIES AirPodsBatteryPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
@@ -373,6 +375,7 @@ if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 	 		ServicePlugin
 	 		WindowsSearchPlugin
 			NodeJsPlugin
+			AirPodsBatteryPlugin
 	 )
 
 	set(PLUGIN_OUTPUT_DIR $<TARGET_FILE_DIR:CandyLauncher>/plugins)
