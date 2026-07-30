@@ -10,6 +10,7 @@ public:
 
 	int nodeId = 0;
 	std::wstring url;
+	std::wstring text;
 
 
 	// 图标，只要是文件就可以
