@@ -165,8 +165,7 @@ static void TraversePATHExecutables(Callback&& callback, TraverseOptions& option
 			// TraverseFilesForEverythingSDK(pathDir, options, callback);
 		} catch (const std::exception& e) {
 			// 记录错误但继续处理其他目录
-			std::wcout << L"Error indexing PATH directory " << pathDir
-				<< L": " << utf8_to_wide(e.what()) << std::endl;
+			Loge(L"FileSystemTraverser", L"Error indexing PATH directory ", pathDir, L": ", e.what());
 		}
 	}
 }

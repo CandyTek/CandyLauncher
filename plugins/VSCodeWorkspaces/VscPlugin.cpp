@@ -146,7 +146,7 @@ public:
 		const std::wstring arguments = L"--folder-uri '" + workspaceAction->originalUri + L"'";
 		const std::wstring arguments2 = L"-Command \".'" + vscodePath + L"' " + arguments + L"\"";
 
-		PluginConsolePrintln(L"run", vscodePath + L" arg:" + arguments2);
+		Logi(L"VSCode", L"run: ", vscodePath, L" arg: ", arguments2);
 
 		// vscode 毛病比较多，使用普通的ShellExecuteW 和 CreateProcessW 都会有很大的概率打不开
 		HINSTANCE hInstance = ShellExecuteW(

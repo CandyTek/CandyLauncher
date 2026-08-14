@@ -37,7 +37,7 @@ inline void CreateActionsFromNodes(
 	std::vector<std::shared_ptr<BaseAction>>& allActions) {
 	std::unordered_map<int, NodePath> id_path;
 
-	std::wcout << L"[CherryTree] Generating path mappings for " << map_father.size() << L" nodes..." << std::endl;
+	Logi(L"CherryTree", L"Generating path mappings for ", map_father.size(), L" nodes...");
 	for (const auto& [child, father] : map_father) {
 		auto childNode = map_node.find(child);
 		if (childNode == map_node.end()) continue;
@@ -47,7 +47,7 @@ inline void CreateActionsFromNodes(
 		std::string path_string_file = path_string;
 
 		if (childNode->second.tags.find(u8"屏蔽") != std::string::npos) {
-			ConsolePrintln(L"db_parse", "屏蔽节点 " + std::to_string(child) + " " + childNode->second.name);
+			// ConsolePrintln(L"db_parse", L"屏蔽节点 " + std::to_wstring(child) + L" " + utf8_to_wide(childNode->second.name));
 			continue;
 		}
 
@@ -56,19 +56,19 @@ inline void CreateActionsFromNodes(
 		visited.insert(child);
 		while (true) {
 			if (!visited.insert(v).second) {
-				ConsolePrintln(L"db_parse", "节点层级存在循环 " + std::to_string(child));
+				Logw(L"CherryTree", L"节点层级存在循环 ", child);
 				break;
 			}
 
 			if (v != 0) {
 				auto parentNode = map_node.find(v);
 				if (parentNode == map_node.end()) {
-					ConsolePrintln(L"db_parse", "找不到父节点 " + std::to_string(v));
+					Logw(L"CherryTree", L"找不到父节点 ", v);
 					break;
 				}
 				if (parentNode->second.tags.find(u8"屏蔽") != std::string::npos) {
-					ConsolePrintln(L"db_parse", "屏蔽节点 " + std::to_string(child) + " " + childNode->second.name +
-						" 父节点有 屏蔽 标签 " + std::to_string(v));
+					// ConsolePrintln(L"db_parse", L"屏蔽节点 " + std::to_wstring(child) + L" " + utf8_to_wide(childNode->second.name) +
+						// L" 父节点有 屏蔽 标签 " + std::to_wstring(v));
 					break;
 				}
 			}
@@ -82,13 +82,17 @@ inline void CreateActionsFromNodes(
 				v = parent->second;
 			} else {
 				np.father_ids.push_back(0);
-				np.path = "[" + std::to_string(child) + "]" + path_string;
+				// 设置item 主标题
+				np.path = path_string;
+				// np.path = "[" + std::to_string(child) + "]" + path_string;
 				np.syntax = childNode->second.syntax;
 
 				std::replace(path_string_file.begin(), path_string_file.end(), ' ', '_');
 				std::replace(path_string_file.begin(), path_string_file.end(), '/', '-');
 				std::replace(path_string_file.begin(), path_string_file.end(), '\\', '-');
-				np.path_file = path_string_file + "_" + std::to_string(child);
+				// 设置item 副标题
+				np.path_file = path_string_file;
+				// np.path_file = path_string_file + "_" + std::to_string(child);
 				break;
 			}
 		}
@@ -96,7 +100,7 @@ inline void CreateActionsFromNodes(
 		if (!np.path.empty()) id_path[child] = np;
 	}
 
-	std::wcout << L"[CherryTree] Creating " << id_path.size() << L" CherryTreeAction objects..." << std::endl;
+	Logi(L"CherryTree", L"Creating ", id_path.size(), L" CherryTreeAction objects...");
 	for (const auto& [id, np] : id_path) {
 		auto action = std::make_shared<CherryTreeAction>();
 		action->title = utf8_to_wide(np.path);
@@ -106,7 +110,7 @@ inline void CreateActionsFromNodes(
 		action->text = utf8_to_wide(map_node.at(id).text);
 		action->iconFilePathIndex = GetSysImageIndex(ICON_FOLDER_PATH + utf8_to_wide(np.syntax) + L".ico");
 		if (action->iconFilePathIndex == 0) {
-			ConsolePrintln(L"icon", ICON_FOLDER_PATH + utf8_to_wide(np.syntax) + L".ico");
+			Logi(L"CherryTree", L"icon not found: ", ICON_FOLDER_PATH, np.syntax, L".ico");
 		}
 		action->matchText = m_host->GetTheProcessedMatchingText(utf8_to_wide(np.path));
 		allActions.push_back(action);
@@ -134,21 +138,21 @@ inline bool GetTable(sqlite3* db, const std::string& sql, std::vector<std::vecto
 
 // 主函数：解析数据库
 inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allActions) {
-	std::wcout << L"[CherryTree] db_parse start" << std::endl;
+	Logi(L"CherryTree", L"db_parse start");
 	std::unordered_map<int, int> map_father; // 子 -> 父
 	std::unordered_map<int, NodeRow> map_node;
 
 	// 1. 读取 children 表
-	std::wcout << L"[CherryTree] Reading children table..." << std::endl;
+	Logi(L"CherryTree", L"Reading children table...");
 	{
 		std::vector<std::vector<std::string>> result;
 		// children 表结构：node_id, father_id, sequence, master_id
 		// 只查询需要的字段
 		if (!GetTable(db, "SELECT node_id, father_id FROM children;", result)) {
-			Loge(L"CherryTree", L"Error reading children table: " , sqlite3_errmsg(db) );
+			Loge(L"CherryTree", L"Error reading children table: ", sqlite3_errmsg(db));
 			return;
 		}
-		std::wcout << L"[CherryTree] Read " << result.size() << L" rows from children table" << std::endl;
+		Logi(L"CherryTree", L"Read ", result.size(), L" rows from children table");
 
 		for (auto& row : result) {
 			// row[0] = node_id (子节点ID), row[1] = father_id (父节点ID)
@@ -159,22 +163,21 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 				int father_id = std::stoi(row[1]);
 				map_father[child_id] = father_id;
 			} catch (const std::exception& e) {
-				std::wcerr << L"[CherryTree] Error parsing children row: " << e.what()
-				          << L" | row size: " << row.size() << std::endl;
+				Loge(L"CherryTree", L"Error parsing children row: ", e.what(), L" | row size: ", row.size());
 				continue;
 			}
 		}
 	}
 
 	// 2. 读取 node 表
-	std::wcout << L"[CherryTree] Reading node table..." << std::endl;
+	Logi(L"CherryTree", L"Reading node table...");
 	{
 		std::vector<std::vector<std::string>> result;
 		if (!GetTable(db, "SELECT node_id, name, tags, syntax, txt FROM node;", result)) {
-			std::wcerr << L"[CherryTree] Error reading node table: " << sqlite3_errmsg(db) << std::endl;
+			Loge(L"CherryTree", L"Error reading node table: ", sqlite3_errmsg(db));
 			return;
 		}
-		std::wcout << L"[CherryTree] Read " << result.size() << L" rows from node table" << std::endl;
+		Logi(L"CherryTree", L"Read ", result.size(), L" rows from node table");
 
 		for (auto& row : result) {
 			// row: node_id, name, tags, syntax, txt
@@ -189,22 +192,21 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 				n.text = row[4];
 				map_node[n.id] = n;
 			} catch (const std::exception& e) {
-				std::wcerr << L"[CherryTree] Error parsing node row: " << e.what()
-				          << L" | row size: " << row.size() << std::endl;
+				Loge(L"CherryTree", L"Error parsing node row: ", e.what(), L" | row size: ", row.size());
 				continue;
 			}
 		}
 	}
 
 	CreateActionsFromNodes(map_father, map_node, allActions);
-	std::wcout << L"[CherryTree] db_parse complete, created " << allActions.size() << L" actions" << std::endl;
+	Logi(L"CherryTree", L"db_parse complete, created ", allActions.size(), L" actions");
 }
 
 // 解析 CherryTree 多文件存储目录。每个节点目录包含 node.xml，父目录即父节点。
 inline void folder_parse(
 	const std::filesystem::path& directoryPath,
 	std::vector<std::shared_ptr<BaseAction>>& allActions) {
-	std::wcout << L"[CherryTree] folder_parse start" << std::endl;
+	Logi(L"CherryTree", L"folder_parse start");
 	std::unordered_map<int, int> map_father;
 	std::unordered_map<int, NodeRow> map_node;
 
@@ -221,7 +223,7 @@ inline void folder_parse(
 		pathError);
 	const std::filesystem::recursive_directory_iterator end;
 	if (pathError) {
-		ConsolePrintln(L"folder_parse", L"无法读取目录: " + rootPath.wstring());
+		Loge(L"CherryTree", L"无法读取目录: ", rootPath.wstring());
 		return;
 	}
 
@@ -232,16 +234,16 @@ inline void folder_parse(
 			pugi::xml_document document;
 			pugi::xml_parse_result result = document.load_file(entry.path().c_str());
 			if (!result) {
-				ConsolePrintln(L"folder_parse", L"XML 解析失败: " + entry.path().wstring() +
-					L" (" + utf8_to_wide(result.description()) + L")");
+				Loge(L"CherryTree", L"XML 解析失败: ", entry.path().wstring(),
+					L" (", result.description(), L")");
 			} else {
 				pugi::xml_node node = document.child("cherrytree").child("node");
 				if (!node) {
-					ConsolePrintln(L"folder_parse", L"找不到 node 元素: " + entry.path().wstring());
+					Logw(L"CherryTree", L"找不到 node 元素: ", entry.path().wstring());
 				} else {
 					int nodeId = node.attribute("unique_id").as_int();
 					if (nodeId <= 0) {
-						ConsolePrintln(L"folder_parse", L"无效的节点 ID: " + entry.path().wstring());
+						Logw(L"CherryTree", L"无效的节点 ID: ", entry.path().wstring());
 					} else {
 						NodeRow row;
 						row.id = nodeId;
@@ -262,7 +264,7 @@ inline void folder_parse(
 							try {
 								map_father[nodeId] = std::stoi(parentNodeDirectory.filename().string());
 							} catch (const std::exception&) {
-								ConsolePrintln(L"folder_parse", L"无法确定父节点: " + entry.path().wstring());
+								Logw(L"CherryTree", L"无法确定父节点: ", entry.path().wstring());
 								map_father[nodeId] = 0;
 							}
 						}
@@ -273,11 +275,11 @@ inline void folder_parse(
 
 		iterator.increment(pathError);
 		if (pathError) {
-			ConsolePrintln(L"folder_parse", L"扫描目录时发生错误: " + utf8_to_wide(pathError.message()));
+			Loge(L"CherryTree", L"扫描目录时发生错误: ", pathError.message());
 			pathError.clear();
 		}
 	}
 
 	CreateActionsFromNodes(map_father, map_node, allActions);
-	std::wcout << L"[CherryTree] folder_parse complete, created " << allActions.size() << L" actions" << std::endl;
+	Logi(L"CherryTree", L"folder_parse complete, created ", allActions.size(), L" actions");
 }

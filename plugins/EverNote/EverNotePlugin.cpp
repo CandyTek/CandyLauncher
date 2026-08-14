@@ -43,21 +43,21 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"EverNote Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"EverNote", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		std::wcout << L"[EverNote Plugin] RefreshAllActions start" << std::endl;
+		Logi(L"EverNote", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// 从配置中读取 Evernote 数据库文件路径
 		std::string db_path = m_host->GetSettingsMap().at("com.candytek.evernoteplugin.db_path").stringValue;
-		std::wcout << L"[EverNote Plugin] Database path: " << utf8_to_wide(db_path) << std::endl;
+		Logi(L"EverNote", L"Database path: ", db_path);
 
 		// 检查文件是否存在
 		std::ifstream file_check(db_path);
 		if (!file_check.good()) {
-			std::wcerr << L"[EverNote Plugin] Database file does not exist: " << utf8_to_wide(db_path) << std::endl;
+			Loge(L"EverNote", L"Database file does not exist: ", db_path);
 			return;
 		}
 		file_check.close();
@@ -65,15 +65,14 @@ public:
 		sqlite3* db = nullptr;
 		int rc = sqlite3_open(db_path.c_str(), &db);
 		if (rc == SQLITE_OK) {
-			std::wcout << L"[EverNote Plugin] Database opened successfully" << std::endl;
+			Logi(L"EverNote", L"Database opened successfully");
 			// 调用 db_parse，传入 allPluginActions 引用
 			db_parse(db, allPluginActions);
 			sqlite3_close(db);
-			std::wcout << L"[EverNote Plugin] Loaded " << allPluginActions.size() << L" actions" << std::endl;
+			Logi(L"EverNote", L"Loaded ", allPluginActions.size(), L" actions");
 		} else {
 			// 数据库打开失败
-			std::wcerr << L"[EverNote Plugin] Failed to open database: " << utf8_to_wide(db_path)
-			          << L", error: " << sqlite3_errmsg(db) << std::endl;
+			Loge(L"EverNote", L"Failed to open database: ", db_path, L", error: ", sqlite3_errmsg(db));
 			if (db) sqlite3_close(db);
 		}
 	}
@@ -150,8 +149,8 @@ public:
 		                   action1->noteId + L"/" +
 		                   action1->noteId + L"/";
 
-		std::wcout << L"[EverNote Plugin] Opening note: " << action1->title << std::endl;
-		std::wcout << L"[EverNote Plugin] URL: " << url << std::endl;
+		Logi(L"EverNote", L"Opening note: ", action1->title);
+		Logi(L"EverNote", L"URL: ", url);
 
 		// 使用 ShellExecute 打开 Evernote URL
 		HINSTANCE result = ShellExecute(
@@ -164,8 +163,7 @@ public:
 		);
 
 		if (reinterpret_cast<INT_PTR>(result) <= 32) {
-			std::wcerr << L"[EverNote Plugin] Failed to open note, error code: "
-			          << reinterpret_cast<INT_PTR>(result) << std::endl;
+			Loge(L"EverNote", L"Failed to open note, error code: ", reinterpret_cast<INT_PTR>(result));
 			return false;
 		}
 

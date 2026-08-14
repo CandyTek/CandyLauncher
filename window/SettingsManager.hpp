@@ -142,7 +142,7 @@ static void LoadSettingsMap() {
 
 	loadSettingsToMap(g_settings_ui_last_save);
 	initGlobalVariable();
-	ConsolePrintln(L"总共" + std::to_wstring(g_settings_map.size()) + L"个设置项");
+	Logi(L"SettingsManager", L"总共 ", g_settings_map.size(), L" 个设置项");
 	// auto it = g_settings_map.find("com.candytek.normallaunchplugin.moreitem");
 	// auto it = g_settings_map.find("com.candytek.folderplugin.envpath_apps");
 	// auto it = g_settings_map.find("pref_use_everything_sdk_index");
@@ -277,7 +277,7 @@ static void saveSettingControlValues(nlohmann::json& newConfig2, const bool isJu
 			}
 
 			if (!hCtrl) {
-				ConsolePrintln("找不到这个key: " + item.title);
+				Logw(L"SettingsManager", L"找不到这个key: ", item.title);
 				continue;
 			}
 
@@ -390,7 +390,7 @@ static void LoadSettingList() {
 
 				pluginSettings.push_back(setting);
 			} catch (...) {
-				ConsolePrintln(L"[SettingsManager]注意，该插件的设置json加载失败:" + pluginCatalog.name);
+				Loge(L"SettingsManager", L"注意，该插件的设置json加载失败: ", pluginCatalog.name);
 			}
 		}
 	}

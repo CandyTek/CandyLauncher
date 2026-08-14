@@ -504,11 +504,11 @@ static void LogBitmapInfo(HBITMAP iconBitmap) {
 		int ret = GetObject(iconBitmap, sizeof(BITMAP), &bmp);
 
 		if (ret != 0) {
-			ConsolePrintln(L"Bitmap 有效\t" L"宽度: \t" + std::to_wstring(bmp.bmWidth) +L"\t高度: \t" + std::to_wstring(bmp.bmHeight) + L"\t每像素位数: \t"+std::to_wstring(bmp.bmBitsPixel));
+			Logi(L"BitmapUtil", L"Bitmap 有效\t宽度: \t", bmp.bmWidth, L"\t高度: \t", bmp.bmHeight, L"\t每像素位数: \t", bmp.bmBitsPixel);
 		} else {
-			ConsolePrintln(L"GetObject 失败");
+			Loge(L"BitmapUtil", L"GetObject 失败");
 		}
 	} else {
-		ConsolePrintln(L"iconBitmap 是 NULL");
+		Loge(L"BitmapUtil", L"iconBitmap 是 NULL");
 	}
 }

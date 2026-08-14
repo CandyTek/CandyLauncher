@@ -76,7 +76,7 @@ inline void SaveIgnoredUpdateVersion(const std::string& versionString) {
 	nlohmann::json config = LoadUserSettingsJson();
 	config[kIgnoredUpdateVersionKey] = versionString;
 	SaveUserSettingsJson(config);
-	ConsolePrintln(L"Update", L"Ignored update version: v" + utf8_to_wide(versionString));
+	Logi(L"Update", L"Ignored update version: v", versionString);
 }
 
 inline void SetSettingBoolInList(std::vector<SettingItem>& settings, const std::string& key, const bool value) {
@@ -101,7 +101,7 @@ inline void DisableAutomaticUpdatePrompts() {
 	}
 	SetSettingBoolInList(g_settings_ui_last_save, "pref_check_app_version", false);
 	SetSettingBoolInList(g_settings_ui, "pref_check_app_version", false);
-	ConsolePrintln(L"Update", L"Automatic update prompt disabled");
+	Logi(L"Update", L"Automatic update prompt disabled");
 }
 
 struct UpdateAvailablePayload {
@@ -220,7 +220,7 @@ public:
 	}
 
 	void onUpdateDownloadProgress(float percentageDownloaded) override {
-		ConsolePrintln(L"Update", L"Download progress: " + std::to_wstring(static_cast<int>(percentageDownloaded)) + L"%");
+		Logi(L"Update", L"Download progress: ", static_cast<int>(percentageDownloaded), L"%");
 	}
 
 	void onUpdateDownloadFinished() override {
@@ -288,7 +288,7 @@ inline void StartCheckForUpdates(const bool manual) {
 		return;
 	}
 
-	ConsolePrintln(L"Update", L"Starting update check");
+	Logi(L"Update", L"Starting update check");
 	std::thread([manual]() {
 		UpdateStatusListener listener(manual);
 		CAutoUpdaterGithub updater(kGithubRepoName, ExtractCurrentVersionString());
@@ -327,7 +327,7 @@ inline LRESULT HandleUpdateAvailableMessage(LPARAM lParam) {
 
 	const auto& latest = payload->changelog.front();
 	if (!payload->manual && latest.versionString == GetIgnoredUpdateVersion()) {
-		ConsolePrintln(L"Update", L"Skipped ignored update version: v" + utf8_to_wide(latest.versionString));
+		Logi(L"Update", L"Skipped ignored update version: v", latest.versionString);
 		return 0;
 	}
 
@@ -360,7 +360,7 @@ inline LRESULT HandleUpdateErrorMessage(LPARAM lParam) {
 	std::unique_ptr<UpdateErrorPayload> payload(reinterpret_cast<UpdateErrorPayload*>(lParam));
 	if (!payload) return 0;
 
-	Loge(L"Update", utf8_to_wide(payload->errorMessage));
+	Loge(L"Update", payload->errorMessage);
 	if (payload->manual) {
 		MessageBoxW(
 			g_mainHwnd,

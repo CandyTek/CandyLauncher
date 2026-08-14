@@ -52,6 +52,6 @@ static void traverseUwpApps(
 		try {
 			LoadUwpApps(outActions, options);
 		} catch (const std::exception& e) {
-			std::wcerr << L"Failed to load UWP apps: " << Utf8ToWString(e.what()) << std::endl;
+			Loge(L"FolderPlugin", L"Failed to load UWP apps: ", e.what());
 		}
 }

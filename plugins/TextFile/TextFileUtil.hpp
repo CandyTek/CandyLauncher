@@ -176,17 +176,17 @@ inline std::vector<std::shared_ptr<BaseAction>> GetAllTextFile() {
 			std::vector<std::wstring> extensions;
 
 			if (!ParseFolderConfig(config, folderPath, extensions)) {
-				ConsolePrintln(L"TextFilePlugin", L"Failed to parse config: " + config);
+				Logw(L"TextFile", L"Failed to parse config: ", config);
 				continue;
 			}
 
 			// 检查文件夹是否存在
 			if (!std::filesystem::exists(folderPath) || !std::filesystem::is_directory(folderPath)) {
-				ConsolePrintln(L"TextFilePlugin", L"Folder not found: " + folderPath);
+				Logw(L"TextFile", L"Folder not found: ", folderPath);
 				continue;
 			}
 
-			ConsolePrintln(L"TextFilePlugin", L"Scanning folder: " + folderPath);
+			Logi(L"TextFile", L"Scanning folder: ", folderPath);
 
 			// 使用 Everything SDK 遍历文件
 			TraverseOptions options;
@@ -215,16 +215,16 @@ inline std::vector<std::shared_ptr<BaseAction>> GetAllTextFile() {
 
 					actions.push_back(action);
 				} catch (const std::exception& e) {
-					Loge(L"TextFilePlugin", L"Error processing file: " + fullPath, e.what());
+					Loge(L"TextFile", L"Error processing file: ", fullPath, L", error: ", e.what());
 				} catch (...) {
-					Loge(L"TextFilePlugin", L"Unknown error processing file: " + fullPath, "");
+					Loge(L"TextFile", L"Unknown error processing file: ", fullPath);
 				}
 			});
 		}
 	} catch (const std::exception& e) {
-		Loge(L"TextFilePlugin", L"Error in GetAllTextFile", e.what());
+		Loge(L"TextFile", L"Error in GetAllTextFile: ", e.what());
 	} catch (...) {
-		Loge(L"TextFilePlugin", L"Unknown error in GetAllTextFile", "");
+		Loge(L"TextFile", L"Unknown error in GetAllTextFile");
 	}
 
 	return actions;

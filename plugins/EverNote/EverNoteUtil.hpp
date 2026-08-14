@@ -32,10 +32,10 @@ inline bool GetTable(sqlite3* db, const std::string& sql, std::vector<std::vecto
 
 // 主函数：解析 Evernote 数据库
 inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allActions) {
-	std::wcout << L"[EverNote] db_parse start" << std::endl;
+	Logi(L"EverNote", L"db_parse start");
 
 	// 1. 读取 Notebook 表建立 ID -> 名称映射
-	std::wcout << L"[EverNote] Reading Nodes_Notebook table..." << std::endl;
+	Logi(L"EverNote", L"Reading Nodes_Notebook table...");
 	std::unordered_map<std::string, std::string> notebookMap;  // id -> label
 	{
 		std::vector<std::vector<std::string>> result;
@@ -43,7 +43,7 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 			Loge(L"EverNote", L"Error reading Nodes_Notebook table: ", sqlite3_errmsg(db));
 			return;
 		}
-		std::wcout << L"[EverNote] Read " << result.size() << L" rows from Nodes_Notebook table" << std::endl;
+		Logi(L"EverNote", L"Read ", result.size(), L" rows from Nodes_Notebook table");
 
 		for (auto& row : result) {
 			if (row.size() < 2) continue;
@@ -52,16 +52,16 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 	}
 
 	// 2. 读取 Nodes_Note 表
-	std::wcout << L"[EverNote] Reading Nodes_Note table..." << std::endl;
+	Logi(L"EverNote", L"Reading Nodes_Note table...");
 	{
 		std::vector<std::vector<std::string>> result;
 		// 查询：id, label, snippet, parent_Notebook_id, owner, shardId
 		// WHERE deleted IS NULL 过滤已删除的笔记
 		if (!GetTable(db, "SELECT id, label, snippet, parent_Notebook_id, owner, shardId FROM Nodes_Note WHERE deleted IS NULL;", result)) {
-			std::wcerr << L"[EverNote] Error reading Nodes_Note table: " << sqlite3_errmsg(db) << std::endl;
+			Loge(L"EverNote", L"Error reading Nodes_Note table: ", sqlite3_errmsg(db));
 			return;
 		}
-		std::wcout << L"[EverNote] Read " << result.size() << L" rows from Nodes_Note table" << std::endl;
+		Logi(L"EverNote", L"Read ", result.size(), L" rows from Nodes_Note table");
 
 		for (auto& row : result) {
 			// row[0] = id, row[1] = label, row[2] = snippet, row[3] = parent_Notebook_id
@@ -120,12 +120,11 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 				// 添加到 allActions
 				allActions.push_back(action);
 			} catch (const std::exception& e) {
-				std::wcerr << L"[EverNote] Error parsing note row: " << e.what()
-				          << L" | row size: " << row.size() << std::endl;
+				Loge(L"EverNote", L"Error parsing note row: ", e.what(), L" | row size: ", row.size());
 				continue;
 			}
 		}
 	}
 
-	std::wcout << L"[EverNote] db_parse complete, created " << allActions.size() << L" actions" << std::endl;
+	Logi(L"EverNote", L"db_parse complete, created ", allActions.size(), L" actions");
 }

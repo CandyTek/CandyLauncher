@@ -564,28 +564,28 @@ public:
 	}
 
 	bool OnItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
-		ConsolePrintln(L"FolderPlugin", L"OnItemRightClick entered");
+		Logi(L"FolderPlugin", L"OnItemRightClick entered");
 		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
 		if (!fileAction) {
-			ConsolePrintln(L"FolderPlugin", L"OnItemRightClick skipped: action is not FileAction");
+			Logw(L"FolderPlugin", L"OnItemRightClick skipped: action is not FileAction");
 			return false;
 		}
-		ConsolePrintln(L"FolderPlugin", L"ShowShellContextMenu path=" + fileAction->GetTargetPath());
+		Logi(L"FolderPlugin", L"ShowShellContextMenu path=", fileAction->GetTargetPath());
 		ShowShellContextMenu(parentHwnd, fileAction->GetTargetPath(), screenPt);
-		ConsolePrintln(L"FolderPlugin", L"ShowShellContextMenu returned");
+		Logi(L"FolderPlugin", L"ShowShellContextMenu returned");
 		return true;
 	}
 
 	bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
-		ConsolePrintln(L"FolderPlugin", L"OnItemShiftRightClick entered");
+		Logi(L"FolderPlugin", L"OnItemShiftRightClick entered");
 		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
 		if (!fileAction) {
-			ConsolePrintln(L"FolderPlugin", L"OnItemShiftRightClick skipped: action is not FileAction");
+			Logw(L"FolderPlugin", L"OnItemShiftRightClick skipped: action is not FileAction");
 			return false;
 		}
-		ConsolePrintln(L"FolderPlugin", L"ShowMyContextMenu path=" + fileAction->GetTargetPath());
+		Logi(L"FolderPlugin", L"ShowMyContextMenu path=", fileAction->GetTargetPath());
 		const UINT cmd = ShowMyContextMenu(parentHwnd, fileAction->GetTargetPath(), screenPt);
-		ConsolePrintln(L"FolderPlugin", L"ShowMyContextMenu cmd=" + std::to_wstring(cmd));
+		Logi(L"FolderPlugin", L"ShowMyContextMenu cmd=", cmd);
 		switch (cmd) {
 		case IDM_RUN_AS_ADMIN: fileAction->InvokeWithTarget(nullptr, true);
 			break;
@@ -613,7 +613,7 @@ public:
 			return false;
 		}
 
-		ConsolePrintln(L"FolderPlugin", L"Begin OLE drag drop path=" + targetPath);
+		Logi(L"FolderPlugin", L"Begin OLE drag drop path=", targetPath);
 		return g_host->BeginOleDragDropFiles({targetPath}, sourceHwnd);
 	}
 };

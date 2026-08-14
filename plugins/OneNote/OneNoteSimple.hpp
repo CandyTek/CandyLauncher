@@ -40,12 +40,12 @@ public:
 			hr = m_app.CreateInstance(__uuidof(OneNoteLib::Application));
 			if (SUCCEEDED(hr) && m_app != nullptr) {
 				m_initialized = true;
-				ConsolePrintln(L"OneNote", L"Successfully connected via #import");
+				Logi(L"OneNote", L"Successfully connected via #import");
 			} else {
-				ConsolePrintln(L"OneNote", L"Failed to create OneNote instance");
+				Logw(L"OneNote", L"Failed to create OneNote instance");
 			}
 		} catch (_com_error& e) {
-			ConsolePrintln(L"OneNote", std::wstring(L"COM Error: ") + e.ErrorMessage());
+			Loge(L"OneNote", L"COM Error: ", e.ErrorMessage());
 		}
 	}
 
@@ -79,8 +79,7 @@ public:
 			if (SUCCEEDED(hr) && bstrXml) {
 				std::wstring result(bstrXml);
 				SysFreeString(bstrXml);
-				ConsolePrintln(L"OneNote", L"Successfully retrieved hierarchy, XML length: " +
-								std::to_wstring(result.length()));
+				Logi(L"OneNote", L"Successfully retrieved hierarchy, XML length: ", result.length());
 
 				// Debug: Show XML
 				// std::wstring preview = result;
@@ -90,10 +89,10 @@ public:
 			} else {
 				wchar_t buf[32];
 				swprintf_s(buf, L"0x%08X", static_cast<unsigned int>(hr));
-				ConsolePrintln(L"OneNote", std::wstring(L"GetHierarchy failed: ") + buf);
+				Logw(L"OneNote", L"GetHierarchy failed: ", buf);
 			}
 		} catch (_com_error& e) {
-			ConsolePrintln(L"OneNote", std::wstring(L"COM Error in GetHierarchy: ") + e.ErrorMessage());
+			Loge(L"OneNote", L"COM Error in GetHierarchy: ", e.ErrorMessage());
 		}
 
 		return L"";
@@ -123,10 +122,10 @@ public:
 			} else {
 				wchar_t buf[32];
 				swprintf_s(buf, L"0x%08X", static_cast<unsigned int>(hr));
-				Loge(L"OneNote", std::wstring(L"GetPageContent failed with HRESULT: ") + buf);
+				Loge(L"OneNote", L"GetPageContent failed with HRESULT: ", buf);
 			}
 		} catch (_com_error& e) {
-			Loge(L"OneNote", L"COM Error in GetPageContent: ", wide_to_utf8(e.ErrorMessage()).c_str());
+			Loge(L"OneNote", L"COM Error in GetPageContent: ", e.ErrorMessage());
 		}
 
 		return L"";
@@ -147,7 +146,7 @@ public:
 			);
 			return SUCCEEDED(hr);
 		} catch (_com_error& e) {
-			ConsolePrintln(L"OneNote", std::wstring(L"COM Error in NavigateTo: ") + e.ErrorMessage());
+			Loge(L"OneNote", L"COM Error in NavigateTo: ", e.ErrorMessage());
 			return false;
 		}
 	}

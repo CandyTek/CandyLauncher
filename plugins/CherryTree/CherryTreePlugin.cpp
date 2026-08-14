@@ -47,43 +47,42 @@ public:
 
     void RefreshAllActions() override {
         if (!m_host) {
-            Loge(L"CherryTree Plugin", L"RefreshAllActions: m_host is null");
+            Loge(L"CherryTree", L"RefreshAllActions: m_host is null");
             return;
         }
 
-        std::wcout << L"[CherryTree Plugin] RefreshAllActions start" << std::endl;
+        Logi(L"CherryTree", L"RefreshAllActions start");
         allPluginActions.clear();
 
         // 支持 CherryTree SQLite 数据库和多文件目录两种存储格式
         std::string db_path = m_host->GetSettingsMap().at("com.candytek.cherrytreeplugin.db_path").stringValue;
         std::filesystem::path storagePath = std::filesystem::u8path(db_path);
-        std::wcout << L"[CherryTree Plugin] Storage path: " << storagePath.wstring() << std::endl;
+        Logi(L"CherryTree", L"Storage path: ", storagePath.wstring());
 
         std::error_code pathError;
         if (std::filesystem::is_directory(storagePath, pathError)) {
-            std::wcout << L"[CherryTree Plugin] Multi-file directory opened successfully" << std::endl;
+            Logi(L"CherryTree", L"Multi-file directory opened successfully");
             folder_parse(storagePath, allPluginActions);
-            std::wcout << L"[CherryTree Plugin] Loaded " << allPluginActions.size() << L" actions" << std::endl;
+            Logi(L"CherryTree", L"Loaded ", allPluginActions.size(), L" actions");
             return;
         }
 
         if (!std::filesystem::is_regular_file(storagePath, pathError)) {
-            std::wcerr << L"[CherryTree Plugin] Storage path does not exist: " << storagePath.wstring() << std::endl;
+            Loge(L"CherryTree", L"Storage path does not exist: ", storagePath.wstring());
             return;
         }
 
         sqlite3* db = nullptr;
         int rc = sqlite3_open(db_path.c_str(), &db);
         if (rc == SQLITE_OK) {
-            std::wcout << L"[CherryTree Plugin] Database opened successfully" << std::endl;
+            Logi(L"CherryTree", L"Database opened successfully");
             // 调用 db_parse，传入 allPluginActions 引用
             db_parse(db, allPluginActions);
             sqlite3_close(db);
-            std::wcout << L"[CherryTree Plugin] Loaded " << allPluginActions.size() << L" actions" << std::endl;
+            Logi(L"CherryTree", L"Loaded ", allPluginActions.size(), L" actions");
         } else {
             // 数据库打开失败
-            std::wcerr << L"[CherryTree Plugin] Failed to open database: " << utf8_to_wide(db_path)
-                << L", error: " << sqlite3_errmsg(db) << std::endl;
+            Loge(L"CherryTree", L"Failed to open database: ", db_path, L", error: ", sqlite3_errmsg(db));
             if (db) sqlite3_close(db);
         }
     }
@@ -148,7 +147,7 @@ public:
 
         std::thread([text = std::move(text)]() {
             if (!CopyTextToClipboard(nullptr, text)) {
-                std::wcerr << L"[CherryTree Plugin] Failed to copy action text to clipboard" << std::endl;
+                Loge(L"CherryTree Plugin", L"Failed to copy action text to clipboard");
                 return;
             }
 
@@ -192,7 +191,7 @@ public:
 
             UINT sent = SendInput(4, inputs, sizeof(INPUT));
             if (sent < 4) {
-                std::wcerr << L"[CherryTree Plugin] SendInput failed. Sent: " << sent << std::endl;
+                Loge(L"CherryTree", L"SendInput failed. Sent: ", sent);
             }
             keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
             keybd_event(VK_LSHIFT, 0, KEYEVENTF_KEYUP, 0);

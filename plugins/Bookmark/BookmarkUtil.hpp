@@ -89,7 +89,7 @@ static std::string findFirstIcoFile(const std::string& folderPath) {
 			}
 		}
 	} catch (const std::exception& e) {
-		std::wcerr << L"Error: " << e.what() << std::endl;
+		Loge(L"BookmarkUtil", L"Error finding ico file: ", e.what());
 	}
 	return "";
 }

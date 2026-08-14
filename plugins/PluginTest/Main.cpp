@@ -21,11 +21,11 @@ __declspec(dllexport) int GetPluginApiVersion();
 }
 
 static void TestLog(const std::string& msg) {
-	std::cout << msg << std::endl;
+	Logi(L"PluginTest", msg);
 }
 
 static void TestLog(const std::wstring& msg) {
-	TestLog(wide_to_utf8(msg));
+	Logi(L"PluginTest", msg);
 }
 
 // 简单的 Mock PluginHost 用于测试
@@ -100,6 +100,10 @@ public:
 		return !filePaths.empty();
 	}
 
+	bool BeginOleDragDropData(const OleDragDropData& data, HWND sourceHwnd) override {
+		return true;
+	}
+
 	HBITMAP LoadResIconAsBitmap(int nResID, int cx, int cy) override {
 		return nullptr;
 	}
@@ -116,9 +120,15 @@ public:
 		return false;
 	}
 
+	void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) override {
+	}
+
+	void PluginTaskDone() override {
+	}
+
+	std::wstring m_dummyEditText;
 	std::wstring& GetEditTextText() override {
-		std::wstring temp;
-		return temp;
+		return m_dummyEditText;
 	}
 };
 
@@ -141,13 +151,13 @@ int main() {
 		// 创建插件
 		IPlugin* plugin = CreatePlugin();
 		if (!plugin) {
-			std::cerr << "Failed to create plugin" << std::endl;
+			Loge(L"PluginTest", L"Failed to create plugin");
 			return 1;
 		}
 
 		// 初始化插件
 		if (!plugin->Initialize(&mockHost)) {
-			std::cerr << "Failed to initialize plugin" << std::endl;
+			Loge(L"PluginTest", L"Failed to initialize plugin");
 			DestroyPlugin(plugin);
 			return 1;
 		}
@@ -164,7 +174,7 @@ int main() {
 		std::function<void(std::vector<SettingItem>&)> loadSettingsToMap =
 			[&](std::vector<SettingItem>& settings) {
 				for (auto& item : settings) {
-					if (MyEndsWith2(item.key,".start_str")) {
+					if (EndsWith(item.key, ".start_str")) {
 						item.stringValue = "";
 					}
 					mockHost.settingsMap[item.key] = item;
@@ -186,7 +196,7 @@ int main() {
 			plugin->RefreshAllActions();
 			TestLog(L"Refresh completed.");
 		} catch (const std::exception& e) {
-			std::cerr << "[RefreshAllActions]" << "Exception during refresh: " << e.what() << std::endl;
+			Loge(L"PluginTest", L"[RefreshAllActions] Exception during refresh: ", e.what());
 			return 1;
 		}
 
@@ -211,10 +221,10 @@ int main() {
 		TestLog(L"\n✅✅ Test completed successfully!");
 		return 0;
 	} catch (const std::exception& e) {
-		std::cerr << "Exception: " << e.what() << std::endl;
+		Loge(L"PluginTest", L"Exception: ", e.what());
 		return 1;
 	} catch (...) {
-		std::cerr << "Unknown exception occurred" << std::endl;
+		Loge(L"PluginTest", L"Unknown exception occurred");
 		return 1;
 	}
 }

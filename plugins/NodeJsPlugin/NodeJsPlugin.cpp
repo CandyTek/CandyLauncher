@@ -167,7 +167,7 @@ public:
 
     void OnMainWindowShow(bool isShow) override {
         if (!isShow) {
-            ConsolePrintln(L"清理");
+            Logi(L"NodeJsPlugin", L"MainWindow hidden - cleanup");
             // lastResultActions.clear();
         }
     }
@@ -220,7 +220,7 @@ public:
         }
         currectId = futures.at(0).first;
         MethodTimerStart(L"nodejsplugin query");
-        ConsolePrintln(L"查询"+std::to_wstring(futures.size()));
+        Logi(L"NodeJsPlugin", L"查询 ", futures.size());
         // 拷贝必要数据，避免后台线程引用悬空
         auto bridge = m_bridge;
         auto pluginId = m_pluginId;
@@ -239,12 +239,11 @@ public:
                     // 后台线程里可以等，不会阻塞 UI/input
                     auto response = f.second.get();
                     if (seq != m_querySeq.load()) {
-                        ConsolePrintln(L"loss");
+                        Logi(L"NodeJsPlugin", L"Query sequence superseded (loss)");
                         return;
                     }
                     if (!response.contains("data") || !response["data"].is_array()) {
-                        std::string s = response.dump();
-                        ConsolePrintln(L"[ERROR] plugin=" + f.first + L" 响应格式错误: " + std::wstring(s.begin(), s.end()));
+                        Loge(L"NodeJsPlugin", L"Plugin ", f.first, L" 响应格式错误: ", response.dump());
                         continue;
                     }
                     
@@ -252,11 +251,7 @@ public:
                     finalResults.insert(finalResults.end(), actions.begin(), actions.end());
                     
                 } catch (const std::exception& e) {
-                    ConsolePrintln(
-                        L"[ERROR] plugin=" + f.first +
-                        L" query 异步异常: " +
-                        std::wstring(e.what(), e.what() + strlen(e.what()))
-                    );
+                    Loge(L"NodeJsPlugin", L"Plugin ", f.first, L" query 异步异常: ", e.what());
                 }
             }
 
@@ -270,11 +265,11 @@ public:
             }
         }).detach();
 
-            ConsolePrintln(L"上次插件id"+lastResultIdTemp);
-            ConsolePrintln(L"本次插件id"+currectId);
+        Logi(L"NodeJsPlugin", L"上次插件id: ", lastResultIdTemp);
+        Logi(L"NodeJsPlugin", L"本次插件id: ", currectId);
         if (currectId == lastResultActions.first && !lastResultActions.second.empty()) {
             // 缓存上次结果，这样查询就不会闪烁了
-            ConsolePrintln(L"返回上次结果插件"+lastResultId);
+            Logi(L"NodeJsPlugin", L"返回上次结果插件: ", lastResultId);
             return lastResultActions.second;
         } else {
             lastResultId = currectId;
@@ -291,7 +286,7 @@ public:
                     action->iconBitmap = CopyHBitmap(src);
                 }
                 action->iconFilePathIndex = -1;
-                ConsolePrintln(L"找到插件icon");
+                Logi(L"NodeJsPlugin", L"找到插件icon");
             }
 
             initialResults.push_back(action);

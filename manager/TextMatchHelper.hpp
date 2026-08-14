@@ -218,7 +218,7 @@ static void Fuzzymatch_MultiThreaded(const std::wstring& keyword, const std::vec
 		}
 	} catch (const std::exception& e) {
 		// 记录错误或适当处理
-		std::wcerr << L"An exception occurred during parallel fuzzy matching: " << e.what() << std::endl;
+		Loge(L"TextMatchHelper", L"An exception occurred during parallel fuzzy matching: ", e.what());
 		// Clear any partial results and return
 		return;
 	}

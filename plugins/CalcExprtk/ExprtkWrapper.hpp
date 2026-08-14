@@ -5,6 +5,7 @@
 // #define double long double
 #include <variant>
 #include <iostream>
+#include "util/LogUtil.hpp"
 
 const double e = 2.718281828459045235360287471352;
 const double pi = 3.141592653589793238462643383279;
@@ -60,7 +61,7 @@ static bool IsError(std::variant<double, ErrorType> res) {
 	try {
 		double k = std::get<double>(res);
 	} catch (const std::bad_variant_access& ex) {
-		std::wcout << L"Error: " << ex.what() << std::endl;
+		Loge(L"ExprtkWrapper", L"Error: ", ex.what());
 		return true;
 	}
 	return false;
@@ -72,7 +73,7 @@ static bool operator!=(std::variant<double, ErrorType> a, std::variant<double, E
 		double da = std::get<double>(a), db = std::get<double>(b);
 		return abs(da - db) > 1e-5;
 	} catch (const std::bad_variant_access& ex) {
-		std::wcout << L"Error: " << ex.what() << std::endl;
+		Loge(L"ExprtkWrapper", L"Error: ", ex.what());
 		return false;
 	}
 }
@@ -87,7 +88,7 @@ namespace Functions {
 		try {
 			os << std::get<double>(res);
 		} catch (const std::bad_variant_access& ex) {
-			std::wcout << L"Error: " << ex.what() << std::endl;
+			Loge(L"ExprtkWrapper", L"Error: ", ex.what());
 			os << std::get<ErrorType>(res);
 		}
 		return os;

@@ -30,7 +30,7 @@ public:
 		if (FAILED(hr)) {
 			wchar_t buf[128];
 			swprintf_s(buf, L"SHAutoComplete failed: 0x%08X", hr);
-			Loge(L"EnableSmartEdit", buf);
+			Loge(L"EditManager", buf);
 		}
 	}
 

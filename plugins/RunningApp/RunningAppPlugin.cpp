@@ -54,7 +54,7 @@ inline void WorkerThreadFunction()
 			catch (...)
 			{
 				// 捕获任务执行中的异常，防止线程崩溃
-				ConsolePrintln(L"运行中插件索引条目报错");
+				Loge(L"RunningApp", L"运行中插件索引条目报错");
 			}
 		}
 	}
@@ -142,7 +142,7 @@ private:
 			action->applicationView = viewInfo.view;
 			action->isModernApplicationView = viewInfo.isModernView;
 
-			ConsolePrintln(L"索引"+action->title);
+			Logi(L"RunningApp", L"索引: ", action->title);
 			allPluginActions.push_back(action);
 		});
 	}
@@ -263,29 +263,29 @@ public:
 
 	
 	bool OnItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
-		ConsolePrintln(L"FolderPlugin", L"OnItemRightClick entered");
+		Logi(L"RunningApp", L"OnItemRightClick entered");
 		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
 		if (!runningAppAction) {
-			ConsolePrintln(L"FolderPlugin", L"OnItemRightClick skipped: action is not RunningAppAction");
+			Logw(L"RunningApp", L"OnItemRightClick skipped: action is not RunningAppAction");
 			return false;
 		}
-		ConsolePrintln(L"FolderPlugin", L"ShowShellContextMenu path=" + runningAppAction->getFilePath());
+		Logi(L"RunningApp", L"ShowShellContextMenu path=", runningAppAction->getFilePath());
 		ShowShellContextMenu(parentHwnd, runningAppAction->getFilePath(), screenPt);
-		ConsolePrintln(L"FolderPlugin", L"ShowShellContextMenu returned");
+		Logi(L"RunningApp", L"ShowShellContextMenu returned");
 		return true;
 	}
 
 	
 	bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
-		ConsolePrintln(L"FolderPlugin", L"OnItemShiftRightClick entered");
+		Logi(L"RunningApp", L"OnItemShiftRightClick entered");
 		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
 		if (!runningAppAction) {
-			ConsolePrintln(L"FolderPlugin", L"OnItemShiftRightClick skipped: action is not RunningAppAction");
+			Logw(L"RunningApp", L"OnItemShiftRightClick skipped: action is not RunningAppAction");
 			return false;
 		}
-		ConsolePrintln(L"FolderPlugin", L"ShowMyContextMenu path=" + runningAppAction->getFilePath());
+		Logi(L"RunningApp", L"ShowMyContextMenu path=", runningAppAction->getFilePath());
 		const UINT cmd = ShowMyContextMenu(parentHwnd, runningAppAction->getFilePath(), screenPt);
-		ConsolePrintln(L"FolderPlugin", L"ShowMyContextMenu cmd=" + std::to_wstring(cmd));
+		Logi(L"RunningApp", L"ShowMyContextMenu cmd=", cmd);
 		switch (cmd) {
 		case IDM_OPEN_APP:
 			// runningAppAction->Invoke(runningAppAction->getFilePath());

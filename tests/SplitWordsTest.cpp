@@ -1,10 +1,11 @@
-#include <vector>
+﻿#include <vector>
 #include <string>
 #include <iostream>
 #include <cassert>
 #include <filesystem>
 #include "../util/PinyinHelper.hpp"
 #include "../util/StringUtil.hpp"
+#include "../util/LogUtil.hpp"
 #include <fcntl.h>
 #include <io.h>
 #include <cpp-pinyin/G2pglobal.h>
@@ -17,7 +18,7 @@
 
 // 测试cpp-pinyin库的拼音转换功能
 static void TestCppPinyinConversion2() {
-	std::wcout << L"\n=== Testing cpp-pinyin library ===" << std::endl;
+	Logi(L"SplitWordsTest", L"\n=== Testing cpp-pinyin library ===");
 
 	// 设置字典路径（需要指向编译输出目录中的dict文件夹）
 	const auto dictPath = std::filesystem::current_path() / "dict";
@@ -38,7 +39,7 @@ static void TestCppPinyinConversion2() {
 		L"窗前明月光"
 	};
 
-	std::wcout << L"\nTesting different pinyin styles:\n" << std::endl;
+	Logi(L"SplitWordsTest", L"\nTesting different pinyin styles:\n");
 
 	for (const auto& sentence : testSentences) {
 		// 将宽字符串转换为UTF-8
@@ -74,15 +75,14 @@ static void TestCppPinyinConversion2() {
 		std::string tone3Str = pinyinTone3.toStdStr();
 
 		// 输出结果
-		std::wcout << L"原文: " << sentence << std::endl;
-		std::wcout << L"  NORMAL:  " << utf8_to_wide(normalStr) << std::endl;
-		std::wcout << L"  TONE:    " << utf8_to_wide(toneStr) << std::endl;
-		std::wcout << L"  TONE3:   " << utf8_to_wide(tone3Str) << std::endl;
-		std::wcout << std::endl;
+		Logi(L"SplitWordsTest", L"原文: ", sentence);
+		Logi(L"SplitWordsTest", L"  NORMAL:  ", normalStr);
+		Logi(L"SplitWordsTest", L"  TONE:    ", toneStr);
+		Logi(L"SplitWordsTest", L"  TONE3:   ", tone3Str);
 	}
 
 	// 测试多音字
-	std::wcout << L"\nTesting polyphonic characters (多音字):\n" << std::endl;
+	Logi(L"SplitWordsTest", L"\nTesting polyphonic characters (多音字):\n");
 	std::vector<std::wstring> polyphonicTests = {
 		L"我还行",
 		L"银行",
@@ -99,28 +99,27 @@ static void TestCppPinyinConversion2() {
 			true // 返回所有候选拼音
 		);
 
-		std::wcout << L"原文: " << text << L" -> " << utf8_to_wide(pinyin.toStdStr()) << std::endl;
+		Logi(L"SplitWordsTest", L"原文: ", text, L" -> ", pinyin.toStdStr());
 
 		// 显示每个字的候选拼音
 		for (const auto& py : pinyin) {
 			if (!py.candidates.empty() && py.candidates.size() > 1) {
-				std::wcout << L"  字 '" << utf8_to_wide(py.hanzi) << L"' 的候选读音: ";
+				std::wstring candStr;
 				for (size_t i = 0; i < py.candidates.size() && i < 3; ++i) {
-					std::wcout << utf8_to_wide(py.candidates[i]);
-					if (i < py.candidates.size() - 1 && i < 2) std::wcout << L", ";
+					candStr += utf8_to_wide(py.candidates[i]);
+					if (i < py.candidates.size() - 1 && i < 2) candStr += L", ";
 				}
-				std::wcout << std::endl;
+				Logi(L"SplitWordsTest", L"  字 '", py.hanzi, L"' 的候选读音: ", candStr);
 			}
 		}
-		std::wcout << std::endl;
 	}
 
-	std::wcout << L"=== cpp-pinyin tests completed ===" << std::endl;
+	Logi(L"SplitWordsTest", L"=== cpp-pinyin tests completed ===");
 }
 
 // 测试cpp-pinyin库的拼音转换功能
 static void TestCppPinyinConversion() {
-	std::wcout << L"\n=== Testing cpp-pinyin library ===" << std::endl;
+	Logi(L"SplitWordsTest", L"\n=== Testing cpp-pinyin library ===");
 
 	// 设置字典路径（需要指向编译输出目录中的dict文件夹）
 	const auto dictPath = std::filesystem::current_path() / "dict";
@@ -152,15 +151,15 @@ static void TestCppPinyinConversion() {
 		);
 		std::string normalStr = pinyinNormal.toStdStr();
 
-		std::wcout << sentence << L"\t\t" << utf8_to_wide(normalStr) << std::endl;
+		Logi(L"SplitWordsTest", sentence, L"\t\t", normalStr);
 	}
 
-	std::wcout << L"=== cpp-pinyin tests completed ===" << std::endl;
+	Logi(L"SplitWordsTest", L"=== cpp-pinyin tests completed ===");
 }
 
 // 测试pugixml库的XML解析功能
 static void TestPugixmlParsing() {
-	std::wcout << L"\n=== Testing pugixml library ===" << std::endl;
+	Logi(L"SplitWordsTest", L"\n=== Testing pugixml library ===");
 
 	// 创建一个简单的XML文档
 	pugi::xml_document doc;
@@ -190,15 +189,15 @@ static void TestPugixmlParsing() {
 	pugi::xml_parse_result result = doc.load_string(xmlString);
 
 	if (!result) {
-		std::wcout << L"XML解析失败: " << utf8_to_wide(result.description()) << std::endl;
+		Loge(L"SplitWordsTest", L"XML解析失败: ", result.description());
 		return;
 	}
 
-	std::wcout << L"XML解析成功!\n" << std::endl;
+	Logi(L"SplitWordsTest", L"XML解析成功!\n");
 
 	// 遍历所有书籍
 	pugi::xml_node bookstore = doc.child("bookstore");
-	std::wcout << L"书店中的所有书籍:\n" << std::endl;
+	Logi(L"SplitWordsTest", L"书店中的所有书籍:\n");
 
 	for (pugi::xml_node book : bookstore.children("book")) {
 		std::string id = book.attribute("id").as_string();
@@ -206,25 +205,24 @@ static void TestPugixmlParsing() {
 		std::string author = book.child("author").text().as_string();
 		double price = book.child("price").text().as_double();
 
-		std::wcout << L"书籍ID: " << utf8_to_wide(id) << std::endl;
-		std::wcout << L"  书名: " << utf8_to_wide(title) << std::endl;
-		std::wcout << L"  作者: " << utf8_to_wide(author) << std::endl;
-		std::wcout << L"  价格: $" << price << std::endl;
-		std::wcout << std::endl;
+		Logi(L"SplitWordsTest", L"书籍ID: ", id);
+		Logi(L"SplitWordsTest", L"  书名: ", title);
+		Logi(L"SplitWordsTest", L"  作者: ", author);
+		Logi(L"SplitWordsTest", L"  价格: $", price);
 	}
 
 	// 使用XPath查询
-	std::wcout << L"使用XPath查询价格大于80的书籍:\n" << std::endl;
+	Logi(L"SplitWordsTest", L"使用XPath查询价格大于80的书籍:\n");
 	pugi::xpath_node_set books = doc.select_nodes("//book[price > 80]");
 
 	for (pugi::xpath_node node : books) {
 		pugi::xml_node book = node.node();
 		std::string title = book.child("title").text().as_string();
 		double price = book.child("price").text().as_double();
-		std::wcout << L"  " << utf8_to_wide(title) << L" - $" << price << std::endl;
+		Logi(L"SplitWordsTest", L"  ", title, L" - $", price);
 	}
 
-	std::wcout << L"\n=== pugixml tests completed ===" << std::endl;
+	Logi(L"SplitWordsTest", L"\n=== pugixml tests completed ===");
 }
 
 
@@ -240,21 +238,15 @@ int main() {
 	TestCppPinyinConversion();
 
 	PinyinHelper::initPinyinLib();
-	std::wcout << PinyinHelper::GetPinyinWithVariants(L"Notepad") << std::endl;
-	std::wcout << PinyinHelper::GetPinyinWithVariants(L"网易云音乐") << std::endl;
-	// std::wcout << PinyinHelper::GetPinyinWithVariants(L"こんにちは世界") << std::endl;
-	// std::wcout << PinyinHelper::GetPinyinWithVariants(L"안녕하세요") << std::endl;
-	// std::wcout << PinyinHelper::GetPinyinWithVariants(L"مرحبا بالعالم") << std::endl;
-	// std::wcout << PinyinHelper::GetPinyinWithVariants(L"Γειά σου Κόσμε") << std::endl;
-	// std::wcout << PinyinHelper::GetPinyinWithVariants(L"测试😀🚀👍") << std::endl;
-	// std::wcout << PinyinHelper::GetPinyinWithVariants(L"IDEA 编辑器テスト😀") << std::endl;
+	Logi(L"SplitWordsTest", PinyinHelper::GetPinyinWithVariants(L"Notepad"));
+	Logi(L"SplitWordsTest", PinyinHelper::GetPinyinWithVariants(L"网易云音乐"));
 
 
 	std::string input = R"({"arg":"\"C:\\Users\\Test\\file.txt\"{{}"}  abcabcabc})";
 
 	size_t end = find_json_end(input);
 	if (end == std::string::npos) {
-		std::wcerr << L"Invalid JSON" << std::endl;
+		Loge(L"SplitWordsTest", L"Invalid JSON");
 		return 1;
 	}
 
@@ -268,16 +260,16 @@ int main() {
 	std::string arg = j["arg"];
 	if (arg.size() >= 2 && arg.front() == '"' && arg.back() == '"') arg = arg.substr(1, arg.size() - 2);
 
-	std::wcout << "path = " << utf8_to_wide(arg) << "\n";
-	std::wcout << "tail = " << utf8_to_wide(tail_part) << "\n";
+	Logi(L"SplitWordsTest", L"path = ", arg);
+	Logi(L"SplitWordsTest", L"tail = ", tail_part);
 
 
 	std::wstring path = FindOneNotePathEnhanced();
 	if (!path.empty()) {
-		std::wcout << L"Found OneNote: " << path << L"\n";
+		Logi(L"SplitWordsTest", L"Found OneNote: ", path);
 		return 0;
 	} else {
-		std::wcout << L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).\n";
+		Logw(L"SplitWordsTest", L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).");
 		return 1;
 	}
 

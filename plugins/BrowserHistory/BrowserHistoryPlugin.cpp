@@ -43,17 +43,17 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"BrowserHistory Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"BrowserHistory", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		ConsolePrintln(L"BrowserHistory Plugin", L"RefreshAllActions start");
+		Logi(L"BrowserHistory", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// 获取所有浏览器历史记录
 		allPluginActions = GetAllBrowserHistory();
 
-		ConsolePrintln(L"BrowserHistory Plugin", L"Loaded " + std::to_wstring(allPluginActions.size()) + L" history items");
+		Logi(L"BrowserHistory", L"Loaded ", allPluginActions.size(), L" history items");
 	}
 
 	std::wstring DefaultSettingJson() override {

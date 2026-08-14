@@ -47,7 +47,7 @@ inline std::string ReadUtf8File(const std::wstring& configPath) {
 	fs::path p(configPath);
 	std::ifstream in(p, std::ios::binary);
 	if (!in) {
-		std::wcerr << L"配置文件不存在：" << configPath << std::endl;
+		Loge(L"FileUtil", L"配置文件不存在：", configPath);
 		std::string utf8json2;
 		return utf8json2;
 	}
@@ -57,7 +57,7 @@ inline std::string ReadUtf8File(const std::wstring& configPath) {
 		auto absPath = fs::absolute(p);
 		// ConsolePrintln(L"ReadUtf8File", L"Configuration file path: " + absPath.wstring());
 	} catch (const std::exception& e) {
-		std::wcerr << L"路径解析失败: " << e.what() << std::endl;
+		Loge(L"FileUtil", L"路径解析失败: ", e.what());
 	}
 
 
@@ -84,7 +84,7 @@ inline std::string ReadUtf8File(const std::string& configPath) {
 inline std::string ReadUtf8FileBinary(std::wstring& path) {
 	FILE* fp = nullptr;
 	if (_wfopen_s(&fp, path.c_str(), L"rb") != 0 || !fp) {
-		std::wcerr << L"设置基础文件不存在：" << path << std::endl;
+		Loge(L"FileUtil", L"设置基础文件不存在: ", path);
 		return "";
 	}
 
@@ -130,7 +130,7 @@ inline std::wstring ShortToLongPath(const std::wstring& shortPath) {
 	// 获取长路径所需的缓冲区大小
 	DWORD dwSize = GetFullPathName(shortPath.c_str(), 0, NULL, NULL);
 	if (dwSize == 0) {
-		std::wcerr << L"Error getting path length" << std::endl;
+		Loge(L"FileUtil", L"Error getting path length");
 		return L"";
 	}
 
@@ -140,7 +140,7 @@ inline std::wstring ShortToLongPath(const std::wstring& shortPath) {
 	// 调用 GetFullPathName 来转换短路径为长路径
 	dwSize = GetFullPathName(shortPath.c_str(), dwSize, &longPath[0], NULL);
 	if (dwSize == 0) {
-		std::wcerr << L"Error converting to long path" << std::endl;
+		Loge(L"FileUtil", L"Error converting to long path");
 		return L"";
 	}
 
@@ -153,14 +153,14 @@ inline std::wstring ShortToLongPathWithEnvironment(const std::wstring& shortPath
 	wchar_t expandedPath[MAX_PATH];
 	DWORD result = ExpandEnvironmentStrings(shortPath.c_str(), expandedPath, MAX_PATH);
 	if (result == 0) {
-		std::wcerr << L"Error expanding environment variables" << std::endl;
+		Loge(L"FileUtil", L"Error expanding environment variables");
 		return L"";
 	}
 
 	// 获取长路径所需的缓冲区大小
 	DWORD dwSize = GetFullPathName(expandedPath, 0, NULL, NULL);
 	if (dwSize == 0) {
-		std::wcerr << L"Error getting path length" << std::endl;
+		Loge(L"FileUtil", L"Error getting path length");
 		return L"";
 	}
 
@@ -170,7 +170,7 @@ inline std::wstring ShortToLongPathWithEnvironment(const std::wstring& shortPath
 	// 调用 GetFullPathName 来转换短路径为长路径
 	dwSize = GetFullPathName(expandedPath, dwSize, &longPath[0], NULL);
 	if (dwSize == 0) {
-		std::wcerr << L"Error converting to long path" << std::endl;
+		Loge(L"FileUtil", L"Error converting to long path");
 		return L"";
 	}
 

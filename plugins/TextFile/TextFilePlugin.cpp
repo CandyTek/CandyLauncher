@@ -48,11 +48,11 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"TextFilePlugin", L"RefreshAllActions: m_host is null");
+			Loge(L"TextFile", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		ConsolePrintln(L"TextFilePlugin", L"RefreshAllActions start");
+		Logi(L"TextFile", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// 获取所有浏览器历史记录
@@ -63,7 +63,7 @@ public:
 		// 文件夹存在则调用 m_host->TraverseFilesForEverythingSDK 遍历文件
 		// 超过2mb的文本文件就跳过吧，尝试获取文本内容并构建 TextFileAction，内容填入 matchText，标题使用使用文件名称，副标题动态更改，在InterceptInputShowResultsDirectly里赋值为 找到的文本位置部分上下文内容
 
-		ConsolePrintln(L"TextFilePlugin", L"Loaded " + std::to_wstring(allPluginActions.size()) + L" items");
+		Logi(L"TextFile", L"Loaded ", allPluginActions.size(), L" items");
 	}
 	// TODO: 文件夹里响应 .gitignore 的设置
 	std::wstring DefaultSettingJson() override {
@@ -211,17 +211,17 @@ public:
 
 			// ShellExecuteW 返回值大于 32 表示成功
 			if (reinterpret_cast<INT_PTR>(result) > 32) {
-				ConsolePrintln(L"TextFilePlugin", L"Successfully opened file: " + filePath);
+				Logi(L"TextFile", L"Successfully opened file: ", filePath);
 				return true;
 			} else {
-				Loge(L"TextFilePlugin", L"Failed to open file: " + filePath, "");
+				Loge(L"TextFile", L"Failed to open file: ", filePath);
 				return false;
 			}
 		} catch (const std::exception& e) {
-			Loge(L"TextFilePlugin", L"Exception in OnActionExecute", e.what());
+			Loge(L"TextFile", L"Exception in OnActionExecute: ", e.what());
 			return false;
 		} catch (...) {
-			Loge(L"TextFilePlugin", L"Unknown exception in OnActionExecute", "");
+			Loge(L"TextFile", L"Unknown exception in OnActionExecute");
 			return false;
 		}
 	}

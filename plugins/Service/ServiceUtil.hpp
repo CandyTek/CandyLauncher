@@ -76,7 +76,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 		// 打开服务管理器
 		SC_HANDLE hSCManager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE);
 		if (!hSCManager) {
-			Loge(L"Service", L"Failed to open service manager", std::to_string(GetLastError()).c_str());
+			Loge(L"Service", L"Failed to open service manager: ", GetLastError());
 			return result;
 		}
 
@@ -100,7 +100,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 
 		if (GetLastError() != ERROR_MORE_DATA) {
 			CloseServiceHandle(hSCManager);
-			Loge(L"Service", L"Failed to enumerate services", std::to_string(GetLastError()).c_str());
+			Loge(L"Service", L"Failed to enumerate services: ", GetLastError());
 			return result;
 		}
 
@@ -121,7 +121,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 			nullptr
 		)) {
 			CloseServiceHandle(hSCManager);
-			Loge(L"Service", L"Failed to enumerate services", std::to_string(GetLastError()).c_str());
+			Loge(L"Service", L"Failed to enumerate services: ", GetLastError());
 			return result;
 		}
 
@@ -198,7 +198,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 					return actionA->displayName < actionB->displayName;
 				});
 
-		ConsolePrintln(L"Service Plugin", L"Loaded " + std::to_wstring(result.size()) + L" services");
+		Logi(L"Service", L"Loaded ", result.size(), L" services");
 	} catch (const std::exception& e) {
 		Loge(L"Service", L"Exception in GetAllWindowsServices: ", e.what());
 	}

@@ -49,11 +49,11 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"WindowsSearch Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"WindowsSearch", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		ConsolePrintln(L"WindowsSearch Plugin", L"RefreshAllActions start");
+		Logi(L"WindowsSearch", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// Windows Search 插件不需要预加载数据，搜索是实时的
@@ -69,17 +69,17 @@ public:
 							reinterpret_cast<void**>(&testManager));
 
 		if (SUCCEEDED(hr) && testManager) {
-			ConsolePrintln(L"WindowsSearch Plugin", L"Windows Search Manager test: SUCCESS");
+			Logi(L"WindowsSearch", L"Windows Search Manager test: SUCCESS");
 			testManager->Release();
 		} else {
 			wchar_t msg[256];
-			swprintf_s(msg, 256, L"Windows Search Manager test: FAILED (HRESULT: 0x%08X)", hr);
-			Loge(L"WindowsSearch Plugin", msg);
+			swprintf_s(msg, 256, L"0x%08X", hr);
+			Loge(L"WindowsSearch", L"Windows Search Manager test: FAILED (HRESULT: ", msg, L")");
 		}
 
 		if (comInitialized) CoUninitialize();
 
-		ConsolePrintln(L"WindowsSearch Plugin", L"Ready for dynamic searching");
+		Logi(L"WindowsSearch", L"Ready for dynamic searching");
 	}
 
 	std::wstring DefaultSettingJson() override {
@@ -169,7 +169,7 @@ public:
 		try {
 			std::wregex regexPattern(reservedStringPattern);
 			if (std::regex_match(searchQuery, regexPattern)) {
-				ConsolePrintln(L"WindowsSearch", L"Query contains reserved characters, skipping search");
+				Logi(L"WindowsSearch", L"Query contains reserved characters, skipping search");
 				return {};
 			}
 		} catch (...) {

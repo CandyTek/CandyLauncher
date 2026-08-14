@@ -17,12 +17,10 @@ enum : UINT {
 
 
 static UINT ShowMyContextMenu(HWND hWnd, const std::wstring& path, POINT screenPt) {
-	ConsolePrintln(L"MyMenu", L"enter path=" + path +
-		L", x=" + std::to_wstring(screenPt.x) +
-		L", y=" + std::to_wstring(screenPt.y));
+	Logi(L"RunningAppMenu", L"enter path=", path, L", x=", screenPt.x, L", y=", screenPt.y);
 	HMENU hMenu = CreatePopupMenu();
 	if (!hMenu) {
-		ConsolePrintln(L"MyMenu", L"CreatePopupMenu failed err=" + std::to_wstring(GetLastError()));
+		Loge(L"RunningAppMenu", L"CreatePopupMenu failed err=", GetLastError());
 		return 0;
 	}
 	AppendMenuW(hMenu, MF_STRING, IDM_OPEN_APP, L"运行应用程序");
@@ -42,8 +40,7 @@ static UINT ShowMyContextMenu(HWND hWnd, const std::wstring& path, POINT screenP
 		nullptr
 	);
 	PostMessageW(hWnd, WM_NULL, 0, 0);
-	ConsolePrintln(L"MyMenu", L"TrackPopupMenuEx cmd=" + std::to_wstring(cmd) +
-		L", count=" + std::to_wstring(GetMenuItemCount(hMenu)));
+	Logi(L"RunningAppMenu", L"TrackPopupMenuEx cmd=", cmd, L", count=", GetMenuItemCount(hMenu));
 	DestroyMenu(hMenu);
 	return cmd;
 }

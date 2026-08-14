@@ -187,8 +187,8 @@ static void showMainWindowInForegroundRect(HWND hWnd) {
 		int width = rect.right - rect.left;
 		int height = rect.bottom - rect.top;
 
-		std::wcout << L"foregroundWindow location: (" << x << ", " << y << ")" << std::endl;
-		std::wcout << L"foregroundWindow size: " << width << " x " << height << std::endl;
+		Logi(L"MainTools", L"foregroundWindow location: (", x, L", ", y, L")");
+		Logi(L"MainTools", L"foregroundWindow size: ", width, L" x ", height);
 
 		const int centerX = static_cast<int>(x + (width - MAIN_WINDOW_WIDTH) * window_position_offset_x);
 		const int centerY = static_cast<int>(y + (height - MAIN_WINDOW_HEIGHT) * window_position_offset_y);
@@ -202,7 +202,7 @@ static void showMainWindowInForegroundRect(HWND hWnd) {
 			lastWindowCenterY = centerY;
 		}
 	} else {
-		std::wcout << L"Failed to get window rectangle." << std::endl;
+		Logw(L"MainTools", L"Failed to get window rectangle.");
 		showMainWindowInCursorScreen(hWnd);
 		return;
 	}
@@ -372,12 +372,10 @@ static void ReleaseAltKey() {
 }
 
 static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const POINT& ptScreen) {
-	ConsolePrintln(L"ShellMenu", L"enter path=" + filePath +
-		L", x=" + std::to_wstring(ptScreen.x) +
-		L", y=" + std::to_wstring(ptScreen.y));
+	Logi(L"ShellMenu", L"enter path=", filePath, L", x=", ptScreen.x, L", y=", ptScreen.y);
 	ComInitGuard guard;
 	if (FAILED(guard.hr)) {
-		ConsolePrintln(L"ShellMenu", L"CoInitialize failed hr=" + std::to_wstring(guard.hr));
+		Loge(L"ShellMenu", L"CoInitialize failed hr=", guard.hr);
 		return;
 	}
 
@@ -385,21 +383,21 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 	SFGAOF sfgao;
 	guard.hr = SHParseDisplayName(filePath.c_str(), nullptr, &pidl, 0, &sfgao);
 	if (FAILED(guard.hr)) {
-		ConsolePrintln(L"ShellMenu", L"SHParseDisplayName failed hr=" + std::to_wstring(guard.hr));
+		Loge(L"ShellMenu", L"SHParseDisplayName failed hr=", guard.hr);
 		return;
 	}
 
 	IShellFolder* desktopFolder = nullptr;
 	guard.hr = SHGetDesktopFolder(&desktopFolder);
 	if (FAILED(guard.hr)) {
-		ConsolePrintln(L"ShellMenu", L"SHGetDesktopFolder failed hr=" + std::to_wstring(guard.hr));
+		Loge(L"ShellMenu", L"SHGetDesktopFolder failed hr=", guard.hr);
 		CoTaskMemFree(pidl);
 		return;
 	}
 
 	PIDLIST_ABSOLUTE pidlParent = ILClone(pidl);
 	if (!pidlParent) {
-		ConsolePrintln(L"ShellMenu", L"ILClone failed");
+		Loge(L"ShellMenu", L"ILClone failed");
 		desktopFolder->Release();
 		CoTaskMemFree(pidl);
 		return;
@@ -416,7 +414,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		(void**)&parentFolder
 	);
 	if (FAILED(guard.hr)) {
-		ConsolePrintln(L"ShellMenu", L"SHBindToObject failed hr=" + std::to_wstring(guard.hr));
+		Loge(L"ShellMenu", L"SHBindToObject failed hr=", guard.hr);
 		desktopFolder->Release();
 		CoTaskMemFree(pidl);
 		CoTaskMemFree(pidlParent);
@@ -428,7 +426,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 	IContextMenu* contextMenu = nullptr;
 	guard.hr = parentFolder->GetUIObjectOf(hwnd, 1, &relpidl, IID_IContextMenu, nullptr, (void**)&contextMenu);
 	if (FAILED(guard.hr)) {
-		ConsolePrintln(L"ShellMenu", L"GetUIObjectOf failed hr=" + std::to_wstring(guard.hr));
+		Loge(L"ShellMenu", L"GetUIObjectOf failed hr=", guard.hr);
 	}
 	if (SUCCEEDED(guard.hr)) {
 		IContextMenu2* contextMenu2 = nullptr;
@@ -456,14 +454,13 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 		UINT idCmdLast = 0x7FFF;
 
 		const HRESULT queryHr = contextMenu->QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, CMF_NORMAL);
-		ConsolePrintln(L"ShellMenu", L"QueryContextMenu hr=" + std::to_wstring(queryHr) +
-			L", count=" + std::to_wstring(GetMenuItemCount(hMenu)));
+		Logi(L"ShellMenu", L"QueryContextMenu hr=", queryHr, L", count=", GetMenuItemCount(hMenu));
 
 		SetForegroundWindow(hwnd);
 		int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
 								ptScreen.x, ptScreen.y, 0, hwnd, nullptr);
 		PostMessageW(hwnd, WM_NULL, 0, 0);
-		ConsolePrintln(L"ShellMenu", L"TrackPopupMenu cmd=" + std::to_wstring(cmd));
+		Logi(L"ShellMenu", L"TrackPopupMenu cmd=", cmd);
 
 		if (cmd >= static_cast<int>(idCmdFirst) && cmd <= static_cast<int>(idCmdLast)) {
 			CMINVOKECOMMANDINFOEX cmi = {0};
@@ -479,7 +476,7 @@ static void ShowShellContextMenu(HWND hwnd, const std::wstring& filePath, const 
 
 		DestroyMenu(hMenu);
 	} else {
-		ConsolePrintln(L"ShellMenu", L"CreatePopupMenu failed err=" + std::to_wstring(GetLastError()));
+		Loge(L"ShellMenu", L"CreatePopupMenu failed err=", GetLastError());
 	}
 
 	contextMenu->Release();
@@ -624,7 +621,7 @@ inline bool IsRectOnAnyMonitor(const RECT& rc) {
 }
 
 
-[[deprecated(L"会误伤一些快捷方式")]]
+[[deprecated("会误伤一些快捷方式")]]
 static bool IsShortcutInvalid2(const std::wstring& shortcutPath) {
 	ComInitGuard guard;
 	if (FAILED(guard.hr)) return true;
@@ -665,7 +662,7 @@ static bool IsShortcutInvalid2(const std::wstring& shortcutPath) {
 static TraverseOptions getTraverseOptions(const nlohmann::basic_json<>& cmd) {
 	TraverseOptions traverseOptions;
 	if (!cmd.is_object()) {
-		std::wcerr << L"配置项不是一个对象，返回。" << std::endl;
+		Loge(L"MainTools", L"配置项不是一个对象，返回。");
 		return traverseOptions;
 	}
 
@@ -1022,8 +1019,7 @@ inline void AttachConsoleForDebug2() {
 	FILE* fp;
 	freopen_s(&fp, "CONOUT$", "w", stdout);
 	freopen_s(&fp, "CONOUT$", "w", stderr);
-	std::wcout << "Console attached!" << std::endl;
-	std::wcout << "Console attached!" << std::endl;
+	Logi(L"MainTools", L"Console attached!");
 }
 
 inline void AttachConsoleForDebug() {
@@ -1042,8 +1038,8 @@ inline void AttachConsoleForDebug() {
 	// _setmode(_fileno(stderr), _O_U8TEX////);
 	_setmode(_fileno(stdin), _O_U8TEXT);
 
-	std::wcout << L"控制台已附加 (UTF-8 模式) 🎉" << std::endl;
-	std::wcout << L"测试中文输出：你好，世界！" << std::endl;
+	Logi(L"MainTools", L"控制台已附加 (UTF-8 模式) 🎉");
+	Logi(L"MainTools", L"测试中文输出：你好，世界！");
 }
 
 // 读取窗口位置
@@ -1130,7 +1126,7 @@ static void ChangeEditTextArg(const std::wstring& arg2) {
 				currectActionArg = utf8_to_wide(arg);
 				isSuccess = true;
 			} catch (const nlohmann::json::parse_error& e) {
-				std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
+				Loge(L"MainTools", L"JSON 解析错误: ", e.what());
 			}
 			if (isSuccess) {
 				editTextBuffer2 = editTextBuffer.substr(end + 1);

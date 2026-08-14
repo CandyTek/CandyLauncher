@@ -46,17 +46,17 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"Registry Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"Registry", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		ConsolePrintln(L"Registry Plugin", L"RefreshAllActions start");
+		Logi(L"Registry", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// 注册表插件不需要在启动时预加载所有内容
 		// 只在用户输入时动态搜索
 
-		ConsolePrintln(L"Registry Plugin", L"Registry plugin initialized");
+		Logi(L"Registry", L"Registry plugin initialized");
 	}
 
 	std::wstring DefaultSettingJson() override {
@@ -159,7 +159,7 @@ public:
 		try {
 			// 打开注册表编辑器并跳转到该键
 			if (!OpenRegistryEditor(action1->keyPath)) {
-				ConsolePrintln(L"Registry Plugin", L"Failed to open registry editor");
+				Logw(L"Registry", L"Failed to open registry editor");
 				return false;
 			}
 		} catch (...) {
@@ -175,7 +175,7 @@ private:
 		const std::vector<RegistryEntry>& entries, bool isValue = false) {
 		std::vector<std::shared_ptr<BaseAction>> result;
 		int iconIndex = GetSysImageIndex(iconPath);
-		ConsolePrintln(L"RegistryPlugin", L"列表数量：" + std::to_wstring(entries.size()));
+		Logi(L"Registry", L"列表数量：", entries.size());
 
 		for (const auto& entry : entries) {
 			auto action = std::make_shared<RegistryAction>();

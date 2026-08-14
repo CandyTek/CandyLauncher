@@ -45,17 +45,17 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"OneNote Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"OneNote", L"RefreshAllActions: m_host is null");
 			return;
 		}
-		ConsolePrintln(L"OneNote Plugin", L"RefreshAllActions start");
+		Logi(L"OneNote", L"RefreshAllActions start");
 
 		if (const std::string path = m_host->GetSettingsMap().at("com.candytek.onenoteplugin.icon_path").stringValue;path.empty()) {
 			iconPath = FindOneNotePathEnhanced();
 			if (!iconPath.empty()) {
-				std::cout << "Found OneNote: " << wide_to_utf8(iconPath) << "\n";
+				Logi(L"OneNote", L"Found OneNote: ", iconPath);
 			} else {
-				std::cout << "OneNote not found (desktop Office 2013/2016/2019 checks attempted).\n";
+				Logw(L"OneNote", L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).");
 				iconPath = LR"(C:\Program Files\Microsoft Office\root\Office16\ONENOTE.EXE)";
 			}
 		}else {
@@ -70,7 +70,7 @@ public:
 			SimpleOneNoteHelper oneNote;
 
 			if (!oneNote.IsInitialized()) {
-				ConsolePrintln(L"OneNote Plugin", L"OneNote is not available");
+				Logw(L"OneNote", L"OneNote is not available");
 				return;
 			}
 
@@ -78,7 +78,7 @@ public:
 			std::wstring xml = oneNote.GetHierarchy();
 
 			if (xml.empty()) {
-				ConsolePrintln(L"OneNote Plugin", L"Failed to get OneNote hierarchy");
+				Logw(L"OneNote", L"Failed to get OneNote hierarchy");
 				return;
 			}
 
@@ -87,7 +87,7 @@ public:
 			allPluginActions = ParseOneNoteHierarchyXML(xml, iconPath, iconIndex, maxResults);
 
 			// 获取页面内容并处理匹配文本
-			ConsolePrintln(L"OneNote Plugin", L"Fetching page contents...");
+			Logi(L"OneNote", L"Fetching page contents...");
 			int contentCount = 0;
 			for (auto& action : allPluginActions) {
 				auto oneNoteAction = std::dynamic_pointer_cast<OneNoteAction>(action);
@@ -117,15 +117,14 @@ public:
 					}
 				}
 			}
-			ConsolePrintln(L"OneNote Plugin", L"Successfully fetched content for " +
-				std::to_wstring(contentCount) + L" / " + std::to_wstring(allPluginActions.size()) + L" pages");
+			Logi(L"OneNote", L"Successfully fetched content for ", contentCount, L" / ", allPluginActions.size(), L" pages");
 
-			ConsolePrintln(L"OneNote Plugin", L"Loaded " + std::to_wstring(allPluginActions.size()) + L" OneNote pages");
+			Logi(L"OneNote", L"Loaded ", allPluginActions.size(), L" OneNote pages");
 
 		} catch (const std::exception& e) {
-			Loge(L"OneNote Plugin", L"Exception in RefreshAllActions: ", e.what());
+			Loge(L"OneNote", L"Exception in RefreshAllActions: ", e.what());
 		} catch (...) {
-			Loge(L"OneNote Plugin", L"Unknown exception in RefreshAllActions");
+			Loge(L"OneNote", L"Unknown exception in RefreshAllActions");
 		}
 	}
 

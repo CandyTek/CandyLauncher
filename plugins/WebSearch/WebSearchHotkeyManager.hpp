@@ -127,7 +127,7 @@ static std::wstring WS_GetSelectedText() {
 static DWORD WINAPI WS_HotkeyThreadProc(LPVOID) {
 	for (auto& entry : g_wsHotkeyEntries) {
 		if (!RegisterHotKey(nullptr, entry.id, entry.modifiers, entry.vk)) {
-			PluginConsolePrintln(L"WebSearch", L"RegisterHotKey failed for: " + entry.engineKey);
+			Logw(L"WebSearch", L"RegisterHotKey failed for: ", entry.engineKey);
 		}
 	}
 
@@ -193,8 +193,5 @@ static void WS_StartHotkeyThread() {
 
 	if (g_wsHotkeyEntries.empty()) return;
 	g_wsHotkeyThread = CreateThread(nullptr, 0, WS_HotkeyThreadProc, nullptr, 0, &g_wsHotkeyThreadId);
-	PluginConsolePrintln(L"WebSearch", L"Hotkey thread started with " + std::to_wstring(g_wsHotkeyEntries.size()) + L" hotkeys");
+	Logi(L"WebSearch", L"Hotkey thread started with ", g_wsHotkeyEntries.size(), L" hotkeys");
 }
-
-
-

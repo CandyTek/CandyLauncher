@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #define IDS_I18N_MAIN_WINDOW_TITLE 1000
 #define IDS_I18N_SETTINGS_WINDOW_TITLE 1001

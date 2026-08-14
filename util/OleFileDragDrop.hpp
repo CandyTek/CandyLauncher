@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <windows.h>
 #include <oleidl.h>
@@ -536,14 +536,14 @@ inline std::atomic<bool> g_isOleFileDragDropInProgress = false;
 
 inline bool BeginOleDataDragDrop(const OleDragDropData& data, DWORD* performedEffect = nullptr) {
 	if (!data.HasAnyData()) {
-		ConsolePrintln(L"OleDragDrop", L"Skip empty drag data");
+		Logi(L"OleDragDrop", L"Skip empty drag data");
 		return false;
 	}
 
 	auto* dataObject = new SimpleDataObject(data);
 	if (!dataObject->IsValid()) {
 		dataObject->Release();
-		ConsolePrintln(L"OleDragDrop", L"Create data object failed");
+		Logi(L"OleDragDrop", L"Create data object failed");
 		return false;
 	}
 
@@ -559,7 +559,7 @@ inline bool BeginOleDataDragDrop(const OleDragDropData& data, DWORD* performedEf
 	if (performedEffect) {
 		*performedEffect = effect;
 	}
-	ConsolePrintln(
+	Logi(
 		L"OleDragDrop",
 		L"DoDragDrop hr=" + std::to_wstring(static_cast<long long>(hr)) +
 		L", effect=" + std::to_wstring(effect)

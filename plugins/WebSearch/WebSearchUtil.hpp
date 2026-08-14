@@ -66,7 +66,7 @@ static void CreateDefaultWebSearchConfig(const std::wstring& path) {
 			f.write(content.c_str(), static_cast<std::streamsize>(content.size()));
 		}
 	} catch (...) {
-		Loge(L"WebSearch Plugin", L"Failed to create default config");
+		Loge(L"WebSearch", L"Failed to create default config");
 	}
 }
 
@@ -98,9 +98,9 @@ static void LoadWebSearchConfig() {
 			}
 		}
 
-		ConsolePrintln(L"WebSearch Plugin", L"Loaded " + std::to_wstring(g_searchEngines.size()) + L" search engines");
+		Logi(L"WebSearch", L"Loaded ", g_searchEngines.size(), L" search engines");
 	} catch (...) {
-		Loge(L"WebSearch Plugin", L"Failed to load config");
+		Loge(L"WebSearch", L"Failed to load config");
 	}
 }
 
@@ -125,9 +125,9 @@ static void SaveWebSearchConfig() {
 			std::string content = j.dump(2);
 			f.write(content.c_str(), static_cast<std::streamsize>(content.size()));
 		}
-		ConsolePrintln(L"WebSearch Plugin", L"Config saved");
+		Logi(L"WebSearch", L"Config saved");
 	} catch (...) {
-		Loge(L"WebSearch Plugin", L"Failed to save config");
+		Loge(L"WebSearch", L"Failed to save config");
 	}
 }
 

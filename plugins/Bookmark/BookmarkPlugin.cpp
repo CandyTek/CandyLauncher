@@ -239,7 +239,7 @@ public:
 		dragData.rtf = L"{\\rtf1\\ansi\\deff0 {\\field{\\*\\fldinst HYPERLINK \"" +
 			EscapeRtfText(url) + L"\"}{\\fldrslt " + EscapeRtfText(title) + L"}}}";
 
-		ConsolePrintln(L"BookmarkPlugin", L"Begin OLE drag drop url=" + url);
+		Logi(L"BookmarkPlugin", L"Begin OLE drag drop url=", url);
 		return m_host->BeginOleDragDropData(dragData, sourceHwnd);
 	}
 

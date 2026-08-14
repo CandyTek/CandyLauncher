@@ -94,7 +94,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 	try {
 		// 检查文件是否存在
 		if (!fs::exists(historyDbPath)) {
-			ConsolePrintln(L"BrowserHistory", L"History database not found: " + utf8_to_wide(historyDbPath));
+			Logi(L"BrowserHistory", L"History database not found: ", historyDbPath);
 			return result;
 		}
 
@@ -218,7 +218,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 				action->subTitle = action->url;
 			} catch (const std::exception& e) {
 				// 转换出错，跳过这条记录
-				Logi(L"BrowserHistory", L"Conversion error, skip this record", e.what());
+				Logw(L"BrowserHistory", L"Conversion error, skip this record: ", e.what());
 				continue;
 			}
 
@@ -251,7 +251,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 		// // 忽略删除临时文件的错误
 		// 	Loge(L"BrowserHistory", L"Failed to remove temp database: ", e.what());
 		// }
-		ConsolePrintln(L"BrowserHistory", L"Loaded " + std::to_wstring(result.size()) + L" history items");
+		Logi(L"BrowserHistory", L"Loaded ", result.size(), L" history items");
 	} catch (const std::exception& e) {
 		Loge(L"BrowserHistory", L"Exception in GetChromiumHistoryFromDB: ", e.what());
 	}

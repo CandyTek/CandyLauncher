@@ -97,7 +97,7 @@ public:
 			query << L" " << nameFilter;
 		}
 
-		std::wcout << L"[Everything] Query: " << query.str() << std::endl;
+		Logi(L"Everything", L"Query: ", query.str());
 
 		// 执行 Everything 查询
 		Everything_SetSearchW(query.str().c_str());
@@ -170,7 +170,7 @@ public:
 			}
 		}
 
-		std::wcout << L"Executing optimized Everything search: " << search_query.str() << std::endl;
+		Logi(L"Everything", L"Executing optimized Everything search: ", search_query.str());
 
 		// 使用 Everything SDK
 		Everything_SetSearchW(search_query.str().c_str());
@@ -234,7 +234,7 @@ public:
 			return true;
 		}
 
-		ConsolePrintln(TAG, L"LoadSinglePlugin failed for: " + pluginName);
+		Loge(TAG, L"LoadSinglePlugin failed for: ", pluginName);
 		return false;
 	}
 
@@ -287,15 +287,15 @@ public:
 	}
 
 	void LoadAllPlugins(const std::wstring& pluginDir) {
-		ConsolePrintln(TAG, L"LoadAllPlugins start");
+		Logi(TAG, L"LoadAllPlugins start");
 		g_pluginCatalog.clear();
 
 		if (!std::filesystem::exists(pluginDir)) {
-			ConsolePrintln(TAG, L"Plugin directory does not exist: " + pluginDir);
+			Logw(TAG, L"Plugin directory does not exist: ", pluginDir);
 			return;
 		}
 		if (!std::filesystem::is_directory(pluginDir)) {
-			ConsolePrintln(TAG, L"Plugin path is not a directory: " + pluginDir);
+			Logw(TAG, L"Plugin path is not a directory: ", pluginDir);
 			return;
 		}
 
@@ -311,7 +311,7 @@ public:
 				g_pluginCatalog.push_back(catalogInfo);
 
 				if (!catalogInfo.enabled) {
-					ConsolePrintln(TAG, L"Skip disabled plugin: " + catalogInfo.pkgName);
+					Logi(TAG, L"Skip disabled plugin: ", catalogInfo.pkgName);
 					continue;
 				}
 
@@ -329,11 +329,11 @@ public:
 						}
 					}
 				}
-				ConsolePrintln(TAG, "Load result for " + entry.path().filename().string() + ": " + (loadResult ? "SUCCESS" : "FAILED"));
+				Logi(TAG, L"Load result for ", entry.path().filename().wstring(), L": ", (loadResult ? L"SUCCESS" : L"FAILED"));
 			}
 		}
 
-		ConsolePrintln(TAG, "LoadAllPlugins complete, total plugins loaded: " + std::to_string(m_plugins.size()));
+		Logi(TAG, L"LoadAllPlugins complete, total plugins loaded: ", m_plugins.size());
 
 		NotifyActionsChanged();
 	}
@@ -352,12 +352,12 @@ public:
 	}
 
 	void RefreshAllActions() {
-		ConsolePrintln(TAG, L"RefreshAllActions start, clearing existing actions...");
+		Logi(TAG, L"RefreshAllActions start, clearing existing actions...");
 		m_suppressNotifications = true; // 暂时禁用通知
 
 		for (auto& pair : m_plugins) {
 			if (pair.second.loaded && pair.second.plugin) {
-				ConsolePrintln(TAG, L"Loading actions from plugin: " + pair.second.name);
+				Logi(TAG, L"Loading actions from plugin: ", pair.second.name);
 				const auto refreshStart = GetTickCount64();
 				pair.second.plugin->RefreshAllActions();
 				pair.second.refreshTimeMs = GetTickCount64() - refreshStart;
@@ -400,15 +400,15 @@ public:
 
 	bool DispatchItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
 		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
-			ConsolePrintln(TAG, L"DispatchItemRightClick skipped: action/plugin not found");
+			Logw(TAG, L"DispatchItemRightClick skipped: action/plugin not found");
 			return false;
 		}
 		PluginInfo& info = m_plugins[action->pluginId];
-		ConsolePrintln(TAG,
-						L"DispatchItemRightClick pluginId=" + std::to_wstring(action->pluginId) +
-						L", apiVersion=" + std::to_wstring(info.apiVersion) +
-						L", loaded=" + std::to_wstring(info.loaded) +
-						L", plugin=" + std::to_wstring(info.plugin != nullptr));
+		Logi(TAG,
+						L"DispatchItemRightClick pluginId=", action->pluginId,
+						L", apiVersion=", info.apiVersion,
+						L", loaded=", info.loaded,
+						L", plugin=", (info.plugin != nullptr));
 		if (!info.loaded || !info.plugin) {
 			return false;
 		}
@@ -417,15 +417,15 @@ public:
 
 	bool DispatchItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
 		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
-			ConsolePrintln(TAG, L"DispatchItemShiftRightClick skipped: action/plugin not found");
+			Logw(TAG, L"DispatchItemShiftRightClick skipped: action/plugin not found");
 			return false;
 		}
 		PluginInfo& info = m_plugins[action->pluginId];
-		ConsolePrintln(TAG,
-						L"DispatchItemShiftRightClick pluginId=" + std::to_wstring(action->pluginId) +
-						L", apiVersion=" + std::to_wstring(info.apiVersion) +
-						L", loaded=" + std::to_wstring(info.loaded) +
-						L", plugin=" + std::to_wstring(info.plugin != nullptr));
+		Logi(TAG,
+						L"DispatchItemShiftRightClick pluginId=", action->pluginId,
+						L", apiVersion=", info.apiVersion,
+						L", loaded=", info.loaded,
+						L", plugin=", (info.plugin != nullptr));
 		if (!info.loaded || !info.plugin) {
 			return false;
 		}
@@ -494,7 +494,7 @@ public:
 			return false;
 		}
 		if (packageName == PLUGIN_BROWSER_PACKAGE_NAME && !enabled) {
-			ConsolePrintln(TAG, L"Reject disabling plugin browser itself");
+			Logi(TAG, L"Reject disabling plugin browser itself");
 			return false;
 		}
 
@@ -611,8 +611,8 @@ public:
 			if (shouldEnable) {
 				if (!loadedPlugin && !catalogInfo.filePath.empty()) {
 					const bool loadResult = LoadPlugin(catalogInfo.filePath);
-					ConsolePrintln(TAG, L"SyncPluginsWithSettings load plugin: " + catalogInfo.filePath +
-									L", result: " + (loadResult ? L"SUCCESS" : L"FAILED"));
+					Logi(TAG, L"SyncPluginsWithSettings load plugin: ", catalogInfo.filePath,
+									L", result: ", (loadResult ? L"SUCCESS" : L"FAILED"));
 					loadedPlugin = !catalogInfo.pkgName.empty()
 										? FindLoadedPluginByPackageName(catalogInfo.pkgName)
 										: FindLoadedPluginByFilePath(catalogInfo.filePath);
@@ -846,7 +846,7 @@ private:
 		try {
 			return nlohmann::json::parse(userConfigText);
 		} catch (const std::exception& e) {
-			Loge(TAG, L"LoadUserPluginConfig parse error", e.what());
+			Loge(TAG, L"LoadUserPluginConfig parse error: ", e.what());
 			return {};
 		}
 	}
@@ -864,7 +864,7 @@ private:
 
 		std::ofstream out(std::filesystem::path(USER_SETTINGS_PATH), std::ios::binary);
 		if (!out) {
-			ConsolePrintln(TAG, L"SavePluginEnabledState open file failed: " + USER_SETTINGS_PATH);
+			Loge(TAG, L"SavePluginEnabledState open file failed: ", USER_SETTINGS_PATH);
 			return;
 		}
 		out << mergedConfig.dump(4) << std::endl;
@@ -883,7 +883,7 @@ private:
 		try {
 			return JsonValueToBool(userConfig.at(utf8PkgName));
 		} catch (const std::exception& e) {
-			Loge(TAG, L"IsPluginEnabledByConfig parse value error", e.what());
+			Loge(TAG, L"IsPluginEnabledByConfig parse value error: ", e.what());
 			return true;
 		}
 	}
@@ -894,21 +894,21 @@ private:
 
 		HMODULE handle = LoadLibraryW(dllPath.c_str());
 		if (!handle) {
-			ConsolePrintln(TAG, L"Probe LoadLibraryW failed for: " + dllPath + L", Error: " + std::to_wstring(GetLastError()));
+			Logw(TAG, L"Probe LoadLibraryW failed for: ", dllPath, L", Error: ", GetLastError());
 			return false;
 		}
 
 		const auto createFunc = (CreatePluginFunc)GetProcAddress(handle, "CreatePlugin");
 		const auto destroyFunc = (DestroyPluginFunc)GetProcAddress(handle, "DestroyPlugin");
 		if (!createFunc || !destroyFunc) {
-			ConsolePrintln(TAG, L"Probe GetProcAddress failed for: " + dllPath);
+			Logw(TAG, L"Probe GetProcAddress failed for: ", dllPath);
 			FreeLibrary(handle);
 			return false;
 		}
 
 		IPlugin* pluginPtr = createFunc();
 		if (!pluginPtr) {
-			ConsolePrintln(TAG, L"Probe CreatePlugin returned null for: " + dllPath);
+			Logw(TAG, L"Probe CreatePlugin returned null for: ", dllPath);
 			FreeLibrary(handle);
 			return false;
 		}
@@ -924,11 +924,11 @@ private:
 	}
 
 	bool LoadSinglePlugin(const std::wstring& dllPath, PluginInfo& info) {
-		ConsolePrintln(TAG, L"LoadSinglePlugin start: " + info.name);
+		Logi(TAG, L"LoadSinglePlugin start: ", info.name);
 
 		info.handle = LoadLibraryW(dllPath.c_str());
 		if (!info.handle) {
-			ConsolePrintln(TAG, L"LoadLibraryW failed for: " + dllPath + L", Error: " + std::to_wstring(GetLastError()));
+			Loge(TAG, L"LoadLibraryW failed for: ", dllPath, L", Error: ", GetLastError());
 			return false;
 		}
 
@@ -937,8 +937,8 @@ private:
 		info.getVersionFunc = (GetPluginApiVersionFunc)GetProcAddress(info.handle, "GetPluginApiVersion");
 
 		if (!info.createFunc || !info.destroyFunc) {
-			ConsolePrintln(TAG, "GetProcAddress failed - createFunc: " + std::to_string(info.createFunc != nullptr) +
-							", destroyFunc: " + std::to_string(info.destroyFunc != nullptr));
+			Loge(TAG, L"GetProcAddress failed - createFunc: ", (info.createFunc != nullptr),
+							L", destroyFunc: ", (info.destroyFunc != nullptr));
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
 			return false;
@@ -951,7 +951,7 @@ private:
 
 		IPlugin* pluginPtr = info.createFunc();
 		if (!pluginPtr) {
-			ConsolePrintln(TAG, "CreateSimplePlugin returned null");
+			Loge(TAG, L"CreateSimplePlugin returned null");
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
 			return false;
@@ -960,14 +960,14 @@ private:
 		info.plugin.reset(pluginPtr);
 
 		if (!info.plugin->Initialize(this)) {
-			ConsolePrintln(TAG, "Plugin Initialize failed");
+			Loge(TAG, L"Plugin Initialize failed");
 			info.destroyFunc(pluginPtr);
 			info.plugin.reset();
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
 			return false;
 		}
-		ConsolePrintln(TAG, "Plugin Initialize success");
+		Logi(TAG, L"Plugin Initialize success");
 
 		info.version = info.plugin->GetPluginVersion();
 		info.pkgName = info.plugin->GetPluginPackageName();

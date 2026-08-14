@@ -251,7 +251,7 @@ list(APPEND PLUGIN_DEPENDENCIES YourPlugin)
 
 - `utf8_to_wide()` / `wide_to_utf8()` - 编码转换
 - `StartsWith()` / `MyTrim()` - 字符串操作
-- `ConsolePrintln()` / `Loge()` - 调试和日志
+- `Logi()` / `Loge()` - 调试和日志
 - `GetSysImageIndex()` - 获取图标索引（提升性能）
 
 **用法示例**: 查看 BrowserHistoryPlugin.cpp 中的实际使用
@@ -491,10 +491,10 @@ list(APPEND PLUGIN_DEPENDENCIES YourPlugin)
 
 ```cpp
 // 1. 使用控制台输出
-ConsolePrintln(L"YourPlugin", L"Debug info: " + someValue);
+Logi(L"YourPlugin", L"Debug info: ", ...);
 
 // 2. 使用错误日志
-Loge(L"YourPlugin", L"Error occurred");
+Loge(L"YourPlugin", L"Error occurred", ...);
 
 // 3. 使用 Visual Studio 附加到进程
 // 设置断点，然后附加到 CandyLauncher.exe
@@ -525,11 +525,11 @@ MethodTimerEnd(L"SomeOperation");
 
 ### 2. 输出调试信息
 
-`ConsolePrintln(L"插件名", L"调试信息")` - 控制台输出
+`Logi(L"插件名", L"调试信息", ...)` - 控制台输出
 
 ### 3. 错误日志
 
-`Loge(L"插件名", L"错误信息", e.what())` - 记录异常
+`Loge(L"插件名", L"错误信息", ...)` - 记录异常
 
 **参考**: util/LogUtil.hpp 和 BrowserHistoryUtil.hpp 的使用
 

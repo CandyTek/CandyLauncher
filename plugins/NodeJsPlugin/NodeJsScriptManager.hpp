@@ -57,7 +57,7 @@ public:
             } else {
                 iconFilePath = icoPath;
             }
-            ConsolePrintln(L"icon" + m_id + iconFilePath);
+            Logi(L"NodeJsScriptManager", L"icon: ", m_id, L" -> ", iconFilePath);
             HBITMAP iconBitmap = nullptr;
             if (!iconFilePath.empty()) {
                 if (EndsWithAnyIgnoreCase(iconFilePath, {L".ico", L".png", L".jpeg", L".jpg", L".bmp", L".tiff", L".gif"})) {
@@ -118,7 +118,7 @@ public:
 
                         if (isNode) {
                             m_scripts.push_back(std::make_shared<NodeJsScript>(entry.path().wstring(), j));
-                            ConsolePrintln(L"NodeJsScriptManager", L"Found plugin: " + utf8_to_wide(j["Name"]));
+                            Logi(L"NodeJsScriptManager", L"Found plugin: ", j["Name"].get<std::string>());
                         }
                     } catch (...) {
                         // Ignore invalid plugins

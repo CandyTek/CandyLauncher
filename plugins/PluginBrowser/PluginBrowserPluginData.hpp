@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "plugins/Plugin.hpp"
 
 inline IPluginHost* g_pluginBrowserHost = nullptr;

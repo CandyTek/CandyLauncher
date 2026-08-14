@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../BaseAction.hpp"
 #include "../../util/BitmapUtil.hpp"

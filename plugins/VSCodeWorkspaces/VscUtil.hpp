@@ -329,7 +329,7 @@ inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 		}
 	} catch (const std::exception& e) {
 		// Log error but continue
-		ConsolePrintln(L"Error parsing storage.json: " + utf8_to_wide(e.what()));
+		Loge(L"VSCode", L"Error parsing storage.json: ", e.what());
 	}
 
 	return results;

@@ -41,7 +41,7 @@ static std::string ExecuteCommand(const std::wstring& command) {
 	FILE* pipe = _popen(cmdA.c_str(), "r");
 
 	if (!pipe) {
-		Loge(L"VisualStudio", L"Failed to execute command: " + command);
+		Loge(L"VisualStudio", L"Failed to execute command: ", command);
 		return result;
 	}
 
@@ -89,7 +89,7 @@ static std::vector<VSInstance> GetVisualStudioInstances() {
 
 
 		if (output.empty()) {
-			ConsolePrintln(L"VisualStudio", L"vswhere.exe returned empty output");
+			Logi(L"VisualStudio", L"vswhere.exe returned empty output");
 			return instances;
 		}
 
@@ -164,7 +164,7 @@ static std::vector<VSInstance> GetVisualStudioInstances() {
 				// 只添加找到设置文件的实例
 				if (!instance.applicationPrivateSettingsPath.empty()) {
 					instances.push_back(instance);
-					ConsolePrintln(L"VisualStudio", L"Found VS instance: " + instance.displayName);
+					Logi(L"VisualStudio", L"Found VS instance: ", instance.displayName);
 				}
 			} catch (const std::exception& e) {
 				Loge(L"VisualStudio", L"Error parsing VS instance: ", e.what());
@@ -184,7 +184,7 @@ static std::string ExtractCodeContainersJson(const std::wstring& xmlPath) {
 		pugi::xml_document doc;
 		pugi::xml_parse_result result = doc.load_file(xmlPath.c_str());
 		if (!result) {
-			std::wcerr << L"Failed to load XML: " << xmlPath << std::endl;
+			Loge(L"VisualStudio", L"Failed to load XML: ", xmlPath);
 			return "";
 		}
 
@@ -315,9 +315,9 @@ static std::vector<std::shared_ptr<BaseAction>> ParseCodeContainers(
 			}
 		}
 
-		ConsolePrintln(L"VisualStudio",
-						L"Loaded " + std::to_wstring(result.size()) +
-						L" projects from " + instance.displayName);
+		Logi(L"VisualStudio",
+						L"Loaded ", result.size(),
+						L" projects from ", instance.displayName);
 	} catch (const std::exception& e) {
 		Loge(L"VisualStudio", L"Error parsing CodeContainers JSON: ", e.what());
 	}
@@ -342,7 +342,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllVisualStudioProjects() {
 		// 获取所有 Visual Studio 实例
 		std::vector<VSInstance> instances = GetVisualStudioInstances();
 
-		ConsolePrintln(L"VisualStudio", L"Found " + std::to_wstring(instances.size()) + L" VS instances");
+		Logi(L"VisualStudio", L"Found ", instances.size(), L" VS instances");
 
 		for (const auto& instance : instances) {
 			// 如果不显示预发布版本，则跳过
@@ -361,7 +361,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllVisualStudioProjects() {
 						std::make_move_iterator(projects.end()));
 		}
 
-		ConsolePrintln(L"VisualStudio", L"Total loaded " + std::to_wstring(result.size()) + L" projects");
+		Logi(L"VisualStudio", L"Total loaded ", result.size(), L" projects");
 	} catch (const std::exception& e) {
 		Loge(L"VisualStudio", L"Error getting all VS projects: ", e.what());
 	}

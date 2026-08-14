@@ -332,7 +332,7 @@ inline int mainWindowHotkey(WPARAM wParam) {
 	switch (wParam) {
 	case HOTKEY_ID_TOGGLE_MAIN_PANEL:
 		{
-			ConsolePrintln(L"Hotkey 切换主面板");
+			Logi(L"AppController", L"Hotkey 切换主面板");
 			if (IsWindowVisible(g_mainHwnd)) {
 				HideWindow();
 			} else {

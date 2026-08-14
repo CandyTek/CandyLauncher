@@ -121,8 +121,8 @@ read [DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)
 ### note
 
 - Project codes are indented using tabs
-- Use ``util/LogUtil.hpp`` funtion ``ConsolePrintln(const std::wstring& tag, const std::wstring& msg)`` print output or std::cout
-- Use ``util/LogUtil.hpp`` funtion ``Loge(L"tag",L"error msg",e.what());`` print error or std::cerr
+- Use ``util/LogUtil.hpp`` funtion ``Logi(const std::wstring& tag, ...)`` print output
+- Use ``util/LogUtil.hpp`` funtion ``Loge(const std::wstring& tag, ...)`` print error
 - Save files using UTF-8 with BOM
 - No need to resolve warning and node reminder when building
 

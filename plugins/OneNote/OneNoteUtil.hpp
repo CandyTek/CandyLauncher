@@ -56,7 +56,7 @@ public:
 		CLSID clsid;
 		hr = CLSIDFromProgID(L"OneNote.Application.15", &clsid);  // Try Office 2013/2016 first
 		if (FAILED(hr)) {
-			ConsolePrintln(L"OneNote", L"OneNote.Application.15 not found, trying OneNote.Application");
+			Logi(L"OneNote", L"OneNote.Application.15 not found, trying OneNote.Application");
 			hr = CLSIDFromProgID(L"OneNote.Application", &clsid);
 		}
 		if (FAILED(hr)) {
@@ -64,7 +64,7 @@ public:
 			// 	std::to_wstring(hr) + L"), using hardcoded CLSID");
 			wchar_t buf[32]{};
 			swprintf(buf, 32, L"0x%08lX", static_cast<unsigned long>(hr));
-			ConsolePrintln(L"OneNote", std::wstring(L"Failed to get CLSID from ProgID (HRESULT: ") + buf + L")");
+			Logw(L"OneNote", L"Failed to get CLSID from ProgID (HRESULT: ", buf, L")");
 			clsid = CLSID_OneNoteApplication;
 		}
 
@@ -78,27 +78,26 @@ public:
 		);
 
 		if (FAILED(hr)) {
-			ConsolePrintln(L"OneNote", L"OneNote is not installed or not available (HRESULT: 0x" +
-				std::to_wstring(hr) + L")");
+			Logw(L"OneNote", L"OneNote is not installed or not available (HRESULT: 0x", hr, L")");
 			m_initialized = false;
 		} else {
 			m_initialized = true;
-			ConsolePrintln(L"OneNote", L"Successfully connected to OneNote COM interface");
+			Logi(L"OneNote", L"Successfully connected to OneNote COM interface");
 
 			// Debug: Try to list available methods
 			ITypeInfo* pTypeInfo = nullptr;
 			unsigned int typeInfoCount = 0;
 			if (SUCCEEDED(m_oneNoteApp->GetTypeInfoCount(&typeInfoCount))) {
-				ConsolePrintln(L"OneNote", L"TypeInfo count: " + std::to_wstring(typeInfoCount));
+				Logi(L"OneNote", L"TypeInfo count: ", typeInfoCount);
 
 				if (typeInfoCount > 0) {
 					HRESULT hrTypeInfo = m_oneNoteApp->GetTypeInfo(0, LOCALE_USER_DEFAULT, &pTypeInfo);
 					if (SUCCEEDED(hrTypeInfo) && pTypeInfo) {
 						TYPEATTR* pTypeAttr = nullptr;
 						if (SUCCEEDED(pTypeInfo->GetTypeAttr(&pTypeAttr))) {
-							ConsolePrintln(L"OneNote", L"TypeInfo available with " +
-								std::to_wstring(pTypeAttr->cFuncs) + L" functions, cVars=" +
-								std::to_wstring(pTypeAttr->cVars));
+							Logi(L"OneNote", L"TypeInfo available with ",
+								pTypeAttr->cFuncs, L" functions, cVars=",
+								pTypeAttr->cVars);
 
 							// List first 10 function names for debugging
 							for (UINT i = 0; i < std::min(10u, static_cast<UINT>(pTypeAttr->cFuncs)); i++) {
@@ -108,8 +107,8 @@ public:
 									unsigned int nameCount = 0;
 									if (SUCCEEDED(pTypeInfo->GetNames(pFuncDesc->memid, &funcName, 1, &nameCount))) {
 										if (funcName) {
-											ConsolePrintln(L"OneNote", L"  [" + std::to_wstring(i) + L"] DISPID=" +
-												std::to_wstring(pFuncDesc->memid) + L": " + std::wstring(funcName));
+											Logi(L"OneNote", L"  [", i, L"] DISPID=",
+												pFuncDesc->memid, L": ", funcName);
 											SysFreeString(funcName);
 										}
 									}
@@ -119,15 +118,15 @@ public:
 
 							pTypeInfo->ReleaseTypeAttr(pTypeAttr);
 						} else {
-							ConsolePrintln(L"OneNote", L"Failed to get TypeAttr");
+							Logw(L"OneNote", L"Failed to get TypeAttr");
 						}
 						pTypeInfo->Release();
 					} else {
-						ConsolePrintln(L"OneNote", L"Failed to get TypeInfo (HRESULT: 0x" + std::to_wstring(hrTypeInfo) + L")");
+						Logw(L"OneNote", L"Failed to get TypeInfo (HRESULT: 0x", hrTypeInfo, L")");
 					}
 				}
 			} else {
-				ConsolePrintln(L"OneNote", L"Failed to get TypeInfo count");
+				Logw(L"OneNote", L"Failed to get TypeInfo count");
 			}
 		}
 	}
@@ -164,7 +163,7 @@ private:
 		);
 
 		if (FAILED(hrLib) || !pTypeLib) {
-			ConsolePrintln(L"OneNote", L"Failed to load TypeLib (HRESULT: 0x" + std::to_wstring(hrLib) + L")");
+			Logw(L"OneNote", L"Failed to load TypeLib (HRESULT: 0x", hrLib, L")");
 			return hrLib;
 		}
 
@@ -186,8 +185,8 @@ private:
 						if (SUCCEEDED(hrGetId)) {
 							pCorrectTypeInfo = pTI;
 							pCorrectTypeInfo->AddRef();
-							ConsolePrintln(L"OneNote", L"Found method '" + std::wstring(methodName) +
-								L"' in TypeInfo[" + std::to_wstring(idx) + L"]");
+							Logi(L"OneNote", L"Found method '", methodName,
+								L"' in TypeInfo[", idx, L"]");
 						}
 					}
 					pTI->ReleaseTypeAttr(pTA);
@@ -201,7 +200,7 @@ private:
 		pTypeLib->Release();
 
 		if (!pCorrectTypeInfo) {
-			ConsolePrintln(L"OneNote", L"Could not find interface with method: " + std::wstring(methodName));
+			Logw(L"OneNote", L"Could not find interface with method: ", methodName);
 			return E_FAIL;
 		}
 
@@ -220,9 +219,8 @@ private:
 				if (SUCCEEDED(pCorrectTypeInfo->GetFuncDesc(i, &pFuncDesc))) {
 					if (pFuncDesc->memid == dispid) {
 						invkind = pFuncDesc->invkind;
-						ConsolePrintln(L"OneNote", L"Method '" + std::wstring(methodName) +
-							L"' has " + std::to_wstring(pFuncDesc->cParams) + L" parameters, invkind=" +
-							std::to_wstring(invkind));
+						Logi(L"OneNote", L"Method '", methodName,
+							L"' has ", pFuncDesc->cParams, L" parameters, invkind=", invkind);
 						pCorrectTypeInfo->ReleaseFuncDesc(pFuncDesc);
 						break;
 					}
@@ -248,21 +246,18 @@ private:
 		if (FAILED(hrInvoke)) {
 			wchar_t hexStr[32];
 			swprintf_s(hexStr, L"0x%08X", static_cast<unsigned int>(hrInvoke));
-			ConsolePrintln(L"OneNote", std::wstring(L"IDispatch::Invoke failed for '") +
-				methodName + L"' with HRESULT: " + hexStr);
+			Loge(L"OneNote", L"IDispatch::Invoke failed for '", methodName, L"' with HRESULT: ", hexStr);
 
 			if (excepInfo.bstrDescription) {
-				ConsolePrintln(L"OneNote", std::wstring(L"  Description: ") +
-					std::wstring(excepInfo.bstrDescription));
+				Loge(L"OneNote", L"  Description: ", excepInfo.bstrDescription);
 				SysFreeString(excepInfo.bstrDescription);
 			}
 			if (excepInfo.bstrSource) {
-				ConsolePrintln(L"OneNote", std::wstring(L"  Source: ") +
-					std::wstring(excepInfo.bstrSource));
+				Loge(L"OneNote", L"  Source: ", excepInfo.bstrSource);
 				SysFreeString(excepInfo.bstrSource);
 			}
 			if (hrInvoke == DISP_E_PARAMNOTFOUND || hrInvoke == DISP_E_TYPEMISMATCH) {
-				ConsolePrintln(L"OneNote", L"  Parameter error at index: " + std::to_wstring(argErr));
+				Loge(L"OneNote", L"  Parameter error at index: ", argErr);
 			}
 		}
 
@@ -326,7 +321,7 @@ public:
 		if (FAILED(hr)) {
 			wchar_t buf[32]{};
 			swprintf(buf, 32, L"0x%08lX", static_cast<unsigned long>(hr));
-			Loge(L"OneNote", std::wstring(L"Failed to get hierarchy (HRESULT: 0x") + buf + L")");
+			Loge(L"OneNote", L"Failed to get hierarchy (HRESULT: ", buf, L")");
 			if (bstrXml) {
 				SysFreeString(bstrXml);
 			}
@@ -334,7 +329,7 @@ public:
 		}
 
 		if (!bstrXml) {
-			ConsolePrintln(L"OneNote", L"GetHierarchy succeeded but returned null XML");
+			Logw(L"OneNote", L"GetHierarchy succeeded but returned null XML");
 			return L"";
 		}
 
@@ -372,7 +367,7 @@ public:
 		VariantClear(&varResult);
 
 		if (FAILED(hr)) {
-			Loge(L"OneNote", L"Failed to navigate to page (HRESULT: 0x" + std::to_wstring(hr) + L")");
+			Loge(L"OneNote", L"Failed to navigate to page (HRESULT: 0x", hr, L")");
 			return false;
 		}
 
@@ -501,7 +496,7 @@ static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
 		SysFreeString(bstrNamespace);
 
 		if (FAILED(hr)) {
-			ConsolePrintln(L"OneNote", L"Warning: Failed to set namespace property");
+			Logw(L"OneNote", L"Warning: Failed to set namespace property");
 		}
 
 		// 查询所有 Page 节点
@@ -518,7 +513,7 @@ static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
 		long nodeCount = 0;
 		pPageNodes->get_length(&nodeCount);
 
-		ConsolePrintln(L"OneNote", L"Found " + std::to_wstring(nodeCount) + L" total pages in XML");
+		Logi(L"OneNote", L"Found ", nodeCount, L" total pages in XML");
 
 		for (long i = 0; i < nodeCount; ++i) {
 			IXMLDOMNode* pPageNode = nullptr;
@@ -671,7 +666,7 @@ static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
 
 				// 检查是否达到最大数量
 				if (maxResults > 0 && static_cast<int>(result.size()) >= maxResults) {
-					ConsolePrintln(L"OneNote", L"Reached max results limit: " + std::to_wstring(maxResults));
+					Logi(L"OneNote", L"Reached max results limit: ", maxResults);
 					pPageNode->Release();
 					break;
 				}
@@ -684,7 +679,7 @@ static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
 		pXMLDoc->Release();
 
 		if (filteredCount > 0) {
-			ConsolePrintln(L"OneNote", L"Filtered out " + std::to_wstring(filteredCount) +
+			Logi(L"OneNote", L"Filtered out ", filteredCount,
 				L" pages from recycle bin");
 		}
 
@@ -703,7 +698,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllOneNotePages(const std::ws
 		OneNoteHelper oneNote;
 
 		if (!oneNote.IsInitialized()) {
-			ConsolePrintln(L"OneNote", L"OneNote is not available");
+			Logw(L"OneNote", L"OneNote is not available");
 			return result;
 		}
 
@@ -711,7 +706,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllOneNotePages(const std::ws
 		std::wstring xml = oneNote.GetHierarchy(L"", hsPages);
 
 		if (xml.empty()) {
-			ConsolePrintln(L"OneNote", L"Failed to get OneNote hierarchy");
+			Logw(L"OneNote", L"Failed to get OneNote hierarchy");
 			return result;
 		}
 
@@ -719,7 +714,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllOneNotePages(const std::ws
 		int iconIndex = GetSysImageIndex(iconPath);
 		result = ParseOneNoteHierarchyXML(xml, iconPath, iconIndex);
 
-		ConsolePrintln(L"OneNote", L"Loaded " + std::to_wstring(result.size()) + L" OneNote pages");
+		Logi(L"OneNote", L"Loaded ", result.size(), L" OneNote pages");
 
 	} catch (const std::exception& e) {
 		Loge(L"OneNote", L"Exception in GetAllOneNotePages: ", e.what());

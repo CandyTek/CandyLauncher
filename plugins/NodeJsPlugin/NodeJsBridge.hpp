@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <windows.h>
 #include <string>
 #include <vector>
@@ -48,7 +48,7 @@ private:
 
                 if (line[0] != '{') {
                     // This is likely a log message, not a JSON response
-                    ConsolePrintln(L"NodeJsBridge", L"[JS] " + utf8_to_wide(line));
+                    Logi(L"NodeJsBridge", L"[JS] ", line);
                     continue;
                 }
 
@@ -71,7 +71,7 @@ private:
                     }
                 } catch (const std::exception&) {
                     // If it failed to parse but started with '{', it might still be a log or malformed JSON
-                    ConsolePrintln(L"NodeJsBridge", L"[JS Log/Error] " + utf8_to_wide(line));
+                    Logw(L"NodeJsBridge", L"[JS Log/Error] ", line);
                 }
             }
         }

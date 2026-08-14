@@ -105,7 +105,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	refreshSkin(g_currectSkinFilePath, !g_settings_map["pref_hide_window_after_run"].boolValue);
 	APP_STARTUP_TIME = GetTickCount64() - g_appStartTick; // 记录程序耗费时
 	g_WM_TASKBARCREATED = RegisterWindowMessageW(L"TaskbarCreated");
-	ConsolePrintln(L"WinMain", L"程序初始化完成");
+	Logi(L"WinMain", L"程序初始化完成");
 	AppUpdate::ScheduleStartupUpdateCheck();
 	// MyShowSimpleToast(L"CandyLauncher 已启动", L"程序初始化完成,按 Alt+K 呼出启动器");
 
@@ -481,10 +481,10 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 						if (index == -1) {
 							index = ListView_GetNextItem(g_listViewHwnd, -1, LVNI_SELECTED);
 						}
-						ConsolePrintln(L"RightClick",
-							L"NM_RCLICK index=" + std::to_wstring(index) +
-							L", actions=" + std::to_wstring(filteredActions.size()) +
-							L", piaItem=" + std::to_wstring(pia ? pia->iItem : -1));
+						Logi(L"RightClick",
+							L"NM_RCLICK index=", index,
+							L", actions=", filteredActions.size(),
+							L", piaItem=", (pia ? pia->iItem : -1));
 						if (index != -1 && filteredActions.size() > static_cast<size_t>(index)) {
 							// 选中当前项（可选）
 							// ListView_SetItemState(hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
@@ -496,13 +496,13 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 							} else {
 								if (g_pluginManager) handled = g_pluginManager->DispatchItemRightClick(it, hWnd, pt);
 							}
-							ConsolePrintln(L"RightClick",
-								L"dispatch handled=" + std::to_wstring(handled) +
-								L", shift=" + std::to_wstring(shiftDown) +
-								L", switchPref=" + std::to_wstring(pref_switch_list_right_click_with_shift_right_click) +
-								L", pluginId=" + std::to_wstring(it ? it->pluginId : 65535));
+							Logi(L"RightClick",
+								L"dispatch handled=", handled,
+								L", shift=", shiftDown,
+								L", switchPref=", pref_switch_list_right_click_with_shift_right_click,
+								L", pluginId=", (it ? it->pluginId : 65535));
 						} else {
-							ConsolePrintln(L"RightClick", L"skip dispatch: invalid index");
+							Logi(L"RightClick", L"skip dispatch: invalid index");
 						}
 						PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
 						return TRUE;

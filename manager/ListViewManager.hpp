@@ -686,7 +686,7 @@ inline void textMatching() {
 				currectActionArg = utf8_to_wide(arg);
 				isSuccess = true;
 			} catch (const nlohmann::json::parse_error& e) {
-				std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
+				Loge(L"ListViewManager", L"JSON 解析错误: ", e.what());
 			}
 			if (isSuccess) {
 				editTextBuffer2 = editTextBuffer.substr(end + 1);

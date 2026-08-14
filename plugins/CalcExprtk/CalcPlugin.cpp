@@ -174,7 +174,7 @@ public:
 		if (result.first) {
 			try {
 				double numericResult = std::stod(result.second); // Convert string to double
-				std::wcout << L"Result: " << numericResult << std::endl;
+				Logi(L"CalcPlugin", L"Result: ", numericResult);
 				swprintf(&resultStr[0], resultStr.capacity(), L"结果: %.15g", numericResult);
 				return resultStr;
 			} catch (const std::invalid_argument& e) {
@@ -191,38 +191,38 @@ public:
 	static void TestLatex() {
 		std::wstring expr1 = L"3 + 5"; // Simple addition
 		std::wstring result1 = EvaluateLatex(expr1);
-		std::wcout << L"Result of '3 + 5': " << result1 << std::endl; // Expected: 8
+		Logi(L"CalcPlugin", L"Result of '3 + 5': ", result1); // Expected: 8
 		std::wstring expr2 = L"\\frac{1}{2} + 2"; // Fraction plus integer
 		std::wstring result2 = EvaluateLatex(expr2);
-		std::wcout << L"Result of '\\frac{1}{2} + 2': " << result2 << std::endl; // Expected: 2.5
+		Logi(L"CalcPlugin", L"Result of '\\frac{1}{2} + 2': ", result2); // Expected: 2.5
 		std::wstring expr3 = L"\\sin(\\frac{\\pi}{2})"; // Sine of pi/2
 		std::wstring result3 = EvaluateLatex(expr3);
-		std::wcout << L"Result of '\\sin(\\frac{\\pi}{2})': " << result3 << std::endl; // Expected: 1
+		Logi(L"CalcPlugin", L"Result of '\\sin(\\frac{\\pi}{2})': ", result3); // Expected: 1
 		std::wstring expr4 = L"x^2 + 4"; // x squared + 4, where x=3
 		ImprovedLaTeXCalculator calc;
 		calc.setVariable("x", 3); // Set x = 3
 		std::wstring result4 = EvaluateLatex(expr4);
-		std::wcout << L"Result of 'x^2 + 4' (x=3): " << result4 << std::endl; // Expected: 13
+		Logi(L"CalcPlugin", L"Result of 'x^2 + 4' (x=3): ", result4); // Expected: 13
 		std::wstring expr5 = L"\\log(100)"; // Log base 10 of 100
 		std::wstring result5 = EvaluateLatex(expr5);
-		std::wcout << L"Result of '\\log(100)': " << result5 << std::endl; // Expected: 2
+		Logi(L"CalcPlugin", L"Result of '\\log(100)': ", result5); // Expected: 2
 		std::wstring expr6 = L"\\frac{\\frac{1}{2}}{3}"; // Nested fraction
 		std::wstring result6 = EvaluateLatex(expr6);
-		std::wcout << L"Result of '\\frac{\\frac{1}{2}}{3}': " << result6 << std::endl; // Expected: 0.1667
+		Logi(L"CalcPlugin", L"Result of '\\frac{\\frac{1}{2}}{3}': ", result6); // Expected: 0.1667
 		std::wstring expr7 = L"\\sin(\\frac{\\pi}{4}) + \\cos(\\frac{\\pi}{4})"; // sin(pi/4) + cos(pi/4)
 		std::wstring result7 = EvaluateLatex(expr7);
-		std::wcout << L"Result of '\\sin(\\frac{\\pi}{4}) + \\cos(\\frac{\\pi}{4})': " << result7 << std::endl;
+		Logi(L"CalcPlugin", L"Result of '\\sin(\\frac{\\pi}{4}) + \\cos(\\frac{\\pi}{4})': ", result7);
 		// Expected: 1.4142
 		std::wstring expr8 = L"(x + 2)^2"; // (x + 2)^2 where x=3
 		calc.setVariable("x", 3); // Set x = 3
 		std::wstring result8 = EvaluateLatex(expr8);
-		std::wcout << L"Result of '(x + 2)^2' (x=3): " << result8 << std::endl; // Expected: 25
+		Logi(L"CalcPlugin", L"Result of '(x + 2)^2' (x=3): ", result8); // Expected: 25
 		std::wstring expr9 = L"\\sqrt{16}"; // Square root of 16
 		std::wstring result9 = EvaluateLatex(expr9);
-		std::wcout << L"Result of '\\sqrt{16}': " << result9 << std::endl; // Expected: 4
+		Logi(L"CalcPlugin", L"Result of '\\sqrt{16}': ", result9); // Expected: 4
 		std::wstring expr10 = L"\\pi * 2"; // pi * 2
 		std::wstring result10 = EvaluateLatex(expr10);
-		std::wcout << L"Result of '\\pi * 2': " << result10 << std::endl; // Expected: 6.2832 (approximately 2π)
+		Logi(L"CalcPlugin", L"Result of '\\pi * 2': ", result10); // Expected: 6.2832 (approximately 2π)
 	}
 
 	// todo: 实现全局和 前缀

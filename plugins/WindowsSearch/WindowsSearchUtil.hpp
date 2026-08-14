@@ -113,7 +113,7 @@ private:
 			}
 
 			// 打印调试信息
-			ConsolePrintln(L"WindowsSearch", L"WHERE clause to set: " + whereClause);
+			Logi(L"WindowsSearch", L"WHERE clause to set: ", whereClause);
 
 			// 安全地设置新的 WHERE 子句
 			BSTR bstrWhereClause = SysAllocString(whereClause.c_str());
@@ -124,10 +124,10 @@ private:
 
 				if (FAILED(hr)) {
 					wchar_t errorMsg[256];
-					swprintf_s(errorMsg, 256, L"Failed to set query where restrictions, HRESULT: 0x%08X", hr);
-					Loge(L"WindowsSearch", errorMsg);
+					swprintf_s(errorMsg, 256, L"0x%08X", hr);
+					Loge(L"WindowsSearch", L"Failed to set query where restrictions, HRESULT: ", errorMsg);
 				} else {
-					ConsolePrintln(L"WindowsSearch", L"Successfully set WHERE clause");
+					Logi(L"WindowsSearch", L"Successfully set WHERE clause");
 				}
 			} else {
 				Loge(L"WindowsSearch", L"Failed to allocate BSTR for where clause");
@@ -525,8 +525,9 @@ public:
 				default: break;
 				}
 
-				swprintf_s(errorMsg, 512, L"Failed to create search manager. HRESULT: 0x%08X - %s", hr, errorDesc);
-				Loge(L"WindowsSearch", errorMsg);
+				wchar_t hexBuf[32];
+				swprintf_s(hexBuf, 32, L"0x%08X", hr);
+				Loge(L"WindowsSearch", L"Failed to create search manager. HRESULT: ", hexBuf, L" - ", errorDesc);
 
 				// 检查 Windows Search 服务是否运行
 				SC_HANDLE scManager = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
@@ -577,7 +578,7 @@ public:
 			ModifyQueryHelper(queryHelper, pattern, excludedPatterns, displayHiddenFiles);
 
 			// 从用户查询生成 SQL
-			ConsolePrintln(L"WindowsSearch", L"Input keyword: " + keyword);
+			Logi(L"WindowsSearch", L"Input keyword: ", keyword);
 
 			BSTR sqlQuery = nullptr;
 			BSTR bstrKeyword = SysAllocString(keyword.c_str());
@@ -586,8 +587,8 @@ public:
 
 			if (FAILED(hr)) {
 				wchar_t errorMsg[256];
-				swprintf_s(errorMsg, 256, L"GenerateSQLFromUserQuery failed, HRESULT: 0x%08X", hr);
-				Loge(L"WindowsSearch", errorMsg);
+				swprintf_s(errorMsg, 256, L"0x%08X", hr);
+				Loge(L"WindowsSearch", L"GenerateSQLFromUserQuery failed, HRESULT: ", errorMsg);
 				queryHelper->Release();
 				searchManager->Release();
 				if (comInitialized) CoUninitialize();
@@ -631,7 +632,7 @@ public:
 
 			// ✅ 直接从 wchar_t* 构造 std::wstring
 			std::wstring sql(sqlQuery);
-			ConsolePrintln(L"WindowsSearch", L"SQL Query: " + sql);
+			Logi(L"WindowsSearch", L"SQL Query: ", sql);
 
 			// 执行 OLE DB 查询
 			results = ExecuteOleDbQuery(connectionString, sqlQuery);
@@ -650,7 +651,7 @@ public:
 
 			if (comInitialized) CoUninitialize();
 
-			ConsolePrintln(L"WindowsSearch", L"Found " + std::to_wstring(results.size()) + L" results");
+			Logi(L"WindowsSearch", L"Found ", results.size(), L" results");
 		} catch (const std::exception& e) {
 			Loge(L"WindowsSearch", L"Exception in Search: ", e.what());
 		}

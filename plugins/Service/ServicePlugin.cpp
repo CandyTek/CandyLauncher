@@ -45,17 +45,17 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"Service Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"Service", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		ConsolePrintln(L"Service Plugin", L"RefreshAllActions start");
+		Logi(L"Service", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// 获取所有 Windows 服务
 		allPluginActions = GetAllWindowsServices();
 
-		ConsolePrintln(L"Service Plugin", L"Loaded " + std::to_wstring(allPluginActions.size()) + L" services");
+		Logi(L"Service", L"Loaded ", allPluginActions.size(), L" services");
 	}
 
 	std::wstring DefaultSettingJson() override {

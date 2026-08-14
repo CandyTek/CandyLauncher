@@ -109,7 +109,7 @@ public:
 	void RefreshAllActions() override {
 		if (!m_host) return;
 
-		ConsolePrintln(L"WebSearch Plugin", L"RefreshAllActions start");
+		Logi(L"WebSearch", L"RefreshAllActions start");
 		LoadWebSearchConfig();
 
 		allEngineActions.clear();
@@ -124,7 +124,7 @@ public:
 		// 暂时还不知道用作什么
 		// WS_StartHotkeyThread();
 
-		ConsolePrintln(L"WebSearch Plugin", L"Loaded " + std::to_wstring(allEngineActions.size()) + L" engines");
+		Logi(L"WebSearch", L"Loaded ", allEngineActions.size(), L" engines");
 	}
 
 	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {

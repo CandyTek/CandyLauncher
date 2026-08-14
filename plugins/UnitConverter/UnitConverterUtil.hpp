@@ -104,7 +104,7 @@ public:
 			}
 		} catch (const std::regex_error& e) {
 			// 即使是合法的正则，也最好加上异常处理，这是一种好的编程习惯
-			std::wcerr << L"Regex error in RegexTokenizer: " << e.what() << std::endl;
+			Loge(L"UnitConverter", L"Regex error in RegexTokenizer: ", e.what());
 		}
 		return result;
 	}

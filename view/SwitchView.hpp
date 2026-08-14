@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <fstream> // Required for file operations
 #include <commctrl.h> // For ListView controls

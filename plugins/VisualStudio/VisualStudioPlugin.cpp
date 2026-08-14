@@ -43,17 +43,17 @@ public:
 
 	void RefreshAllActions() override {
 		if (!m_host) {
-			Loge(L"VisualStudio Plugin", L"RefreshAllActions: m_host is null");
+			Loge(L"VisualStudio", L"RefreshAllActions: m_host is null");
 			return;
 		}
 
-		ConsolePrintln(L"VisualStudio Plugin", L"RefreshAllActions start");
+		Logi(L"VisualStudio", L"RefreshAllActions start");
 		allPluginActions.clear();
 
 		// 获取所有 Visual Studio 项目
 		allPluginActions = GetAllVisualStudioProjects();
 
-		ConsolePrintln(L"VisualStudio Plugin", L"Loaded " + std::to_wstring(allPluginActions.size()) + L" projects");
+		Logi(L"VisualStudio", L"Loaded ", allPluginActions.size(), L" projects");
 	}
 
 	std::wstring DefaultSettingJson() override {

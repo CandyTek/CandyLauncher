@@ -140,7 +140,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	}
 	std::ifstream in((skinPath.data()));
 	if (!in) {
-		std::wcerr << L"文件不存在：" << skinPath << std::endl;
+		Loge(L"SkinHelper", L"文件不存在: ", skinPath);
 		return;
 	}
 
@@ -159,7 +159,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 		g_skinJson["skin_path"] = std::filesystem::absolute(fullPath).u8string();
 		g_skinJson["skin_folder"] = std::filesystem::absolute(fullPath.parent_path()).u8string();
 	} catch (const nlohmann::json::parse_error& e) {
-		std::wcerr << L"JSON 解析错误：" << utf8_to_wide(e.what()) << std::endl;
+		Loge(L"SkinHelper", L"JSON 解析错误: ", e.what());
 		return;
 	}
 	// --- 1. 更新主窗口 ---
@@ -319,7 +319,7 @@ static void watchSkinFile() {
 
 	if (hDir == INVALID_HANDLE_VALUE) {
 		DWORD err = GetLastError();
-		std::wcerr << L"无法打开目录句柄。错误代码：" << err << std::endl;
+		Loge(L"SkinHelper", L"无法打开目录句柄，错误代码: ", err);
 		return;
 	}
 
@@ -344,7 +344,7 @@ static void watchSkinFile() {
 			DWORD err = GetLastError();
 			if (err != ERROR_OPERATION_ABORTED) {
 				// 忽略取消操作的错误
-				std::wcerr << L"ReadDirectoryChangesW 失败，错误代码：" << err << std::endl;
+				Loge(L"SkinHelper", L"ReadDirectoryChangesW 失败，错误代码: ", err);
 			}
 			break; // 发生错误，退出循环
 		}
@@ -372,12 +372,11 @@ static void watchSkinFile() {
 					// 时间防抖
 					if (const ULONGLONG now = GetTickCount64(); now - lastRefreshTimeTick > 400) {
 						lastRefreshTimeTick = now;
-						std::wcout << L"Skin file modification detected: " << changedFile << std::endl;
+						Logi(L"SkinHelper", L"Skin file modification detected: ", changedFile);
 						PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 					}
 				}
-				std::wcout << L"Action=" << pNotify->Action
-					<< L", File=" << changedFile << std::endl;
+				Logi(L"SkinHelper", L"Action=", pNotify->Action, L", File=", changedFile);
 
 				// 移动到下一个通知记录
 				offset += pNotify->NextEntryOffset;
@@ -397,7 +396,7 @@ static void stopThreadSkinFileWatcher() {
 		HANDLE hThread = reinterpret_cast<HANDLE>(g_skinFileWatcherThread.native_handle());
 		if (!CancelSynchronousIo(hThread)) {
 			DWORD err = GetLastError();
-			std::wcerr << L"CancelSynchronousIo 失败，错误码: " << err << std::endl;
+			Loge(L"SkinHelper", L"CancelSynchronousIo 失败，错误码: ", err);
 		}
 		g_skinFileWatcherThread.join();
 	}
