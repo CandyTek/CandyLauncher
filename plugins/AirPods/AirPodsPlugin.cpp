@@ -110,17 +110,7 @@ public:
 			Deactivate();
 		}
 	}
-
-	void OnUserInput(const std::wstring& input) override {
-		const bool hasKeyword =
-			mainWindowVisible && TrimAndLower(input) == L"airpods";
-		keywordActive = hasKeyword;
-		if (hasKeyword) {
-			Activate();
-		} else {
-			Deactivate();
-		}
-	}
+	
 
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(
 		const std::wstring& input) override {
@@ -196,38 +186,45 @@ private:
 		auto results = BuildResults();
 		host->ShowResultsDerectly(results);
 	}
-
+	
 	void Activate() {
 		std::lock_guard<std::mutex> lock(activationMutex);
 		if (active || !mainWindowVisible || !keywordActive) return;
 
 		service.Start();
+
 		stopRefresh = false;
+
 		refreshThread = std::thread([this] {
-			while (!stopRefresh) {
-				if (mainWindowVisible && keywordActive) {
-					PushResultsIfActive();
-				}
-				for (int i = 0; i < 5 && !stopRefresh; ++i) {
-					std::this_thread::sleep_for(std::chrono::milliseconds(100));
-				}
-			}
+			while (!stopRefresh.load()) {
+				if (mainWindowVisible.load() && keywordActive.load()) PushResultsIfActive();
+				
+				std::unique_lock<std::mutex> lock(cvMutex);
+				cv.wait_for(lock,std::chrono::milliseconds(500),[this] { return stopRefresh.load(); });}
 		});
 		active = true;
 	}
 
 	void Deactivate() {
+		std::thread worker;
 		std::lock_guard<std::mutex> lock(activationMutex);
+
 		if (!active) return;
 
-		stopRefresh = true;
-		if (refreshThread.joinable()) {
-			refreshThread.join();
-		}
-		service.Stop();
 		active = false;
-	}
+		stopRefresh = true;
+		cv.notify_all();
 
+		worker = std::move(refreshThread);
+		
+		if (worker.joinable())
+			worker.join();
+
+		service.Stop();
+	}
+	
+	std::mutex cvMutex;
+	std::condition_variable cv;
 	AirPodsBatteryService service;
 	std::thread refreshThread;
 	std::mutex activationMutex;

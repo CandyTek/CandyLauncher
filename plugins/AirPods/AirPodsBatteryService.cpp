@@ -57,6 +57,9 @@ namespace {
 	}
 }
 
+std::mutex stopMutex;
+std::condition_variable stopCv;
+
 AirPodsBatteryService::~AirPodsBatteryService() {
 	Stop();
 }
@@ -70,6 +73,8 @@ void AirPodsBatteryService::Start() {
 
 void AirPodsBatteryService::Stop() {
 	stopRequested = true;
+	stopCv.notify_all();
+
 	if (worker.joinable()) {
 		worker.join();
 	}
@@ -159,40 +164,53 @@ void AirPodsBatteryService::Worker() {
 
 		while (!stopRequested) {
 			try {
-				const auto selector = BluetoothDevice::GetDeviceSelectorFromConnectionStatus(
-					BluetoothConnectionStatus::Connected);
-				const auto devices = DeviceInformation::FindAllAsync(selector).get();
+				const auto selector =
+					BluetoothDevice::GetDeviceSelectorFromConnectionStatus(
+						BluetoothConnectionStatus::Connected);
+
+				const param::async_iterable<hstring> properties{
+					L"System.DeviceInterface.Bluetooth.VendorId",
+					L"System.DeviceInterface.Bluetooth.ProductId"
+				};
+
+				const auto devices =
+					DeviceInformation::FindAllAsync(selector, properties).get();
 
 				bool found = false;
 				std::wstring deviceName;
 				uint16_t productId = 0;
 
 				for (const auto& deviceInfo : devices) {
-					const auto device = BluetoothDevice::FromIdAsync(deviceInfo.Id()).get();
-					if (!device) continue;
+					if (stopRequested.load()) {
+						break;
+					}
 
-					const auto detailedInfo = DeviceInformation::CreateFromIdAsync(
-						deviceInfo.Id(),
-						{
-							L"System.DeviceInterface.Bluetooth.VendorId",
-							L"System.DeviceInterface.Bluetooth.ProductId"
-						}).get();
-					const auto properties = detailedInfo.Properties();
-					const auto vendorValue = properties.TryLookup(
+					const auto deviceProperties = deviceInfo.Properties();
+
+					const auto vendorValue = deviceProperties.TryLookup(
 						L"System.DeviceInterface.Bluetooth.VendorId");
-					const auto productValue = properties.TryLookup(
-						L"System.DeviceInterface.Bluetooth.ProductId");
-					const auto vendorId = unbox_value_or<uint16_t>(vendorValue, 0);
-					const auto candidateProductId = unbox_value_or<uint16_t>(productValue, 0);
-					const std::wstring candidateName = device.Name().c_str();
 
-					if ((vendorId == AppleVendorId && IsSupportedModel(candidateProductId)) ||
+					const auto productValue = deviceProperties.TryLookup(
+						L"System.DeviceInterface.Bluetooth.ProductId");
+
+					const auto vendorId =
+						unbox_value_or<uint16_t>(vendorValue, 0);
+
+					const auto candidateProductId =
+						unbox_value_or<uint16_t>(productValue, 0);
+
+					const std::wstring candidateName =
+						deviceInfo.Name().c_str();
+
+					if ((vendorId == AppleVendorId &&
+						 IsSupportedModel(candidateProductId)) ||
 						LooksLikeAppleHeadphones(candidateName)) {
+
 						found = true;
 						deviceName = candidateName;
 						productId = candidateProductId;
 						break;
-					}
+						}
 				}
 
 				std::lock_guard<std::mutex> lock(mutex);
@@ -247,9 +265,10 @@ void AirPodsBatteryService::Worker() {
 				SetError(state, error);
 			}
 
-			for (int i = 0; i < 10 && !stopRequested; ++i) {
-				std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			}
+			std::unique_lock<std::mutex> lock(stopMutex);
+			stopCv.wait_for(lock,std::chrono::seconds(1),[this] {
+				return stopRequested.load();
+			});
 		}
 
 		watcher.Stop();
