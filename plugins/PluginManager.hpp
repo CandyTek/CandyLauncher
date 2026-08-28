@@ -552,6 +552,10 @@ public:
 		if (pref_close_after_open_item) HideWindow();
 	}
 
+	std::wstring& GetCurrectArgText() override {
+		return currectActionArg;
+	}
+
 	void SyncPluginPrioritiesFromSettings() {
 		for (auto& [pluginId, info] : m_plugins) {
 			if (!info.pkgName.empty()) {

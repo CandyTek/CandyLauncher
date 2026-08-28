@@ -77,10 +77,12 @@ public:
 
 	// 运行命令
 	void InvokeWithTarget(const wchar_t* target, bool isForceAdmin) {
-		std::thread([this, target = std::move(target), isForceAdmin]() {
+		const std::wstring arg = g_host->GetCurrectArgText().empty() ? L"" : g_host->GetCurrectArgText();
+		std::wstring safeTarget = target == nullptr ? arg : std::wstring(target) + L" " + arg;
+		std::thread([this, target = std::move(safeTarget), isForceAdmin]() {
 			HINSTANCE hInst = ShellExecuteW(
 				nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : L"open",
-				targetFilePath.c_str(), target,
+				targetFilePath.c_str(), target.c_str(),
 				workingDirectory.c_str(), SW_SHOWNORMAL);
 			//char const* temp=WStringToConstChar(targetFilePath);
 			//	 system(temp);
@@ -92,7 +94,7 @@ public:
 					{
 						// 再尝试用 open 打开
 						HINSTANCE hInst2 = ShellExecuteW(nullptr, L"open",
-														targetFilePath.c_str(), target,
+														targetFilePath.c_str(), target.c_str(),
 														workingDirectory.c_str(), SW_SHOWNORMAL);
 						result = reinterpret_cast<INT_PTR>(hInst2);
 						if (result <= 32) {

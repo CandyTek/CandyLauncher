@@ -69,6 +69,7 @@ public:
 	virtual bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) = 0;
 	virtual void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) = 0;
 	virtual void PluginTaskDone() = 0;
+	virtual std::wstring& GetCurrectArgText() =0;
 };
 
 class IPlugin {
