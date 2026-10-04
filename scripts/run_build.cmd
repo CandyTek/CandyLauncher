@@ -8,6 +8,7 @@ for /f "usebackq tokens=*" %%i in (`call "%ProgramFiles(x86)%\Microsoft Visual S
 
 :: call VsDevCmd.bat
 call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -no_logo
+cd /d "%~dp0.."
 
 :: Execute the build
 cmake --build cmake-build-debug-ninja-vs --config Debug --target CandyLauncher -j 18

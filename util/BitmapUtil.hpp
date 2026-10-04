@@ -5,6 +5,10 @@
 #include <ShlObj.h>
 #include <vector>
 #include <shellapi.h>
+#include <commctrl.h>
+#include <commoncontrols.h>
+#include <mutex>
+#include <unordered_map>
 #include "util/ShortcutUtil.hpp"
 #include <gdiplus.h>
 
@@ -267,46 +271,133 @@ static int GetSysImageIndex2(const std::wstring& filePath) {
 	return sfi.iIcon;
 }
 
-static int GetSysImageIndex(const std::wstring& filePath) {
-	static const std::wstring ext = L".lnk";
+static bool GetShortcutIconSource(const std::wstring& shortcut, std::wstring& iconPath, int& iconNumber) {
+	const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+	IShellLinkW* link = nullptr;
+	bool found = false;
+	if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+		IID_IShellLinkW, reinterpret_cast<void**>(&link)))) {
+		IPersistFile* persist = nullptr;
+		if (SUCCEEDED(link->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&persist)))) {
+			if (SUCCEEDED(persist->Load(shortcut.c_str(), STGM_READ))) {
+				WCHAR path[MAX_PATH] = {};
+				if (SUCCEEDED(link->GetIconLocation(path, MAX_PATH, &iconNumber)) && path[0]) {
+					iconPath = path;
+					found = true;
+				} else {
+					WIN32_FIND_DATAW data = {};
+					iconNumber = 0;
+					if (SUCCEEDED(link->GetPath(path, MAX_PATH, &data, SLGP_RAWPATH)) && path[0]) {
+						iconPath = path;
+						found = true;
+					}
+				}
+			}
+			persist->Release();
+		}
+		link->Release();
+	}
+	if (SUCCEEDED(init)) CoUninitialize();
+	if (found && iconPath.find(L'%') != std::wstring::npos) {
+		WCHAR expanded[32768] = {};
+		const DWORD length = ExpandEnvironmentStringsW(iconPath.c_str(), expanded, 32768);
+		if (length > 0 && length <= 32768) iconPath = expanded;
+	}
+	return found;
+}
 
-	if (filePath.empty()) {
+static int AddExtractedIconToSystemLists(const std::wstring& source, const int iconNumber) {
+	IImageList* lists[3] = {};
+	constexpr int sizes[3] = {SHIL_SMALL, SHIL_LARGE, SHIL_EXTRALARGE};
+	int count = -1;
+	bool ready = true;
+	for (int i = 0; i < 3; ++i) {
+		if (FAILED(SHGetImageList(sizes[i], IID_IImageList, reinterpret_cast<void**>(&lists[i])))) {
+			ready = false;
+			break;
+		}
+		int currentCount = 0;
+		if (FAILED(lists[i]->GetImageCount(&currentCount))) {
+			ready = false;
+			break;
+		}
+		if (count < 0) count = currentCount;
+		if (currentCount != count) {
+			ready = false;
+			break;
+		}
+	}
+	if (!ready || count < 0) {
+		for (auto* list : lists) if (list) list->Release();
 		return -1;
 	}
 
-	DWORD attr = GetFileAttributesW(filePath.c_str());
-	if (attr == INVALID_FILE_ATTRIBUTES) {
-		// 如果文件不存在，默认按普通文件处理
-		attr = FILE_ATTRIBUTE_NORMAL;
+	HICON icons[3] = {};
+	constexpr UINT dimensions[3] = {16, 32, 48};
+	bool extracted = true;
+	for (int i = 0; i < 3; ++i) {
+		extracted = SUCCEEDED(SHDefExtractIconW(source.c_str(), iconNumber, 0, &icons[i], nullptr, dimensions[i])) && icons[i];
+		if (!extracted) break;
 	}
+	int result = -1;
+	if (extracted) {
+		int inserted[3] = {};
+		bool added = true;
+		for (int i = 0; i < 3; ++i) {
+			added = SUCCEEDED(lists[i]->ReplaceIcon(-1, icons[i], &inserted[i])) && inserted[i] == count;
+			if (!added) break;
+		}
+		if (added) result = count;
+	}
+	for (auto icon : icons) if (icon) DestroyIcon(icon);
+	for (auto* list : lists) if (list) list->Release();
+	return result;
+}
+
+static int GetSysImageIndex(const std::wstring& filePath) {
+	if (filePath.empty()) return -1;
+
+	static std::mutex iconMutex;
+	static std::unordered_map<std::wstring, int> extractedIcons;
 
 	SHFILEINFOW sfi = {};
-	SHGetFileInfoW(
-		filePath.c_str(),
-		attr,
-		&sfi,
-		sizeof(sfi),
-		SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES
-	);
-	// 做一个兜底，有些lnk图标获取有问题，必须先获取targetpath才能获得index，不知道为什
-	if (sfi.iIcon == 0) {
-		if (EndsWithIgnoreCase(filePath, ext)) {
-			if (const std::wstring resolvedPath = GetShortcutTarget(filePath); !resolvedPath.empty()) {
-				attr = GetFileAttributesW(resolvedPath.c_str());
-				if (attr == INVALID_FILE_ATTRIBUTES) {
-					attr = FILE_ATTRIBUTE_NORMAL;
-				}
-				SHGetFileInfoW(
-					resolvedPath.c_str(),
-					attr,
-					&sfi,
-					sizeof(sfi),
-					SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES
-				);
-			}
+	const DWORD attributes = GetFileAttributesW(filePath.c_str());
+	const bool exists = attributes != INVALID_FILE_ATTRIBUTES;
+	const UINT flags = SHGFI_SYSICONINDEX | (exists ? 0 : SHGFI_USEFILEATTRIBUTES);
+	if (!SHGetFileInfoW(filePath.c_str(), exists ? attributes : FILE_ATTRIBUTE_NORMAL,
+		&sfi, sizeof(sfi), flags)) return -1;
+
+	const bool shortcut = EndsWithIgnoreCase(filePath, L".lnk");
+	const bool executable = EndsWithIgnoreCase(filePath, L".exe");
+	const bool iconFile = EndsWithIgnoreCase(filePath, L".ico");
+	if (!exists || (!shortcut && !executable && !iconFile)) return sfi.iIcon;
+
+	// Some machines cache an executable's real icon as the generic application icon.
+	static const int genericIndex = [] {
+		SHFILEINFOW generic = {};
+		SHGetFileInfoW(L"missing_candylauncher_icon.exe", FILE_ATTRIBUTE_NORMAL,
+			&generic, sizeof(generic), SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES);
+		return generic.iIcon;
+	}();
+	if (sfi.iIcon != genericIndex) return sfi.iIcon;
+	std::lock_guard<std::mutex> lock(iconMutex);
+	if (const auto it = extractedIcons.find(filePath); it != extractedIcons.end()) return it->second;
+
+	std::wstring source = filePath;
+	int iconNumber = 0;
+	if (shortcut && !GetShortcutIconSource(filePath, source, iconNumber)) return sfi.iIcon;
+	if (GetFileAttributesW(source.c_str()) == INVALID_FILE_ATTRIBUTES) return sfi.iIcon;
+	if (shortcut && iconNumber == 0) {
+		SHFILEINFOW sourceInfo = {};
+		if (SHGetFileInfoW(source.c_str(), FILE_ATTRIBUTE_NORMAL, &sourceInfo, sizeof(sourceInfo),
+			SHGFI_SYSICONINDEX) && sourceInfo.iIcon != genericIndex) {
+			return sourceInfo.iIcon;
 		}
 	}
-	return sfi.iIcon;
+	const int extractedIndex = AddExtractedIconToSystemLists(source, iconNumber);
+	if (extractedIndex < 0) return sfi.iIcon;
+	extractedIcons.emplace(filePath, extractedIndex);
+	return extractedIndex;
 }
 
 inline void RefreshIconCache(const std::wstring& filePath) {
