@@ -19,6 +19,7 @@
 #include "util/MainTools.hpp"
 #include "util/MyToastUtil.hpp"
 #include "util/OleFileDragDrop.hpp"
+#include "util/FileSystemTraverser.hpp"
 
 struct PluginInfo {
 	HMODULE handle = nullptr;
@@ -174,16 +175,25 @@ public:
 
 		// 使用 Everything SDK
 		Everything_SetSearchW(search_query.str().c_str());
-		Everything_QueryW(TRUE);
+		const ULONGLONG queryStart = GetTickCount64();
+		if (!Everything_QueryW(TRUE)) {
+			Loge(L"Everything", L"Query failed; scanning folder: ", folderPath);
+			TraverseFiles(folderPath, options, EXE_FOLDER_PATH, callback);
+			return;
+		}
+		const ULONGLONG queryDone = GetTickCount64();
 
 		DWORD numResults = Everything_GetNumResults();
+		std::vector<wchar_t> fullPath(32768);
 
 		for (DWORD i = 0; i < numResults; i++) {
-			wchar_t fullPath[MAX_PATH];
-			Everything_GetResultFullPathNameW(i, fullPath, MAX_PATH);
+			const DWORD length = Everything_GetResultFullPathNameW(i, fullPath.data(), static_cast<DWORD>(fullPath.size()));
+			if (length == 0 || length >= fullPath.size()) continue;
 			// 因为查询已经精确过滤，不再需要手动判断父目录了
-			addFile(fs::path(fullPath));
+			addFile(fs::path(fullPath.data()));
 		}
+		Logi(L"Everything", L"Folder query ms=", queryDone - queryStart,
+			L" results=", numResults, L" callbacks ms=", GetTickCount64() - queryDone);
 	}
 
 	// 搜索可能的目标文件

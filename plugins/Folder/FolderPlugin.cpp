@@ -248,16 +248,39 @@ public:
 		if (shareds.empty()) {
 			return;
 		}
+		// 普通扩展名共享系统图标；只为有独立图标的文件访问 Shell。
+		std::unordered_map<std::wstring, int> sharedIcons;
+		std::vector<std::shared_ptr<FileAction>> individualIcons;
+		individualIcons.reserve(shareds.size());
+		for (const auto& action : shareds) {
+			const std::wstring extension = std::filesystem::path(action->getIconFilePath()).extension().wstring();
+			if (extension.empty() || _wcsicmp(extension.c_str(), L".exe") == 0 ||
+				_wcsicmp(extension.c_str(), L".lnk") == 0 ||
+				_wcsicmp(extension.c_str(), L".ico") == 0 ||
+				_wcsicmp(extension.c_str(), L".url") == 0) {
+				individualIcons.push_back(action);
+				continue;
+			}
+			std::wstring key = extension;
+			std::transform(key.begin(), key.end(), key.begin(), towlower);
+			auto [it, inserted] = sharedIcons.try_emplace(key, -1);
+			if (inserted) it->second = GetSysImageIndex2(L"candylauncher_file" + key);
+			action->iconFilePathIndex = it->second;
+		}
+		if (individualIcons.empty()) return;
 		// 确定要使用的线程数，通常基于硬件核心数
 		// hardware_concurrency() 可能返回0，所以至少保证1个线程
-		size_t numThreads = std::min<size_t>(std::thread::hardware_concurrency(), shareds.size());
+		size_t numThreads = std::min<size_t>(std::thread::hardware_concurrency(), individualIcons.size());
 		if (numThreads == 0) {
 			numThreads = 1;
 		}
 		ThreadPool poolThread(numThreads);
 
 		std::vector<std::future<void>> futures;
-		const size_t totalSize = shareds.size();
+		std::atomic<ULONGLONG> shortcutMs{0}, executableMs{0}, otherMs{0};
+		std::atomic<size_t> shortcutCount{0}, executableCount{0}, otherCount{0};
+		const ULONGLONG iconStart = GetTickCount64();
+		const size_t totalSize = individualIcons.size();
 		const size_t chunkSize = (totalSize + numThreads - 1) / numThreads;
 
 		// 创建并分发任务给多个线程
@@ -267,14 +290,21 @@ public:
 			const size_t end_index = std::min(start_index + chunkSize, totalSize);
 
 			// 获取该分块的起始和结束迭代器
-			auto start_it = shareds.begin() + start_index;
-			auto end_it = shareds.begin() + end_index;
+			auto start_it = individualIcons.begin() + start_index;
+			auto end_it = individualIcons.begin() + end_index;
 
 			// 注意：按值捕获迭代器，按引用捕获 shareds (如果只是读写成员，甚至不需要捕获整个容器)
-			futures.push_back(poolThread.enqueue([start_it, end_it]() {
+			futures.push_back(poolThread.enqueue([start_it, end_it, &shortcutMs, &executableMs, &otherMs,
+				&shortcutCount, &executableCount, &otherCount]() {
 				for (auto it = start_it; it != end_it; ++it) {
 					auto& action = *it;
+					const ULONGLONG begin = GetTickCount64();
 					action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
+					const ULONGLONG elapsed = GetTickCount64() - begin;
+					const auto& path = action->getIconFilePath();
+					if (EndsWithIgnoreCase(path, L".lnk")) { shortcutMs += elapsed; ++shortcutCount; }
+					else if (EndsWithIgnoreCase(path, L".exe")) { executableMs += elapsed; ++executableCount; }
+					else { otherMs += elapsed; ++otherCount; }
 				}
 			}));
 		}
@@ -282,11 +312,15 @@ public:
 			f.get();
 		}
 		// 必须做一轮查询，做一个兜底，因为多线程调用GetSysImageIndex ，会有几率得到 index 为0的图标
-		for (const std::shared_ptr<FileAction>& action : shareds) {
+		for (const std::shared_ptr<FileAction>& action : individualIcons) {
 			if (action->iconFilePathIndex == 0) {
 				action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
 			}
 		}
+		Logi(L"FolderPlugin", L"icon timing wall=", GetTickCount64() - iconStart,
+			L"ms shortcut=", shortcutCount.load(), L"/", shortcutMs.load(),
+			L"ms exe=", executableCount.load(), L"/", executableMs.load(),
+			L"ms other=", otherCount.load(), L"/", otherMs.load(), L"ms");
 	}
 
 	static void doActionAddIconIndexWithoutMultithreading(const std::vector<std::shared_ptr<FileAction>>& shareds) {
@@ -471,6 +505,7 @@ public:
 
 	void RefreshAllActions() override {
 		if (!g_host) return;
+		const ULONGLONG refreshStart = GetTickCount64();
 		const auto& settings = g_host->GetSettingsMap();
 		const bool allowDuplicates = settings.at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
 		const bool indexRoot = settings.at("com.candytek.folderplugin.index_folderpath_itself").boolValue;
@@ -487,6 +522,7 @@ public:
 
 		try {
 			std::vector<TraverseOptions> configs = ParseRunnerConfig();
+			const ULONGLONG configDone = GetTickCount64();
 			std::vector<CachedSource> sources;
 			bool explicitUwp = false, explicitPath = false;
 			for (auto options : configs) {
@@ -533,16 +569,64 @@ public:
 					}
 				}
 			}
-			if (!rebuild) sources = cachedSources;
+			if (!rebuild) sources = std::move(cachedSources);
+			std::future<std::vector<std::shared_ptr<FileAction>>> uwpFuture;
+			if (rebuild) {
+				for (const auto& source : sources) {
+					if (!source.isUwp) continue;
+					const TraverseOptions options = source.options;
+					// UWP 条目及拼音匹配文本在工作线程构造，与文件索引并发执行。
+					uwpFuture = std::async(std::launch::async, [options]() {
+						std::vector<std::shared_ptr<BaseAction>> loaded;
+						traverseUwpApps(loaded, options);
+						std::vector<std::shared_ptr<FileAction>> actions;
+						actions.reserve(loaded.size());
+						for (auto& action : loaded)
+							actions.push_back(std::static_pointer_cast<FileAction>(action));
+						return actions;
+					});
+					break;
+				}
+			}
 			std::vector<std::shared_ptr<FileAction>> newActions;
+			const ULONGLONG sourceStart = GetTickCount64();
 			for (auto& source : sources) {
+				const ULONGLONG oneSourceStart = GetTickCount64();
 				if (source.isUwp) {
-					if (rebuild) {
-						std::vector<std::shared_ptr<BaseAction>> uwpActions;
-						traverseUwpApps(uwpActions, source.options);
-						for (const auto& action : uwpActions)
-							if (auto file = std::dynamic_pointer_cast<FileAction>(action)) source.actions.push_back(file);
+					continue;
+				}
+				if (everythingEnabled && !source.roots.empty() && source.options.type != L"path") {
+					std::unordered_map<std::wstring, std::shared_ptr<FileAction>> previous;
+					previous.reserve(source.actions.size());
+					for (const auto& action : source.actions)
+						previous.emplace(CachePathKey(action->GetTargetPath()), action);
+					std::vector<std::shared_ptr<FileAction>> actions;
+					for (const auto& root : source.roots) {
+						g_host->TraverseFilesForEverythingSDK(root, source.options,
+							[&](const std::wstring& title, const std::wstring& fullPath,
+								const std::wstring&, const std::wstring&) {
+								const auto old = previous.find(CachePathKey(fullPath));
+								if (old != previous.end() && old->second->getTitle() == title) {
+									actions.push_back(old->second);
+								} else {
+									auto action = std::make_shared<FileAction>(title, fullPath);
+									newActions.push_back(action);
+									actions.push_back(std::move(action));
+								}
+							});
 					}
+					if (source.indexRoot) {
+						if (!source.rootAction) {
+							const std::wstring rootPath = ShortToLongPathWithEnvironment(source.options.folder);
+							source.rootAction = std::make_shared<FileAction>(source.options.name, rootPath, false, rootPath);
+							newActions.push_back(source.rootAction);
+						}
+						actions.push_back(source.rootAction);
+					}
+					source.directories.clear();
+					source.actions = std::move(actions);
+					Logi(L"FolderPlugin", L"index source=Everything root=", source.roots.front(),
+						L" ms=", GetTickCount64() - oneSourceStart, L" count=", source.actions.size());
 					continue;
 				}
 				std::unordered_map<std::wstring, DirectorySnapshot> next;
@@ -569,8 +653,24 @@ public:
 				}
 				source.directories = std::move(next);
 				source.actions = std::move(actions);
+				Logi(L"FolderPlugin", L"index source=filesystem root=", source.roots.empty() ? L"" : source.roots.front(),
+					L" ms=", GetTickCount64() - oneSourceStart, L" count=", source.actions.size());
 			}
-			doActionAddIconIndex(newActions);
+			const ULONGLONG sourceDone = GetTickCount64();
+			// 系统图标按需提取，避免启动时对全部快捷方式执行 Shell 查询。
+			for (const auto& action : newActions) action->iconIndexOnDemand = true;
+			const ULONGLONG iconsDone = GetTickCount64();
+			if (uwpFuture.valid()) {
+				const ULONGLONG waitStart = GetTickCount64();
+				auto uwpActions = uwpFuture.get();
+				for (auto& source : sources) {
+					if (!source.isUwp) continue;
+					source.actions = std::move(uwpActions);
+					Logi(L"FolderPlugin", L"index source=UWP count=", source.actions.size(),
+						L" wait ms=", GetTickCount64() - waitStart);
+				}
+			}
+			const ULONGLONG uwpDone = GetTickCount64();
 			std::vector<std::shared_ptr<BaseAction>> result;
 			std::unordered_set<std::wstring> titles;
 			auto addSource = [&](const CachedSource& source) {
@@ -587,6 +687,12 @@ public:
 			if (!explicitUwp && uwpEnabled)
 				for (const auto& source : sources) if (source.isUwp) addSource(source);
 			allPluginActions = std::move(result);
+			const ULONGLONG mergeDone = GetTickCount64();
+			Logi(L"FolderPlugin", L"index timing config=", configDone - refreshStart,
+				L"ms sources=", sourceDone - sourceStart, L"ms icon setup=", iconsDone - sourceDone,
+				L"ms UWP wait=", uwpDone - iconsDone, L"ms merge=", mergeDone - uwpDone,
+				L"ms total=", mergeDone - refreshStart,
+				L"ms new=", newActions.size(), L" visible=", allPluginActions.size());
 			cachedSources = std::move(sources);
 			cachedConfig = config;
 			cachedPath = std::move(environmentPath);

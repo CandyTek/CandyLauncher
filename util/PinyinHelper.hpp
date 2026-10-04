@@ -21,6 +21,7 @@ extern const std::unordered_map<std::string, std::wstring> SougouPyArr;
 extern const std::unordered_map<std::string, std::wstring> ZiRanMaPyArr;
 
 extern const std::unordered_map<std::string, std::wstring>* pCurrPinyin;
+// 初始化与方案切换应在索引前完成；初始化后的拼音转换可由多个索引线程并发调用。
 inline std::unique_ptr<Pinyin::Pinyin> g2p_man;
 
 class PinyinHelper {

@@ -10,6 +10,7 @@
 #include "FolderPluginData.hpp"
 #include "plugins/BaseAction.hpp"
 #include "util/BaseTools.hpp"
+#include "util/BitmapUtil.hpp"
 
 using namespace Microsoft::WRL;
 
@@ -166,8 +167,16 @@ public:
 	}
 
 	int iconFilePathIndex = -1;
+	bool iconIndexOnDemand = false;
 
 	int getIconFilePathIndex() override {
+		if (iconIndexOnDemand) {
+			iconIndexOnDemand = false;
+			const ULONGLONG start = GetTickCount64();
+			iconFilePathIndex = GetSysImageIndex(targetFilePath);
+			const ULONGLONG elapsed = GetTickCount64() - start;
+			if (elapsed >= 20) Logi(L"FolderPlugin", L"lazy icon ms=", elapsed, L" path=", targetFilePath);
+		}
 		return iconFilePathIndex;
 	}
 
