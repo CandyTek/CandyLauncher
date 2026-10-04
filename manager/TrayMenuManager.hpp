@@ -26,7 +26,9 @@ constexpr int TRAY_MENU_ID_EXIT = 10006;
 constexpr int TRAY_MENU_ID_HELP = 10007;
 constexpr int TRAY_MENU_ID_CHECK_UPDATE = 10009;
 constexpr int TRAY_MENU_ID_SETTINGS = 10010;
-constexpr int TRAY_MENU_ID_BASE_END = 10012;
+constexpr int TRAY_MENU_ID_GITHUB_ISSUES = 10013;
+
+constexpr int TRAY_MENU_ID_BASE_END = 10014;
 
 static HMENU g_hTrayMenu = nullptr;
 static HMENU g_hMoreSub = nullptr;
@@ -85,6 +87,8 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 
 	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB, L"打开 Github 主页(&G)");
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_GITHUB, MF_BYCOMMAND, gBmpGithub, gBmpGithub);
+	
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB_ISSUES, L"反馈(&F)");
 
 	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_ABOUT, L"关于(&A)");
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_ABOUT, MF_BYCOMMAND, gBmpAbout, gBmpAbout);

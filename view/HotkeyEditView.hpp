@@ -104,7 +104,9 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			std::wstring keyStr;
 
 			if (storedModifiers & MOD_CONTROL) keyStr += L"Ctrl+";
-			if (storedModifiers & MOD_ALT) keyStr += L"Alt+";
+			if (storedModifiers & MOD_ALT) {
+				keyStr += (GetAsyncKeyState(VK_RMENU) & 0x8000) ? L"Right Alt+" : L"Alt+";
+			}
 			if (storedModifiers & MOD_SHIFT) keyStr += L"Shift+";
 			if (storedModifiers & MOD_WIN) keyStr += L"Win+";
 

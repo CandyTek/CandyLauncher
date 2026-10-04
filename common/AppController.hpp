@@ -194,6 +194,9 @@ static void TrayMenuClick(const int position) {
 	case TRAY_MENU_ID_GITHUB: // 打开 Github 页面
 		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher", nullptr, nullptr, SW_SHOW);
 		break;
+	case TRAY_MENU_ID_GITHUB_ISSUES: // 打开 Github
+		ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/discussions", nullptr, nullptr, SW_SHOW);
+		break;
 	case TRAY_MENU_ID_CHECK_UPDATE: AppUpdate::StartCheckForUpdates(true);
 		break;
 	case TRAY_MENU_ID_RESTART: // 重启

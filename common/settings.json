@@ -151,6 +151,22 @@
 			"defValue": ""
 		},
 		{
+			"key": "pref_hotkey_list_up",
+			"title": "列表上移快捷键",
+			"title_en": "Move up in results",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": "Right Alt+E(1)(69)"
+		},
+		{
+			"key": "pref_hotkey_list_down",
+			"title": "列表下移快捷键",
+			"title_en": "Move down in results",
+			"type": "hotkeystring",
+			"subPage": "hotkey",
+			"defValue": "Right Alt+D(1)(68)"
+		},
+		{
 			"key": "pref_ignore_popup_sound",
 			"title": "忽略主题弹出声音",
 			"title_en": "Ignore theme popup sound",

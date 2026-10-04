@@ -8,6 +8,7 @@
 #include "../common/Resource.h"
 #include "../common/Constants.hpp"
 #include "../util/ShortcutUtil.hpp"
+#include "../util/HotkeyUtils.h"
 #include "../common/GlobalState.hpp"
 #include "../view/SwitchView.hpp"
 #include "../util/PinyinHelper.hpp"
@@ -147,6 +148,20 @@ static void LoadSettingsMap() {
 	// auto it = g_settings_map.find("com.candytek.folderplugin.envpath_apps");
 	// auto it = g_settings_map.find("pref_use_everything_sdk_index");
 	// bool isFind =it != g_settings_map.end();
+}
+
+static bool MatchesListNavigationHotkey(const char* settingKey, const UINT vk, const UINT modifiers) {
+	const std::string& hotkey = g_settings_map[settingKey].stringValue;
+	UINT configuredModifiers = 0;
+	UINT configuredVk = 0;
+	if (!ParseHotkeyString(hotkey, configuredModifiers, configuredVk) || configuredVk != vk) return false;
+	if (hotkey.rfind("Right Alt+", 0) == 0) {
+		if ((GetKeyState(VK_RMENU) & 0x8000) == 0) return false;
+		// AltGr also reports Ctrl on some keyboard layouts.
+		return modifiers == configuredModifiers ||
+			(configuredModifiers == MOD_ALT && modifiers == (MOD_ALT | MOD_CONTROL));
+	}
+	return modifiers == configuredModifiers;
 }
 
 // 保存配置到JSON文件

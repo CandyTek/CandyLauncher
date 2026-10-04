@@ -6,6 +6,7 @@
 #include <shlwapi.h>
 
 #include "../common/Constants.hpp"
+#include "ListViewManager.hpp"
 #include "EditControlPainter.hpp"
 #include <gdiplus.h>
 
@@ -105,6 +106,7 @@ private:
 				if (GetKeyState(VK_CONTROL) & 0x8000) currentModifiers |= MOD_CONTROL;
 				if (GetKeyState(VK_SHIFT) & 0x8000) currentModifiers |= MOD_SHIFT;
 				if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) currentModifiers |= MOD_WIN_KEY;
+				if (HandleListNavigationHotkey(vk, currentModifiers)) return 0;
 
 				// 未组合修饰键
 				if (currentModifiers == 0)
@@ -137,30 +139,7 @@ private:
 					case VK_UP:
 					case VK_DOWN:
 						{
-							// 上下键导航 ListView（循环）
-							const int count = ListView_GetItemCount(g_listViewHwnd);
-							if (count == 0) return 0;
-
-							int selected = ListView_GetNextItem(g_listViewHwnd, -1, LVNI_SELECTED);
-
-							// 没有选中项时，从0开始
-							if (selected == -1) {
-								selected = 0;
-							}
-
-							if (vk == VK_DOWN) {
-								selected = (selected + 1) % count; // 到底回到顶部
-							} else {
-								selected = (selected - 1 + count) % count; // 到顶回到底
-							}
-
-							// 清除当前选择
-							ListView_SetItemState(g_listViewHwnd, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
-							// 设置新选择
-							ListView_SetItemState(g_listViewHwnd, selected, LVIS_SELECTED | LVIS_FOCUSED,
-												LVIS_SELECTED | LVIS_FOCUSED);
-							ListView_EnsureVisible(g_listViewHwnd, selected, FALSE);
-
+							NavigateListView(vk);
 							return 0;
 						}
 					case VK_PRIOR:
@@ -220,6 +199,11 @@ private:
 				if (GetKeyState(VK_CONTROL) & 0x8000) currentModifiers |= MOD_CONTROL;
 				if (GetKeyState(VK_SHIFT) & 0x8000) currentModifiers |= MOD_SHIFT;
 				if (GetKeyState(VK_LWIN) & 0x8000 || GetKeyState(VK_RWIN) & 0x8000) currentModifiers |= MOD_WIN_KEY;
+				if (msg == WM_SYSKEYDOWN && HandleListNavigationHotkey(vk, currentModifiers)) return 0;
+				if (msg == WM_SYSCHAR && vk >= 'a' && vk <= 'z') vk -= 'a' - 'A';
+				if (msg == WM_SYSCHAR &&
+					(MatchesListNavigationHotkey("pref_hotkey_list_up", vk, currentModifiers) ||
+					 MatchesListNavigationHotkey("pref_hotkey_list_down", vk, currentModifiers))) return 0;
 
 				// TODO: Alt+Space: 转发给父窗口触发系统菜单，但是单独按下alt后，仍然会发出beep的声音
 				// if (msg == WM_SYSKEYDOWN && vk == VK_SPACE && currentModifiers == MOD_ALT_KEY) {

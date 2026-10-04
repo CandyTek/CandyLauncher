@@ -212,6 +212,32 @@ static void listViewCleanupGraphicsResources() {
 	listViewFontsInitialized = false;
 }
 
+static void NavigateListView(const UINT vk) {
+	const int count = ListView_GetItemCount(g_listViewHwnd);
+	if (count == 0) return;
+
+	int selected = ListView_GetNextItem(g_listViewHwnd, -1, LVNI_SELECTED);
+	if (selected == -1) selected = 0;
+	selected = vk == VK_DOWN ? (selected + 1) % count : (selected - 1 + count) % count;
+
+	ListView_SetItemState(g_listViewHwnd, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+	ListView_SetItemState(g_listViewHwnd, selected, LVIS_SELECTED | LVIS_FOCUSED,
+							LVIS_SELECTED | LVIS_FOCUSED);
+	ListView_EnsureVisible(g_listViewHwnd, selected, FALSE);
+}
+
+static bool HandleListNavigationHotkey(const UINT vk, const UINT modifiers) {
+	if (MatchesListNavigationHotkey("pref_hotkey_list_up", vk, modifiers)) {
+		NavigateListView(VK_UP);
+		return true;
+	}
+	if (MatchesListNavigationHotkey("pref_hotkey_list_down", vk, modifiers)) {
+		NavigateListView(VK_DOWN);
+		return true;
+	}
+	return false;
+}
+
 // 使listview监听esc键
 static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam,
 											UINT_PTR, const DWORD_PTR dwRefData) {
