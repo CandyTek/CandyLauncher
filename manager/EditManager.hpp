@@ -37,6 +37,25 @@ public:
 
 private:
 	// static Gdiplus::Image* g_backgroundImage = nullptr;
+	static void ShowSelectedItemContextMenu(HWND hwnd) {
+		if (!g_listViewHwnd || !g_pluginManager) return;
+		const int index = ListView_GetNextItem(g_listViewHwnd, -1, LVNI_SELECTED);
+		if (index < 0 || static_cast<size_t>(index) >= filteredActions.size()) return;
+
+		RECT itemRect{};
+		if (!ListView_GetItemRect(g_listViewHwnd, index, &itemRect, LVIR_BOUNDS)) return;
+		POINT pt{itemRect.left + (itemRect.right - itemRect.left) / 2,
+			itemRect.top + (itemRect.bottom - itemRect.top) / 2};
+		ClientToScreen(g_listViewHwnd, &pt);
+
+		const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+		if (shiftDown ^ pref_switch_list_right_click_with_shift_right_click) {
+			g_pluginManager->DispatchItemShiftRightClick(filteredActions[index], GetParent(hwnd), pt);
+		} else {
+			g_pluginManager->DispatchItemRightClick(filteredActions[index], GetParent(hwnd), pt);
+		}
+		PostMessageW(GetParent(hwnd), WM_FOCUS_EDIT, 0, 0);
+	}
 
 	static void doNumberAction(UINT vk) {
 		int relativeIndex = vk - '1'; // 第几个数字键（0-8）
@@ -100,6 +119,14 @@ private:
 			{
 				// 1. 获取当前按下的虚拟键码
 				UINT vk = static_cast<UINT>(wParam);
+				if (vk == VK_APPS) {
+					if (GetKeyState(VK_MENU) & 0x8000) {
+						SendMessageW(hwnd, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(hwnd), MAKELPARAM(-1, -1));
+					} else {
+						ShowSelectedItemContextMenu(hwnd);
+					}
+					return 0;
+				}
 				// 2. 获取当前的修饰符状态
 				UINT currentModifiers = 0;
 				if (GetKeyState(VK_MENU) & 0x8000) currentModifiers |= MOD_ALT;
@@ -188,11 +215,18 @@ private:
 			}
 			g_caretOn = true;
 			break;
+		case WM_KEYUP:
+			if (wParam == VK_APPS) return 0;
+			break;
 		case WM_SYSCHAR:
 		case WM_SYSKEYDOWN:
 			{
 				// alt 的快捷键监听只能在这里
 				UINT vk = static_cast<UINT>(wParam);
+				if (msg == WM_SYSKEYDOWN && vk == VK_APPS) {
+					SendMessageW(hwnd, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(hwnd), MAKELPARAM(-1, -1));
+					return 0;
+				}
 				// 2. 获取当前的修饰符状态
 				UINT currentModifiers = 0;
 				if (GetKeyState(VK_MENU) & 0x8000) currentModifiers |= MOD_ALT;

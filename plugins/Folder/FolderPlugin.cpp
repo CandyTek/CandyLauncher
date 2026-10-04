@@ -187,6 +187,8 @@ private:
 	bool cachedEverythingEnabled = false;
 	ParsedHotkey hkOpenFileLocation;
 	ParsedHotkey hkOpenTargetLocation;
+	ParsedHotkey hkCopyFilePath;
+	ParsedHotkey hkCopyTargetPath;
 	ParsedHotkey hkOpenWithClipboard;
 	ParsedHotkey hkRunAsAdmin;
 
@@ -790,6 +792,22 @@ public:
 			"defValue": ""
 		},
 		{
+			"key": "com.candytek.folderplugin.hotkey_copy_file_path",
+			"title": "复制项目文件路径",
+			"title_en": "Copy item file path",
+			"type": "hotkeystring",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
+			"key": "com.candytek.folderplugin.hotkey_copy_target_path",
+			"title": "复制快捷方式目标路径",
+			"title_en": "Copy shortcut target path",
+			"type": "hotkeystring",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
 			"key": "com.candytek.folderplugin.open_with_clipboard_params",
 			"title": "打开附带剪贴板参数",
 			"title_en": "Open with clipboard parameters",
@@ -848,6 +866,8 @@ public:
 		const auto& settings = g_host->GetSettingsMap();
 		hkOpenFileLocation = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_file_location").stringValue);
 		hkOpenTargetLocation = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_target_location").stringValue);
+		hkCopyFilePath = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_copy_file_path").stringValue);
+		hkCopyTargetPath = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_copy_target_path").stringValue);
 		hkOpenWithClipboard = ParseHotkeyString(settings.at("com.candytek.folderplugin.open_with_clipboard_params").stringValue);
 		hkRunAsAdmin = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
 	}
@@ -872,6 +892,16 @@ public:
 		}
 		if (hkOpenTargetLocation.matches(vk, currentModifiers)) {
 			it->InvokeOpenGoalFolder();
+			return 1;
+		}
+		if (hkCopyFilePath.matches(vk, currentModifiers)) {
+			const std::wstring& path = it->GetTargetPath();
+			if (!path.empty()) CopyTextToClipboard(nullptr, path);
+			return 1;
+		}
+		if (hkCopyTargetPath.matches(vk, currentModifiers)) {
+			const std::wstring path = SaveGetShortcutTarget(it->GetTargetPath());
+			if (!path.empty()) CopyTextToClipboard(nullptr, path);
 			return 1;
 		}
 		if (hkOpenWithClipboard.matches(vk, currentModifiers)) {

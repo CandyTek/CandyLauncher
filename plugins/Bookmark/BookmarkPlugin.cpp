@@ -118,7 +118,7 @@ public:
 	}
 
 	std::wstring DefaultSettingJson() override {
-		return LR"(
+		return LR"json(
 {
 	"version": 1,
 	"prefList": [
@@ -152,7 +152,7 @@ public:
 		},
 		{
 			"key": "com.candytek.bookmarkplugin.subbrowser",
-			"title": "指定副浏览器路径（Alt + Enter）",
+			"title": "指定副浏览器路径 (Alt+Enter)",
 			"type": "string",
 			"subPage": "plugin",
 			"defValue": ""
@@ -160,7 +160,7 @@ public:
 	]
 }
 
-   )";
+   )json";
 	}
 
 	void OnUserSettingsLoadDone() override {
