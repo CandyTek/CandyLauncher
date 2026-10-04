@@ -983,14 +983,18 @@ private:
 	}
 
 	static void UnloadSinglePlugin(PluginInfo& info) {
+		Logi(TAG, L"Unloading plugin: ", info.name);
 		if (info.plugin) {
+			Logi(TAG, L"Shutting down plugin: ", info.name);
 			info.plugin->Shutdown();
 			if (info.destroyFunc) {
+				Logi(TAG, L"Destroying plugin: ", info.name);
 				info.destroyFunc(info.plugin.release());
 			}
 		}
 
 		if (info.handle) {
+			Logi(TAG, L"Freeing plugin library: ", info.name);
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
 		}

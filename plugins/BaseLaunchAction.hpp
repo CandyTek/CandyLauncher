@@ -72,8 +72,14 @@ public:
 
 	~BaseLaunchAction() override {
 		if (iconBitmap) {
-			DeleteObject(iconBitmap);
-			iconBitmap = nullptr;
+			try
+			{
+				DeleteObject(iconBitmap);
+				iconBitmap = nullptr;
+			}
+			catch (...)
+			{
+			}
 		}
 	}
 };

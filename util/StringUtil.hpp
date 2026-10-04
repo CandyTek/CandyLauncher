@@ -377,3 +377,19 @@ inline std::wstring sanitizeVisible(const std::wstring& input) {
 	if (start == std::wstring::npos) return L"";
 	return result.substr(start, end - start + 1);
 }
+
+// 明确使用 (ptr, length) 避免依赖 \0 结尾，并支持预分配
+inline void Utf8ToWideFast(std::string_view utf8, std::wstring& out) {
+	if (utf8.empty()) {
+		out.clear();
+		return;
+	}
+	// 获取所需宽字符长度
+	int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
+	if (wlen <= 0) {
+		out.clear();
+		return;
+	}
+	out.resize(wlen);
+	MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), &out[0], wlen);
+}

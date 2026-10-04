@@ -21,7 +21,7 @@
 #include "util/ImmersiveAppViewTraverser.hpp"
 #include "util/MainTools.hpp"
 #include "util/RunningWindowsTraverser.hpp"
-
+#include <objbase.h>
 
 // 任务队列系统
 inline std::queue<std::function<void()>> g_taskQueue;
@@ -31,32 +31,74 @@ inline std::condition_variable g_taskQueueCV;
 inline std::thread g_pluginIndexedRunningAppsThread;
 inline std::atomic<bool> g_workerShouldStop{false};
 
+// 独立的 SEH 执行包装函数，该函数内部不包含任何需要析构的 C++ 局部对象
+inline void ExecuteTaskWithSEH(const std::function<void()>& task)
+{
+	__try
+	{
+		task();
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		Loge(L"RunningApp", L"工作线程发生底层 SEH 异常");
+	}
+}
+
 // 工作线程函数
 inline void WorkerThreadFunction()
 {
+	// 1. 初始化 COM
+	HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
 	while (!g_workerShouldStop)
 	{
-		std::unique_lock<std::mutex> lock(g_taskQueueMutex);
-		g_taskQueueCV.wait(lock, []() { return !g_taskQueue.empty() || g_workerShouldStop; });
-
-		if (g_workerShouldStop) break;
-
-		if (!g_taskQueue.empty())
+		std::function<void()> task;
 		{
-			auto task = g_taskQueue.front();
-			g_taskQueue.pop();
-			lock.unlock();
+			std::unique_lock<std::mutex> lock(g_taskQueueMutex);
+			g_taskQueueCV.wait(lock, []() { 
+				return !g_taskQueue.empty() || g_workerShouldStop.load(); 
+			});
 
-			try
+			if (g_workerShouldStop) break;
+
+			if (!g_taskQueue.empty())
 			{
-				task();
-			}
-			catch (...)
-			{
-				// 捕获任务执行中的异常，防止线程崩溃
-				Loge(L"RunningApp", L"运行中插件索引条目报错");
+				task = std::move(g_taskQueue.front());
+				g_taskQueue.pop();
 			}
 		}
+
+		if (task)
+		{
+			// 调用无 C++ 对象展开的包装函数
+			ExecuteTaskWithSEH(task);
+		}
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		::CoUninitialize();
+	}
+}
+
+// 停止工作线程
+inline void stopThreadPluginRunningApps()
+{
+	// 1. 标记退出
+	g_workerShouldStop = true;
+
+	// 2. 清空队列中尚未执行的任务，防止执行悬空指针
+	{
+		std::lock_guard<std::mutex> lock(g_taskQueueMutex);
+		std::queue<std::function<void()>> emptyQueue;
+		std::swap(g_taskQueue, emptyQueue);
+	}
+
+	// 3. 唤醒并等待线程结束
+	g_taskQueueCV.notify_all();
+	if (g_pluginIndexedRunningAppsThread.joinable())
+	{
+		g_pluginIndexedRunningAppsThread.join();
 	}
 }
 
@@ -69,18 +111,6 @@ inline void SubmitTask(std::function<void()> task)
 	}
 	g_taskQueueCV.notify_one();
 }
-
-
-inline void stopThreadPluginRunningApps()
-{
-	if (g_pluginIndexedRunningAppsThread.joinable())
-	{
-		g_workerShouldStop = true;
-		g_taskQueueCV.notify_all();
-		g_pluginIndexedRunningAppsThread.join();
-	}
-}
-
 
 class RunningAppPlugin : public IPlugin
 {
@@ -205,6 +235,8 @@ public:
 		{
 			stopThreadPluginRunningApps();
 		}
+		allPluginActions.clear();
+		
 		m_host = nullptr;
 	}
 
