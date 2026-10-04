@@ -21,10 +21,10 @@ using nlohmann::json;
 // 递归收集节点中的书签
 static void CollectBookmarksFromNode(const json& node,
 									std::vector<std::shared_ptr<BaseAction>>& out,
-									const std::wstring& browserIconPath) {
+									const std::wstring& browserIconPath,
+									const int iconFilePathIndex) {
 	// Chrome/Edge 节点类型：folder / url
 	if (!node.is_object()) return;
-	int iconFilePathIndex= GetSysImageIndex(browserIconPath);
 
 	auto typeIt = node.find("type");
 	if (typeIt != node.end() && typeIt->is_string()) {
@@ -58,7 +58,7 @@ static void CollectBookmarksFromNode(const json& node,
 			const auto childrenIt = node.find("children");
 			if (childrenIt != node.end() && childrenIt->is_array()) {
 				for (const auto& child : *childrenIt) {
-					CollectBookmarksFromNode(child, out, browserIconPath);
+					CollectBookmarksFromNode(child, out, browserIconPath, iconFilePathIndex);
 				}
 			}
 			return;
@@ -69,7 +69,7 @@ static void CollectBookmarksFromNode(const json& node,
 	const auto childrenIt = node.find("children");
 	if (childrenIt != node.end() && childrenIt->is_array()) {
 		for (const auto& child : *childrenIt) {
-			CollectBookmarksFromNode(child, out, browserIconPath);
+			CollectBookmarksFromNode(child, out, browserIconPath, iconFilePathIndex);
 		}
 	}
 }
@@ -116,6 +116,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 		if (browserIconPath.empty()) {
 			browserIconPath = LR"(C:\Program Files\Internet Explorer\iexplore.exe)";
 		}
+		const int iconFilePathIndex = GetSysImageIndex(browserIconPath);
 
 		std::ifstream ifs(p, std::ios::binary);
 		if (!ifs) return {};
@@ -131,11 +132,11 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 
 		// 书签栏
 		if (auto bb = rootsIt->find("bookmark_bar"); bb != rootsIt->end()) {
-			CollectBookmarksFromNode(*bb, result, browserIconPath);
+			CollectBookmarksFromNode(*bb, result, browserIconPath, iconFilePathIndex);
 		}
 		// 其他书签
 		if (auto other = rootsIt->find("other"); other != rootsIt->end()) {
-			CollectBookmarksFromNode(*other, result, browserIconPath);
+			CollectBookmarksFromNode(*other, result, browserIconPath, iconFilePathIndex);
 		}
 		// 如需包含“移动设备同步书签”，可开启：
 		// if (auto synced = rootsIt->find("synced"); synced != rootsIt->end()) {
