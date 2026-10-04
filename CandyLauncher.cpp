@@ -75,6 +75,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 					_In_opt_ HINSTANCE hPrevInstance,
 					_In_ LPWSTR lpCmdLine,
 					_In_ int nCmdShow) {
+	// 启动快捷方式可能没有指定“起始位置”，先固定工作目录再加载配置和插件。
+	if (!SetCurrentDirectoryW(EXE_FOLDER_PATH.c_str())) {
+		MessageBoxW(nullptr, L"无法将工作目录设置为程序所在目录。", L"CandyLauncher", MB_OK | MB_ICONERROR);
+		return -1;
+	}
+
 	static ULONGLONG g_appStartTick = GetTickCount64();
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 	if (FAILED(hr)) return -1;
@@ -91,7 +97,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 	if (needOpenDebugCmd) AttachConsoleForDebug();
-	PinyinHelper::initPinyinLib();
+	PinyinHelper::initPinyinLib(EXE_FOLDER_PATH);
 	InitializeCustomButtonResources();
 	MainWindowRegisterClass(hInstance);
 	SettingWindowRegisterClass(hInstance);

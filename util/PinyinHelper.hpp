@@ -71,9 +71,9 @@ public:
 	}
 
 
-	static void initPinyinLib() {
-		// 设置字典路径（需要指向编译输出目录中的dict文件夹）
-		const auto dictPath = std::filesystem::current_path() / "dict";
+	static void initPinyinLib(const std::wstring& executableFolder) {
+		// 拼音字典始终从程序所在目录加载，不依赖启动快捷方式的“起始位置”。
+		const auto dictPath = std::filesystem::path(executableFolder) / L"dict";
 		Pinyin::setDictionaryPath(dictPath);
 		// 创建Pinyin转换器
 		g2p_man = std::make_unique<Pinyin::Pinyin>();
