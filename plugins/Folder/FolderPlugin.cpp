@@ -13,6 +13,8 @@
 #include <cwctype>
 #include <future>
 #include <unordered_set>
+#include <unordered_map>
+#include <filesystem>
 
 #include "FileAction.hpp"
 #include "IndexManagerWindow.hpp"
@@ -159,6 +161,30 @@ static std::wstring NormalizeActionTitleForDedup(const std::wstring& title) {
 class FolderPlugin : public IPlugin {
 private:
 	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	struct DirectorySnapshot {
+		std::filesystem::file_time_type modified;
+		std::vector<std::wstring> children;
+		std::vector<std::shared_ptr<FileAction>> actions;
+	};
+	struct CachedSource {
+		TraverseOptions options;
+		std::vector<std::wstring> roots;
+		std::unordered_map<std::wstring, DirectorySnapshot> directories;
+		std::vector<std::shared_ptr<FileAction>> actions;
+		bool isUwp = false;
+		bool explicitUwp = false;
+		bool indexRoot = false;
+		std::shared_ptr<FileAction> rootAction;
+	};
+	std::vector<CachedSource> cachedSources;
+	std::string cachedConfig;
+	std::wstring cachedPath;
+	bool cacheReady = false;
+	bool cachedAllowDuplicates = false;
+	bool cachedIndexRoot = false;
+	bool cachedUwpEnabled = false;
+	bool cachedPathEnabled = false;
+	bool cachedEverythingEnabled = false;
 	ParsedHotkey hkOpenFileLocation;
 	ParsedHotkey hkOpenTargetLocation;
 	ParsedHotkey hkOpenWithClipboard;
@@ -273,7 +299,7 @@ public:
 	}
 
 
-	void RefreshAllActions() override {
+	void RefreshAllActionsBackup() {
 		allPluginActions.clear();
 		const bool allowDuplicateItems = g_host->GetSettingsMap().at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
 		std::unordered_set<std::wstring> indexedNames;
@@ -376,6 +402,204 @@ public:
 				action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
 				pushAction2(allPluginActions, action);
 			}, defaultOptions, EXE_FOLDER_PATH2);
+		}
+	}
+
+	// 目录修改时间只反映直接子项的增删；递归配置需要逐个检查已知子目录。
+	static std::wstring CachePathKey(const std::wstring& path) {
+		std::wstring key = std::filesystem::path(path).lexically_normal().wstring();
+		std::transform(key.begin(), key.end(), key.begin(), towlower);
+		return key;
+	}
+
+	static void RefreshDirectory(CachedSource& source, const std::wstring& path,
+		std::unordered_map<std::wstring, DirectorySnapshot>& next,
+		std::vector<std::shared_ptr<FileAction>>& newActions) {
+		namespace fs = std::filesystem;
+		std::error_code error;
+		if (!fs::is_directory(path, error)) {
+			if (error) throw fs::filesystem_error("Cannot inspect indexed directory", fs::path(path), error);
+			return;
+		}
+		const auto modified = fs::last_write_time(path, error);
+		if (error) throw fs::filesystem_error("Cannot read directory date", fs::path(path), error);
+		const std::wstring key = CachePathKey(path);
+		const auto old = source.directories.find(key);
+		DirectorySnapshot snapshot;
+		if (old != source.directories.end() && old->second.modified == modified) {
+			snapshot = old->second;
+		} else {
+			snapshot.modified = modified;
+			std::unordered_map<std::wstring, std::shared_ptr<FileAction>> previous;
+			if (old != source.directories.end()) {
+				for (const auto& action : old->second.actions)
+					previous.emplace(CachePathKey(action->GetTargetPath()), action);
+			}
+			for (fs::directory_iterator it(path, error), end; it != end && !error; it.increment(error)) {
+				const auto& entry = *it;
+				const fs::path entryPath = entry.path();
+				const bool isDirectory = entry.is_directory(error);
+				if (error) break;
+				const bool isFile = entry.is_regular_file(error);
+				if (error) break;
+				if (isDirectory && source.options.recursive && !entry.is_symlink(error))
+					snapshot.children.push_back(entryPath.wstring());
+				if (error) break;
+				if (!isFile && (!isDirectory || source.options.indexFilesOnly)) continue;
+				if (isFile && !source.options.extensions.empty() &&
+					std::none_of(source.options.extensions.begin(), source.options.extensions.end(),
+						[&](const std::wstring& ext) { return _wcsicmp(ext.c_str(), entryPath.extension().c_str()) == 0; })) continue;
+				if (shouldExclude(source.options, entryPath.filename().wstring())) continue;
+				std::wstring title = entryPath.stem().wstring();
+				if (const auto renamed = source.options.renameMap.find(title); renamed != source.options.renameMap.end())
+					title = renamed->second;
+				const auto previousAction = previous.find(CachePathKey(entryPath.wstring()));
+				if (previousAction != previous.end() && previousAction->second->getTitle() == title) {
+					snapshot.actions.push_back(previousAction->second);
+				} else {
+					auto action = std::make_shared<FileAction>(title, entryPath.wstring(), false, entryPath.parent_path().wstring());
+					newActions.push_back(action);
+					snapshot.actions.push_back(std::move(action));
+				}
+			}
+			if (error) throw fs::filesystem_error("Cannot enumerate indexed directory", fs::path(path), error);
+		}
+		const auto children = snapshot.children;
+		next.emplace(key, std::move(snapshot));
+		for (const auto& child : children) RefreshDirectory(source, child, next, newActions);
+	}
+
+	void RefreshAllActions() override {
+		if (!g_host) return;
+		const auto& settings = g_host->GetSettingsMap();
+		const bool allowDuplicates = settings.at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
+		const bool indexRoot = settings.at("com.candytek.folderplugin.index_folderpath_itself").boolValue;
+		const bool uwpEnabled = settings.at("com.candytek.folderplugin.uwp_apps").boolValue;
+		const bool pathEnabled = settings.at("com.candytek.folderplugin.envpath_apps").boolValue;
+		const bool everythingEnabled = settings.at("pref_use_everything_sdk_index").boolValue;
+		const std::string config = ReadUtf8File(RUNNER_CONFIG_PATH2);
+		DWORD pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+		std::wstring environmentPath(pathLength ? pathLength : 1, L'\0');
+		if (pathLength) {
+			GetEnvironmentVariableW(L"PATH", environmentPath.data(), pathLength);
+			environmentPath.resize(wcslen(environmentPath.c_str()));
+		} else environmentPath.clear();
+
+		try {
+			std::vector<TraverseOptions> configs = ParseRunnerConfig();
+			std::vector<CachedSource> sources;
+			bool explicitUwp = false, explicitPath = false;
+			for (auto options : configs) {
+				CachedSource source;
+				if (options.type == L"folder" || options.type.empty()) {
+					options.folder = GetCurrentFolderPath(options);
+					source.options = options;
+					source.roots.push_back(ExpandEnvironmentVariables(options.folder, EXE_FOLDER_PATH2));
+					source.indexRoot = indexRoot;
+					sources.push_back(std::move(source));
+				} else if (options.type == L"path" && pathEnabled && !explicitPath) {
+					options.recursive = false;
+					source.options = options;
+					source.roots = GetPATHDirectories();
+					sources.push_back(std::move(source));
+					explicitPath = true;
+				} else if (options.type == L"uwp" && uwpEnabled && !explicitUwp) {
+					source.options = options;
+					source.isUwp = true;
+					source.explicitUwp = true;
+					sources.push_back(std::move(source));
+					explicitUwp = true;
+				}
+			}
+			if (!explicitUwp && uwpEnabled) {
+				CachedSource source;
+				source.isUwp = true;
+				sources.push_back(std::move(source));
+			} else if (!explicitPath && pathEnabled) {
+				CachedSource source;
+				source.options = CreateDefaultPathTraverseOptions();
+				source.roots = GetPATHDirectories();
+				sources.push_back(std::move(source));
+			}
+			bool rebuild = !cacheReady || config != cachedConfig || environmentPath != cachedPath ||
+				allowDuplicates != cachedAllowDuplicates || indexRoot != cachedIndexRoot ||
+				uwpEnabled != cachedUwpEnabled || pathEnabled != cachedPathEnabled ||
+				everythingEnabled != cachedEverythingEnabled || sources.size() != cachedSources.size();
+			if (!rebuild) {
+				for (size_t i = 0; i < sources.size(); ++i) {
+					if (sources[i].roots != cachedSources[i].roots || sources[i].isUwp != cachedSources[i].isUwp) {
+						rebuild = true;
+						break;
+					}
+				}
+			}
+			if (!rebuild) sources = cachedSources;
+			std::vector<std::shared_ptr<FileAction>> newActions;
+			for (auto& source : sources) {
+				if (source.isUwp) {
+					if (rebuild) {
+						std::vector<std::shared_ptr<BaseAction>> uwpActions;
+						traverseUwpApps(uwpActions, source.options);
+						for (const auto& action : uwpActions)
+							if (auto file = std::dynamic_pointer_cast<FileAction>(action)) source.actions.push_back(file);
+					}
+					continue;
+				}
+				std::unordered_map<std::wstring, DirectorySnapshot> next;
+				std::vector<std::shared_ptr<FileAction>> actions;
+				for (const auto& root : source.roots) {
+					RefreshDirectory(source, root, next, newActions);
+				}
+				for (const auto& root : source.roots) {
+					std::function<void(const std::wstring&)> collect = [&](const std::wstring& directory) {
+						const auto found = next.find(CachePathKey(directory));
+						if (found == next.end()) return;
+						actions.insert(actions.end(), found->second.actions.begin(), found->second.actions.end());
+						for (const auto& child : found->second.children) collect(child);
+					};
+					collect(root);
+				}
+				if (source.indexRoot) {
+					if (!source.rootAction) {
+						const std::wstring rootPath = ShortToLongPathWithEnvironment(source.options.folder);
+						source.rootAction = std::make_shared<FileAction>(source.options.name, rootPath, false, rootPath);
+						newActions.push_back(source.rootAction);
+					}
+					actions.push_back(source.rootAction);
+				}
+				source.directories = std::move(next);
+				source.actions = std::move(actions);
+			}
+			doActionAddIconIndex(newActions);
+			std::vector<std::shared_ptr<BaseAction>> result;
+			std::unordered_set<std::wstring> titles;
+			auto addSource = [&](const CachedSource& source) {
+				for (const auto& action : source.actions) {
+					if (allowDuplicates || titles.insert(NormalizeActionTitleForDedup(action->getTitle())).second)
+						result.push_back(action);
+				}
+			};
+			// 原实现先插入显式 UWP，再插入文件，最后插入默认 UWP/PATH。
+			for (const auto& source : sources)
+				if (source.explicitUwp) addSource(source);
+			for (size_t i = 0; i < sources.size(); ++i)
+				if (!sources[i].isUwp) addSource(sources[i]);
+			if (!explicitUwp && uwpEnabled)
+				for (const auto& source : sources) if (source.isUwp) addSource(source);
+			allPluginActions = std::move(result);
+			cachedSources = std::move(sources);
+			cachedConfig = config;
+			cachedPath = std::move(environmentPath);
+			cachedAllowDuplicates = allowDuplicates;
+			cachedIndexRoot = indexRoot;
+			cachedUwpEnabled = uwpEnabled;
+			cachedPathEnabled = pathEnabled;
+			cachedEverythingEnabled = everythingEnabled;
+			cacheReady = true;
+		} catch (const std::exception& e) {
+			Loge(L"FolderPlugin", L"Incremental refresh failed; rebuilding: ", e.what());
+			cacheReady = false;
+			RefreshAllActionsBackup();
 		}
 	}
 

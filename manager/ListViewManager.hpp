@@ -185,13 +185,13 @@ static void refreshAppLaunchAction() {
 																appLaunchActionCallBacks["refreshList"]);
 	base_launch_action1->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, 48, 48);
 	base_launch_action1->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action1->getTitle()));
-	auto base_launch_action2 = std::make_shared<BaseLaunchAction>(L"刷新插件", L"重新加载所有插件动作", L"",
-																appLaunchActionCallBacks["refreshPlugins"]);
-	base_launch_action2->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action2->getTitle()));
-	base_launch_action2->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, 48, 48);
+	// auto base_launch_action2 = std::make_shared<BaseLaunchAction>(L"刷新插件", L"重新加载所有插件动作", L"",
+																// appLaunchActionCallBacks["refreshPlugins"]);
+	// base_launch_action2->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action2->getTitle()));
+	// base_launch_action2->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, 48, 48);
 
 	baseAppLaunchActions.push_back(base_launch_action1);
-	baseAppLaunchActions.push_back(base_launch_action2);
+	// baseAppLaunchActions.push_back(base_launch_action2);
 }
 
 static void listViewCleanupGraphicsResources() {
