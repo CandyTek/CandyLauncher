@@ -21,6 +21,7 @@
 #include "ContextMenuHelper.hpp"
 #include "FileHelper.hpp"
 #include "FolderPluginConfigUtils.hpp"
+#include "SystemSettingsIndex.hpp"
 #include "../../util/BitmapUtil.hpp"
 #include "../../util/FileSystemTraverser.hpp"
 #include "../../util/FileUtil.hpp"
@@ -30,6 +31,7 @@
 
 #include "util/HotkeyUtils.h"
 
+inline bool IS_SHOW_INDEX_MANAGER_WINDOW = true;
 
 // 任务队列系统
 constexpr const char* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = "openFolderIndexedManager";
@@ -172,6 +174,7 @@ private:
 		std::unordered_map<std::wstring, DirectorySnapshot> directories;
 		std::vector<std::shared_ptr<FileAction>> actions;
 		bool isUwp = false;
+		bool isSystemSettings = false;
 		bool explicitUwp = false;
 		bool indexRoot = false;
 		std::shared_ptr<FileAction> rootAction;
@@ -255,6 +258,7 @@ public:
 		std::vector<std::shared_ptr<FileAction>> individualIcons;
 		individualIcons.reserve(shareds.size());
 		for (const auto& action : shareds) {
+			if (action->iconFilePathIndex >= 0) continue;
 			const std::wstring extension = std::filesystem::path(action->getIconFilePath()).extension().wstring();
 			if (extension.empty() || _wcsicmp(extension.c_str(), L".exe") == 0 ||
 				_wcsicmp(extension.c_str(), L".lnk") == 0 ||
@@ -330,6 +334,7 @@ public:
 			return;
 		}
 		for (const std::shared_ptr<FileAction>& action : shareds) {
+			if (action->iconFilePathIndex >= 0) continue;
 			action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
 		}
 	}
@@ -409,6 +414,12 @@ public:
 					if (auto fileAction = std::dynamic_pointer_cast<FileAction>(baseAction)) pushAction2(allPluginActions, fileAction);
 				}
 				isUwpAdded = true;
+			} else if (traverseOptions1.type == L"control_panel" || traverseOptions1.type == L"windows_settings") {
+				for (const auto& item : GetSystemSettingsItems(traverseOptions1)) {
+					auto action = std::make_shared<FileAction>(item.name, item.target);
+					action->iconFilePathIndex = item.iconIndex;
+					pushAction(tempActions, action);
+				}
 			}
 		}
 
@@ -547,6 +558,10 @@ public:
 					source.explicitUwp = true;
 					sources.push_back(std::move(source));
 					explicitUwp = true;
+				} else if (options.type == L"control_panel" || options.type == L"windows_settings") {
+					source.options = options;
+					source.isSystemSettings = true;
+					sources.push_back(std::move(source));
 				}
 			}
 			if (!explicitUwp && uwpEnabled) {
@@ -565,7 +580,8 @@ public:
 				everythingEnabled != cachedEverythingEnabled || sources.size() != cachedSources.size();
 			if (!rebuild) {
 				for (size_t i = 0; i < sources.size(); ++i) {
-					if (sources[i].roots != cachedSources[i].roots || sources[i].isUwp != cachedSources[i].isUwp) {
+					if (sources[i].roots != cachedSources[i].roots || sources[i].isUwp != cachedSources[i].isUwp ||
+						sources[i].isSystemSettings != cachedSources[i].isSystemSettings) {
 						rebuild = true;
 						break;
 					}
@@ -595,6 +611,17 @@ public:
 			for (auto& source : sources) {
 				const ULONGLONG oneSourceStart = GetTickCount64();
 				if (source.isUwp) {
+					continue;
+				}
+				if (source.isSystemSettings) {
+					if (rebuild) {
+						for (const auto& item : GetSystemSettingsItems(source.options)) {
+							auto action = std::make_shared<FileAction>(item.name, item.target);
+							action->iconFilePathIndex = item.iconIndex;
+							newActions.push_back(action);
+							source.actions.push_back(std::move(action));
+						}
+					}
 					continue;
 				}
 				if (everythingEnabled && !source.roots.empty() && source.options.type != L"path") {
@@ -660,7 +687,8 @@ public:
 			}
 			const ULONGLONG sourceDone = GetTickCount64();
 			// 系统图标按需提取，避免启动时对全部快捷方式执行 Shell 查询。
-			for (const auto& action : newActions) action->iconIndexOnDemand = true;
+			for (const auto& action : newActions)
+				if (action->iconFilePathIndex < 0) action->iconIndexOnDemand = true;
 			const ULONGLONG iconsDone = GetTickCount64();
 			if (uwpFuture.valid()) {
 				const ULONGLONG waitStart = GetTickCount64();
@@ -870,6 +898,13 @@ public:
 		hkCopyTargetPath = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_copy_target_path").stringValue);
 		hkOpenWithClipboard = ParseHotkeyString(settings.at("com.candytek.folderplugin.open_with_clipboard_params").stringValue);
 		hkRunAsAdmin = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
+#if defined(DEBUG) || defined(_DEBUG)
+		if (IS_SHOW_INDEX_MANAGER_WINDOW)
+		{
+			ShowIndexedManagerWindow(nullptr);
+		}
+#endif
+
 	}
 
 

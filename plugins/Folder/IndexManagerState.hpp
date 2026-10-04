@@ -70,7 +70,7 @@ static int g_folderEditY = 0;
 static int leftPanelWidth = 170;
 static int centerPanelEditHeight = 25;
 // static bool g_showFileIcons = true;
-static bool g_showFileIcons = false;
+static bool g_showFileIcons = true;
 
 static int centerPanelX = leftPanelWidth + 4;
 static int centerPanelLabelHeight = 20;

@@ -55,7 +55,9 @@ public:
 		const std::wstring args = L"") :
 		targetFilePath(targetFilePath),
 		defaultAsAdmin(isRunAsAdmin),
-		workingDirectory(workingDir.empty() ? GetDirectory(targetFilePath) : workingDir),
+		workingDirectory(workingDir.empty() &&
+			(targetFilePath.rfind(L"ms-settings:", 0) == 0 || targetFilePath.rfind(L"::{", 0) == 0)
+			? L"" : (workingDir.empty() ? GetDirectory(targetFilePath) : workingDir)),
 		arguments(std::move(args)) {
 		matchText = g_host->GetTheProcessedMatchingText(justName);
 		title = (justName);
@@ -84,7 +86,7 @@ public:
 			HINSTANCE hInst = ShellExecuteW(
 				nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : L"open",
 				targetFilePath.c_str(), target.c_str(),
-				workingDirectory.c_str(), SW_SHOWNORMAL);
+				workingDirectory.empty() ? nullptr : workingDirectory.c_str(), SW_SHOWNORMAL);
 			//char const* temp=WStringToConstChar(targetFilePath);
 			//	 system(temp);
 			INT_PTR result = reinterpret_cast<INT_PTR>(hInst);
@@ -96,7 +98,7 @@ public:
 						// 再尝试用 open 打开
 						HINSTANCE hInst2 = ShellExecuteW(nullptr, L"open",
 														targetFilePath.c_str(), target.c_str(),
-														workingDirectory.c_str(), SW_SHOWNORMAL);
+										workingDirectory.empty() ? nullptr : workingDirectory.c_str(), SW_SHOWNORMAL);
 						result = reinterpret_cast<INT_PTR>(hInst2);
 						if (result <= 32) {
 							ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst2), targetFilePath);

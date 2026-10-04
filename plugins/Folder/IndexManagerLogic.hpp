@@ -2,8 +2,19 @@
 
 #include "FileHelper.hpp"
 #include "IndexManagerState.hpp"
+#include "SystemSettingsIndex.hpp"
 #include "../../util/MainTools.hpp"
 #include <windowsx.h>
+
+static std::wstring ConfigListLabel(const TraverseOptions& config) {
+	if (config.type == L"folder" || config.type.empty()) return config.name;
+	if (config.type == L"control_panel") return L"( 控制面板 )";
+	if (config.type == L"windows_settings") {
+		const std::wstring name = LoadSettingsAppName();
+		return L"( " + (name.empty() ? std::wstring(L"Windows Settings") : name) + L" )";
+	}
+	return L"( " + MyToUpper(config.type) + L" )";
+}
 
 static void SetFileListColumnImageMode(bool enableImage) {
 	if (!g_fileListView) {
@@ -152,6 +163,14 @@ static void CollectIndexFileListFromConfig(TraverseOptions config, std::vector<F
 			fileInfo.label = name;
 			outputItems.push_back(fileInfo);
 		}, config, EXE_FOLDER_PATH2);
+	} else if (config.type == L"control_panel" || config.type == L"windows_settings") {
+		for (const auto& item : GetSystemSettingsItems(config)) {
+			FileInfo fileInfo;
+			fileInfo.file_path = item.target;
+			fileInfo.label = item.name;
+			fileInfo.iconIndex = item.iconIndex;
+			outputItems.push_back(std::move(fileInfo));
+		}
 	}
 }
 
@@ -168,7 +187,8 @@ static void CollectExcludedFileItemsFromConfig(const TraverseOptions& config, st
 	std::vector<FileInfo> rawItems;
 	CollectIndexFileListFromConfig(rawConfig, rawItems);
 	for (const auto& item : rawItems) {
-		if (shouldExclude(config, item.file_path.filename().wstring())) {
+		if (shouldExclude(config, config.type == L"control_panel" || config.type == L"windows_settings"
+			? item.label : item.file_path.filename().wstring())) {
 			outputItems.push_back(item);
 		}
 	}
@@ -325,11 +345,7 @@ static void SyncCurrentConfigNameToLeftList() {
 		folderItemTexts.resize(runnerConfigs.size());
 	}
 
-	if (runnerConfigs[index_last_selected].type == L"folder" || runnerConfigs[index_last_selected].type.empty()) {
-		folderItemTexts[index_last_selected] = buffer;
-	} else {
-		folderItemTexts[index_last_selected] = L"( " + MyToUpper(runnerConfigs[index_last_selected].type) + L" )";
-	}
+	folderItemTexts[index_last_selected] = ConfigListLabel(runnerConfigs[index_last_selected]);
 	ListView_SetItemText(g_folderListView, index_last_selected, 0, folderItemTexts[index_last_selected].data());
 	InvalidateRect(g_folderListView, nullptr, TRUE);
 }
@@ -393,6 +409,8 @@ static void UpdateConfigDisplayText(int selectedIndex) {
 	if (config.type == L"uwp") typeIndex = 1;
 	else if (config.type == L"regedit") typeIndex = 2;
 	else if (config.type == L"path") typeIndex = 3;
+	else if (config.type == L"control_panel") typeIndex = 4;
+	else if (config.type == L"windows_settings") typeIndex = 5;
 	SendMessage(g_typeComboBox, CB_SETCURSEL, typeIndex, 0);
 
 
@@ -445,6 +463,10 @@ static void SaveCurrentConfigItem(int selectedIndex) {
 	case 2: runnerConfigs[selectedIndex].type = L"regedit";
 		break;
 	case 3: runnerConfigs[selectedIndex].type = L"path";
+		break;
+	case 4: runnerConfigs[selectedIndex].type = L"control_panel";
+		break;
+	case 5: runnerConfigs[selectedIndex].type = L"windows_settings";
 		break;
 	default: runnerConfigs[selectedIndex].type = L"";
 		break;
@@ -517,6 +539,10 @@ static TraverseOptions BuildCurrentConfigFromControls(int selectedIndex) {
 	case 2: config.type = L"regedit";
 		break;
 	case 3: config.type = L"path";
+		break;
+	case 4: config.type = L"control_panel";
+		break;
+	case 5: config.type = L"windows_settings";
 		break;
 	default: config.type = L"";
 		break;

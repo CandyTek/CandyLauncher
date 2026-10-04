@@ -41,5 +41,17 @@
 			"MSI 桌面显示帧数"
 		],
 		"type": ""
+	},
+	{
+		"exclude_words": [],
+		"excludes": [],
+		"exts": [],
+		"folder": "",
+		"index_files_only": true,
+		"is_contain_subfolder": false,
+		"name": "control_panel",
+		"rename_sources": [],
+		"rename_targets": [],
+		"type": "control_panel"
 	}
 ]

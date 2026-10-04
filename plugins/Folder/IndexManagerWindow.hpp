@@ -123,12 +123,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				item.mask = LVIF_TEXT;
 				item.iItem = static_cast<int>(i);
 				item.iSubItem = 0;
-				std::wstring command = runnerConfigs[i].name;
-				if (runnerConfigs[i].type == L"folder" || runnerConfigs[i].type.empty()) {
-					folderItemTexts.push_back(runnerConfigs[i].name);
-				} else {
-					folderItemTexts.push_back(L"( " + MyToUpper(runnerConfigs[i].type) + L" )");
-				}
+				folderItemTexts.push_back(ConfigListLabel(runnerConfigs[i]));
 				item.pszText = const_cast<LPWSTR>(folderItemTexts[i].c_str());
 
 				ListView_InsertItem(g_folderListView, &item);
@@ -172,6 +167,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM)L"UWP 应用");
 			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM)L"注册表应用");
 			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM)L"%PATH% 环境变量");
+			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0, (LPARAM)L"控制面板");
+			const std::wstring settingsAppName = LoadSettingsAppName();
+			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0,
+				(LPARAM)(settingsAppName.empty() ? L"Windows Settings" : settingsAppName.c_str()));
 			SendMessageW(g_typeComboBox, CB_SETCURSEL, 0, 0);
 			editY += centerPanelEditHeight + 2;
 
@@ -432,6 +431,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 						break;
 					case 3: currentConfig.type = L"path";
 						break;
+					case 4: currentConfig.type = L"control_panel";
+						break;
+					case 5: currentConfig.type = L"windows_settings";
+						break;
 					default: currentConfig.type = L"";
 						break;
 					}
@@ -441,10 +444,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					if (index_last_selected >= static_cast<int>(folderItemTexts.size())) {
 						folderItemTexts.resize(runnerConfigs.size());
 					}
-					folderItemTexts[index_last_selected] =
-						(currentConfig.type == L"folder" || currentConfig.type.empty())
-							? currentConfig.name
-							: L"( " + MyToUpper(currentConfig.type) + L" )";
+					folderItemTexts[index_last_selected] = ConfigListLabel(currentConfig);
 					ListView_SetItemText(g_folderListView, index_last_selected, 0,
 										folderItemTexts[index_last_selected].data());
 					UpdateConfigDisplayText(index_last_selected);
@@ -517,9 +517,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					copied.name += L"(2)";
 					runnerConfigs.push_back(copied);
 					int newIndex = static_cast<int>(runnerConfigs.size()) - 1;
-					std::wstring label = (copied.type == L"folder" || copied.type.empty())
-											? copied.name
-											: L"( " + MyToUpper(copied.type) + L" )";
+					std::wstring label = ConfigListLabel(copied);
 					folderItemTexts.push_back(label);
 					LVITEMW item = {};
 					item.mask = LVIF_TEXT;
@@ -667,7 +665,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					if (g_showFileIcons &&
 						(plvdi->item.mask & LVIF_IMAGE) &&
 						plvdi->item.iSubItem == 0) {
-						plvdi->item.iImage = GetSysImageIndex(item.file_path);
+						plvdi->item.iImage = item.iconIndex >= 0 ? item.iconIndex : GetSysImageIndex(item.file_path);
 					}
 				}
 			} else if (pnmh->hwndFrom == g_fileListView && pnmh->code == NM_RCLICK) {

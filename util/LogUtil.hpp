@@ -104,12 +104,13 @@ void Logw(const Tag& tag, const ExtraArgs&... extra) {
 	}
 }
 
-static void ShowErrorMsgBox(std::wstring msg) {
+static void ShowErrorMsgBox(const std::wstring& msg) {
 	const DWORD err = GetLastError();
-	wchar_t buf[256];
-	msg += L"，错误代码：%lu";
-	wsprintfW(buf, msg.data(), err);
-	MessageBoxW(nullptr, buf, L"错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
+    
+	// 直接动态拼接，安全且无需关心字符长度
+	std::wstring fullMsg = msg + L"，错误代码：" + std::to_wstring(err);
+
+	MessageBoxW(nullptr, fullMsg.c_str(), L"错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
 }
 
 static void ShowErrorMsgBox(const std::string& msg) {

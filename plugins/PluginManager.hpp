@@ -128,6 +128,16 @@ public:
 		namespace fs = std::filesystem;
 		const std::wstring folderPath = ExpandEnvironmentVariables(folderPath2, EXE_FOLDER_PATH);
 		if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
+		std::wstring rootDirectory = fs::path(folderPath).lexically_normal().make_preferred().wstring();
+		while (rootDirectory.size() > 3 && rootDirectory.back() == L'\\') rootDirectory.pop_back();
+		std::wstring rootPrefix = rootDirectory;
+		if (!rootPrefix.empty() && rootPrefix.back() != L'\\') rootPrefix += L'\\';
+		auto belongsToFolder = [&](const fs::path& path) {
+			const std::wstring parent = path.parent_path().lexically_normal().make_preferred().wstring();
+			if (_wcsicmp(parent.c_str(), rootDirectory.c_str()) == 0) return true;
+			return options.recursive && parent.size() >= rootPrefix.size() &&
+				_wcsnicmp(parent.c_str(), rootPrefix.c_str(), rootPrefix.size()) == 0;
+		};
 
 		auto addFile = [&](const fs::path& path) {
 			std::wstring filename = path.stem().wstring();
@@ -189,8 +199,8 @@ public:
 		for (DWORD i = 0; i < numResults; i++) {
 			const DWORD length = Everything_GetResultFullPathNameW(i, fullPath.data(), static_cast<DWORD>(fullPath.size()));
 			if (length == 0 || length >= fullPath.size()) continue;
-			// 因为查询已经精确过滤，不再需要手动判断父目录了
-			addFile(fs::path(fullPath.data()));
+			const fs::path resultPath(fullPath.data());
+			if (belongsToFolder(resultPath)) addFile(resultPath);
 		}
 		Logi(L"Everything", L"Folder query ms=", queryDone - queryStart,
 			L" results=", numResults, L" callbacks ms=", GetTickCount64() - queryDone);

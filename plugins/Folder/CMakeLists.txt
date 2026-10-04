@@ -5,6 +5,7 @@ project(FolderPlugin)
 set(PLUGIN_SOURCES
 		FolderPlugin.cpp
 		FolderPluginConfigUtils.hpp
+		SystemSettingsIndex.hpp
 		FileAction.hpp
 		../Plugin.hpp
 		FolderPluginData.hpp

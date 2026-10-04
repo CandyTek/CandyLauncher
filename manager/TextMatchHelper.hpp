@@ -19,6 +19,10 @@
 #include "plugins/BaseAction.hpp"
 #include "util/StringUtil.hpp"
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4244)
+#endif
+
 // 模糊搜索的异步线程
 inline ThreadPool poolFuzzyMatch(std::thread::hardware_concurrency());
 
