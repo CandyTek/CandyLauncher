@@ -9,7 +9,7 @@ cpp-pinyin 是一个轻量级的中文/粤语转拼音库，支持多种拼音�
 ### 1. 添加为子模块
 
 ```bash
-git submodule add https://github.com/wolfgitpr/cpp-pinyin 3rdparty/cpp-pinyin
+git submodule add https://github.com/CandyTek/cpp-pinyin 3rdparty/cpp-pinyin
 ```
 
 ### 2. CMakeLists.txt 配置
@@ -540,7 +540,7 @@ A:
 
 ## 相关链接
 
-- **项目主页**: https://github.com/wolfgitpr/cpp-pinyin
+- **项目主页**: https://github.com/CandyTek/cpp-pinyin
 - **字典制作工具**: https://github.com/wolfgitpr/pinyin-makedict
 - **Python 版本**: https://github.com/mozillazg/python-pinyin
 - **Go 版本**: https://github.com/mozillazg/go-pinyin

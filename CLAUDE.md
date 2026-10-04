@@ -123,6 +123,6 @@ read [DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)
 - Project codes are indented using tabs
 - Use ``util/LogUtil.hpp`` funtion ``Logi(const std::wstring& tag, ...)`` print output
 - Use ``util/LogUtil.hpp`` funtion ``Loge(const std::wstring& tag, ...)`` print error
-- Save files using UTF-8 with BOM
+- Save files using UTF-8 with BOM, `Get-Content` command requires parameter `-Encoding UTF8` to read the file.
 - No need to resolve warning and node reminder when building
 

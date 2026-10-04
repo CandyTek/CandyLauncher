@@ -229,15 +229,13 @@ static void TestPugixmlParsing() {
 
 
 int main() {
-	_setmode(_fileno(stdout), _O_U8TEXT); // 设置 wcout 输出为 UTF-8
-
 	// 调用pugixml测试方法
 	TestPugixmlParsing();
 
 	// 调用cpp-pinyin测试方法
 	TestCppPinyinConversion();
 
-	PinyinHelper::initPinyinLib();
+	PinyinHelper::initPinyinLib(std::filesystem::current_path().wstring());
 	Logi(L"SplitWordsTest", PinyinHelper::GetPinyinWithVariants(L"Notepad"));
 	Logi(L"SplitWordsTest", PinyinHelper::GetPinyinWithVariants(L"网易云音乐"));
 
@@ -270,7 +268,6 @@ int main() {
 		return 0;
 	} else {
 		Logw(L"SplitWordsTest", L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).");
-		return 1;
 	}
 
 

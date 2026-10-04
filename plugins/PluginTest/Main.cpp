@@ -130,6 +130,11 @@ public:
 	std::wstring& GetEditTextText() override {
 		return m_dummyEditText;
 	}
+
+	std::wstring m_dummyArgText;
+	std::wstring& GetCurrectArgText() override {
+		return m_dummyArgText;
+	}
 };
 
 int main() {

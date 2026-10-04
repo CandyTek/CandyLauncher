@@ -559,7 +559,7 @@
 		},
 		{
 			"key": "pref_acknowledgements_details",
-			"title": "CLion\n(For non-commercial use only)\nhttps://www.jetbrains.com/clion/\n\nHakeQuick\nhttps://github.com/lzl1918/HakeQuick\n\nEverything SDK\nhttps://www.voidtools.com/support/everything/sdk/\n\nrapidfuzz-cpp\nhttps://github.com/rapidfuzz/rapidfuzz-cpp\n\nExprTk\nhttps://github.com/ArashPartow/exprtk\n\ncpp-pinyin\nhttps://github.com/wolfgitpr/cpp-pinyin\n\nsqlite-amalgamation\nhttps://github.com/azadkuh/sqlite-amalgamation\n\npugixml\nhttps://github.com/zeux/pugixml\n\nWinToast\nhttps://github.com/mohabouje/WinToast\n\ngithub-releases-autoupdater\nhttps://github.com/CandyTek/github-releases-autoupdater\n\nnlohmann-json\nhttps://github.com/nlohmann/json\n",
+			"title": "CLion\n(For non-commercial use only)\nhttps://www.jetbrains.com/clion/\n\nHakeQuick\nhttps://github.com/lzl1918/HakeQuick\n\nEverything SDK\nhttps://www.voidtools.com/support/everything/sdk/\n\nrapidfuzz-cpp\nhttps://github.com/rapidfuzz/rapidfuzz-cpp\n\nExprTk\nhttps://github.com/ArashPartow/exprtk\n\ncpp-pinyin\nhttps://github.com/CandyTek/cpp-pinyin\n\nsqlite-amalgamation\nhttps://github.com/azadkuh/sqlite-amalgamation\n\npugixml\nhttps://github.com/zeux/pugixml\n\nWinToast\nhttps://github.com/mohabouje/WinToast\n\ngithub-releases-autoupdater\nhttps://github.com/CandyTek/github-releases-autoupdater\n\nnlohmann-json\nhttps://github.com/nlohmann/json\n",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""
