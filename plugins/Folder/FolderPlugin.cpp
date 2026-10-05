@@ -398,7 +398,8 @@ public:
 								});
 				}
 				if (g_host->GetSettingsMap().at("com.candytek.folderplugin.index_folderpath_itself").boolValue) {
-					std::wstring folderPath = ShortToLongPathWithEnvironment(traverseOptions1.folder);
+					std::wstring folderPath = ShortToLongPathWithEnvironment(
+						ExpandEnvironmentVariables(traverseOptions1.folder, EXE_FOLDER_PATH2));
 					const auto action = std::make_shared<FileAction>(traverseOptions1.name, folderPath, false, folderPath);
 					pushAction(tempActions, action);
 				}
@@ -653,7 +654,7 @@ public:
 					}
 					if (source.indexRoot) {
 						if (!source.rootAction) {
-							const std::wstring rootPath = ShortToLongPathWithEnvironment(source.options.folder);
+							const std::wstring rootPath = ShortToLongPathWithEnvironment(source.roots.front());
 							source.rootAction = std::make_shared<FileAction>(source.options.name, rootPath, false, rootPath);
 							newActions.push_back(source.rootAction);
 						}
@@ -681,7 +682,7 @@ public:
 				}
 				if (source.indexRoot) {
 					if (!source.rootAction) {
-						const std::wstring rootPath = ShortToLongPathWithEnvironment(source.options.folder);
+						const std::wstring rootPath = ShortToLongPathWithEnvironment(source.roots.front());
 						source.rootAction = std::make_shared<FileAction>(source.options.name, rootPath, false, rootPath);
 						newActions.push_back(source.rootAction);
 					}
