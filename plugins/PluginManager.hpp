@@ -411,7 +411,7 @@ public:
 		// }
 	}
 
-	int DispatchSendHotKey(const std::shared_ptr<BaseAction>& action, const UINT vk, const UINT uint, const WPARAM wparam) {
+	int DispatchSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT uint, const WPARAM wparam) {
 		if (m_plugins.find(action->pluginId) == m_plugins.end()) {
 			return 0;
 		}
@@ -664,15 +664,34 @@ public:
 		SyncPluginPrioritiesFromSettings();
 	}
 
+	// static std::vector<std::shared_ptr<BaseAction>> IsInterceptInputShowResultsDirectly(const std::wstring& input) {
+	// 	for (const auto& [fst, snd] : m_plugins) {
+	// 		if (snd.loaded && snd.plugin) {
+	// 			if (auto temp = snd.plugin->InterceptInputShowResultsDirectly(input); !temp.empty()) {
+	// 				return temp;
+	// 			}
+	// 		}
+	// 	}
+	// 	return {};
+	// }
 	static std::vector<std::shared_ptr<BaseAction>> IsInterceptInputShowResultsDirectly(const std::wstring& input) {
+		std::vector<std::shared_ptr<BaseAction>> all_actions;
+
 		for (const auto& [fst, snd] : m_plugins) {
 			if (snd.loaded && snd.plugin) {
-				if (auto temp = snd.plugin->InterceptInputShowResultsDirectly(input); !temp.empty()) {
-					return temp;
+				auto temp = snd.plugin->InterceptInputShowResultsDirectly(input);
+				if (!temp.empty()) {
+					// 使用 std::make_move_iterator 避免共享指针不必要的引用计数原子操作
+					all_actions.insert(
+						all_actions.end(),
+						std::make_move_iterator(temp.begin()),
+						std::make_move_iterator(temp.end())
+					);
 				}
 			}
 		}
-		return {};
+
+		return all_actions;
 	}
 	
 	static void GetAllPluginActions(std::vector<std::shared_ptr<BaseAction>>& allActions) {
@@ -822,6 +841,15 @@ public:
 		int textLength = GetWindowTextLengthW(g_editHwnd);
 		SendMessageW(g_editHwnd, EM_SETSEL, (WPARAM)textLength, (LPARAM)textLength);
 		SendMessageW(g_editHwnd, EM_SCROLLCARET, 0, 0);
+	}
+	
+	bool MyShowWindow(int nCmdShow,bool isForeground) override {
+		ShowWindow(g_mainHwnd, nCmdShow);
+		if (isForeground)
+		{
+			SetForegroundWindow(g_mainHwnd);
+		}
+		return true;
 	}
 
 private:

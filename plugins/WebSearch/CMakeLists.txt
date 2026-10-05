@@ -18,6 +18,13 @@ add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 
 include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE comctl32)
+target_link_libraries(${PROJECT_NAME} PRIVATE comctl32
+	libcmark-gfm-extensions_static libcmark-gfm_static)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE)
+target_include_directories(${PROJECT_NAME} PRIVATE
+	${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/src
+	${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/extensions
+	${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/src
+	${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/extensions)
 
 

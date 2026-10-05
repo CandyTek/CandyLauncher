@@ -23,6 +23,8 @@
 #include "util/RunningWindowsTraverser.hpp"
 #include <objbase.h>
 
+#include "util/ClipboardUtil.hpp"
+
 // 任务队列系统
 inline std::queue<std::function<void()>> g_taskQueue;
 inline std::mutex g_taskQueueMutex;

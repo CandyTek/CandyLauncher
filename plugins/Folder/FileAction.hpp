@@ -11,6 +11,7 @@
 #include "plugins/BaseAction.hpp"
 #include "util/BaseTools.hpp"
 #include "util/BitmapUtil.hpp"
+#include "util/ClipboardUtil.hpp"
 
 using namespace Microsoft::WRL;
 

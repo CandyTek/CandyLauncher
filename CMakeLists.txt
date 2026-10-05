@@ -71,6 +71,7 @@ add_executable(CandyLauncher WIN32
 		util/UWPAppsTraverser.hpp
 		plugins/Bookmark/BookmarkUtil.hpp
 		util/StringUtil.hpp
+		util/UrlUtil.hpp
 		util/LogUtil.hpp
 		util/FileUtil.hpp
 		util/MathUtil.hpp
@@ -84,8 +85,7 @@ add_executable(CandyLauncher WIN32
 		view/CustomEdit.hpp
 		util/FullScreenDetectUtil.hpp
 		util/ShortCutDetectUtil.hpp
-		util/HotkeyUtils.h
-
+		util/HotkeyUtils.hpp
 )
 
 add_library(CandyLauncherLangZh SHARED
@@ -117,6 +117,7 @@ target_precompile_headers(CandyLauncher
 
 add_definitions(-DUNICODE -D_UNICODE -DNOMINMAX)
 target_compile_definitions(CandyLauncher PRIVATE UNICODE _UNICODE
+		CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE
 		$<$<CONFIG:Debug>:DEBUG=1>
 		$<$<CONFIG:Release>:NDEBUG=1>
 )
@@ -218,6 +219,8 @@ target_link_libraries(CandyLauncher PRIVATE
 		oledb
 		autoupdater::autoupdater
 		lunasvg::lunasvg
+		libcmark-gfm-extensions_static
+		libcmark-gfm_static
 )
 if (MSVC)
 	target_link_libraries(CandyLauncher PRIVATE oledb WinToast)
@@ -229,6 +232,10 @@ endif ()
 #include_directories("E:/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/atlmfc/include")
 
 target_include_directories(CandyLauncher PRIVATE
+		${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/src
+		${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/extensions
+		${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/src
+		${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/extensions
 		SYSTEM ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/include
 		SYSTEM ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/ipc
 		SYSTEM ${CMAKE_SOURCE_DIR}/3rdparty/cpp-pinyin/include
@@ -282,6 +289,14 @@ add_subdirectory(3rdparty/RapidFuzz)
 add_subdirectory(3rdparty/cpp-pinyin)
 add_subdirectory(3rdparty/sqlite-amalgamation)
 add_subdirectory(3rdparty/pugixml)
+set(CMARK_TESTS OFF CACHE BOOL "" FORCE)
+set(CMARK_SHARED OFF CACHE BOOL "" FORCE)
+set(CMARK_STATIC ON CACHE BOOL "" FORCE)
+add_subdirectory(3rdparty/cmark-gfm)
+if (MSVC)
+	target_compile_options(libcmark-gfm_static PRIVATE /utf-8)
+	target_compile_options(libcmark-gfm-extensions_static PRIVATE /utf-8)
+endif ()
 if (MSVC)
 add_subdirectory(3rdparty/WinToast)
 endif ()
@@ -320,6 +335,8 @@ add_subdirectory(plugins/SmallToolBox)
 add_subdirectory(plugins/WebSearch)
 add_subdirectory(plugins/NodeJsPlugin)
 add_subdirectory(plugins/AirPods)
+add_subdirectory(plugins/ScreenTools)
+#add_subdirectory(plugins/ScreenTools2)
 
 
 add_subdirectory(plugins/PluginTest)
@@ -332,6 +349,8 @@ list(APPEND PLUGIN_DEPENDENCIES PluginBrowserPlugin)
 list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
 list(APPEND PLUGIN_DEPENDENCIES NodeJsPlugin)
 list(APPEND PLUGIN_DEPENDENCIES AirPodsBatteryPlugin)
+list(APPEND PLUGIN_DEPENDENCIES ScreenToolsPlugin)
+#list(APPEND PLUGIN_DEPENDENCIES ScreenToolsPlugin2)
 #list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 #list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 #list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)

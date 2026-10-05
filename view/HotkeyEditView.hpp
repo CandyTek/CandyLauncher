@@ -1,15 +1,8 @@
 ﻿#pragma once
 
-#include <fstream> // Required for file operations
-#include <commctrl.h> // For ListView controls
-#include <CommCtrl.h>
+#include <commctrl.h>
 #include <vector>
-
-#include "../util/BaseTools.hpp"
-#include "../util/MainTools.hpp"
-#include "../common/Constants.hpp"
-#include "../util/json.hpp"
-#include "../common/GlobalState.hpp"
+#include "util/HotkeyUtils.hpp"
 
 // 窗口属性键名常量
 static const wchar_t* HOTKEY_CTX_OWNER = L"HotkeyCtxOwner";
@@ -185,7 +178,10 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			if (hKeyMem) {
 				if (wchar_t* settingKey = (wchar_t*)GlobalLock(hKeyMem)) {
 					if (std::wstring(settingKey) == L"pref_hotkey_toggle_main_panel") {
-						UnregisterMainPanelToggleHotkey(g_mainHwnd);
+						if (g_mainHwnd != nullptr)
+						{
+							UnregisterMainPanelToggleHotkey(g_mainHwnd);
+						}
 					}
 					GlobalUnlock(hKeyMem);
 				}

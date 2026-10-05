@@ -378,13 +378,14 @@ inline void editControlHotkey(WPARAM wParam) {
 	} else {
 		bool needHide = true;
 		switch (wParam) {
-		case HOTKEY_ID_RUN_ITEM:
-			needHide = PluginManager::DispatchActionExecute(it, currectActionArg);
-			break;
-		case HOTKEY_ID_SHOW_SETTING_WINDOW: ShowSettingsWindow(g_hInst, nullptr);
-			break;
-		default: break;
+			case HOTKEY_ID_RUN_ITEM:
+				needHide = PluginManager::DispatchActionExecute(it, currectActionArg);
+				break;
+			case HOTKEY_ID_SHOW_SETTING_WINDOW: ShowSettingsWindow(g_hInst, nullptr);
+				break;
+			default: break;
 		}
-		if (pref_close_after_open_item && needHide) HideWindow();
+		if (pref_close_after_open_item && needHide)
+			HideWindow();
 	}
 }

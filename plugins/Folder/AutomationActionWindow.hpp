@@ -310,7 +310,7 @@ inline LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 		Button(hwnd, ID_SAVE_AS, L"另存为", 674, 124, 91, state->font);
 		Label(hwnd, L"步骤列表  ·  拖入文件可批量添加", 30, 178, 500, state->font);
 		state->list = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL,
-			30, 205, 735, 152, hwnd, reinterpret_cast<HMENU>(ID_STEPS), nullptr, nullptr);
+			30, 205, 735, 152, hwnd, reinterpret_cast<HMENU>((INT_PTR)ID_STEPS), nullptr, nullptr);
 		SendMessageW(state->list, WM_SETFONT, reinterpret_cast<WPARAM>(state->font), TRUE);
 		ListView_SetExtendedListViewStyle(state->list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 		LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH;

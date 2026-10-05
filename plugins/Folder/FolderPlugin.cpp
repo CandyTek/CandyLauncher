@@ -20,6 +20,7 @@
 #include "IndexManagerWindow.hpp"
 #include "AutomationActionWindow.hpp"
 #include "AutomationActionModel.hpp"
+#include "AutomationEditorAction.hpp"
 #include "ContextMenuHelper.hpp"
 #include "FileHelper.hpp"
 #include "FolderPluginConfigUtils.hpp"
@@ -31,7 +32,7 @@
 #include <mutex>
 #include <atomic>
 
-#include "util/HotkeyUtils.h"
+#include "util/HotkeyUtils.hpp"
 
 inline bool IS_SHOW_INDEX_MANAGER_WINDOW = false;
 
@@ -947,7 +948,7 @@ public:
 		return true;
 	}
 
-	int OnSendHotKey(const std::shared_ptr<BaseAction> action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
 		auto it = std::dynamic_pointer_cast<FileAction>(action);
 		if (!it) return 0;
 

@@ -135,6 +135,11 @@ public:
 	std::wstring& GetCurrectArgText() override {
 		return m_dummyArgText;
 	}
+	bool MyShowWindow(int nCmdShow,bool isForeground) override
+	{
+		return true;
+	}
+	
 };
 
 int main() {

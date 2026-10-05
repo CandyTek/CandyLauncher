@@ -25,3 +25,6 @@
 [submodule "3rdparty/lunasvg"]
 	path = 3rdparty/lunasvg
 	url = https://github.com/sammycage/lunasvg
+[submodule "3rdparty/cmark-gfm"]
+	path = 3rdparty/cmark-gfm
+	url = https://github.com/github/cmark-gfm.git

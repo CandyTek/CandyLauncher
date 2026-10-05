@@ -6,7 +6,7 @@
 #include "BookmarkUtil.hpp"
 #include "../../util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
-#include "util/HotkeyUtils.h"
+#include "util/HotkeyUtils.hpp"
 
 namespace {
 std::wstring EscapeHtmlText(const std::wstring& input) {
@@ -197,7 +197,7 @@ public:
 		return {};
 	}
 
-	int OnSendHotKey(const std::shared_ptr<BaseAction> action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
 		if (hkOpenWithSubBrowser.matches(vk, currentModifiers)) {
 			auto bookmarkAction = std::dynamic_pointer_cast<BookmarkAction>(action);
 			if (!m_host || !bookmarkAction || bookmarkAction->url.empty()) return 0;

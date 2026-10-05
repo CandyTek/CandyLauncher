@@ -15,10 +15,6 @@ ULONGLONG APP_STARTUP_TIME = 0;
 
 // 用于拖放文件时延迟关闭窗口
 HHOOK g_mouseHook = nullptr;
-#ifndef BUILDING_PLUGIN_DLL
-HHOOK g_toggleMainPanelKeyboardHook = nullptr;
-HHOOK g_toggleMainPanelMouseHook = nullptr;
-#endif
 
 HotkeyMap g_hotkeyMap = {};
 // 下列两变量不展开 expand

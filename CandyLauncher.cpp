@@ -435,37 +435,21 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 						listViewCustomDataOnGetDispInfo(pdi); // 把请求转发给 ListViewManager 处理
 						return 0; // 已处理
 					}
+				case NM_DBLCLK:
 				case NM_CLICK:
 					{
-						if (pref_single_click_to_open) {
+						if (pref_single_click_to_open && pnmh->code==NM_CLICK || !pref_single_click_to_open && pnmh->code==NM_DBLCLK) {
 							LPNMITEMACTIVATE pia = reinterpret_cast<LPNMITEMACTIVATE>(lParam);
 							int index = pia->iItem;
 							if (index != -1 && filteredActions.size() > static_cast<size_t>(index)) {
-								const std::shared_ptr<BaseAction>& it = filteredActions[index];
-								if (pref_close_after_open_item) HideWindow();
-								// it->Invoke();
+								std::shared_ptr<BaseAction>& it = filteredActions[index];
+								const bool needHide = PluginManager::DispatchActionExecute(it, currectActionArg);
+								if (pref_close_after_open_item && needHide)
+									HideWindow();
 							}
 							return TRUE;
 						}
 						PostMessage(hWnd, WM_FOCUS_EDIT, 0, 0);
-					}
-					break;
-				case NM_DBLCLK:
-					{
-						if (!pref_single_click_to_open) // 双击
-						{
-							LPNMITEMACTIVATE pia = reinterpret_cast<LPNMITEMACTIVATE>(lParam);
-							int index = pia->iItem;
-							if (index != -1 && filteredActions.size() > static_cast<size_t>(index)) {
-								const std::shared_ptr<BaseAction> it = filteredActions[index];
-								if (pref_close_after_open_item) HideWindow();
-								// it->Invoke();
-								// 你可以通过 index 找到 filteredActions[index]
-								// 比如执行该 action
-								// ExecuteAction(filteredActions[index]);
-							}
-							return TRUE;
-						}
 					}
 					break;
 				case NM_RCLICK:
@@ -632,7 +616,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				HideWindow();
 				return 0;
 			}
-			}
+		}
 		break;
 	case WM_SIZE:
 		{

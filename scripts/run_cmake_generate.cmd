@@ -9,4 +9,4 @@ for /f "usebackq tokens=*" %%i in (`call "%ProgramFiles(x86)%\Microsoft Visual S
 :: call VsDevCmd.bat
 call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -no_logo
 cd /d "%~dp0.."
-cmake -S . -B cmake-build-debug-ninja-vs -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
+cmake -S . -B cmake-build-debug-ninja-vs -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl --no-warn-unused-cli

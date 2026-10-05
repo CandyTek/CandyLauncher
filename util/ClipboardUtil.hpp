@@ -1,18 +1,8 @@
 ﻿#pragma once
 
-#include <algorithm>
-#include <chrono>
 #include <windows.h>
 #include <string>
-#include <gdiplus.h>
-#include <shlwapi.h>
-
-#include <shlobj.h>
-
-#include <filesystem>
-
 #include "StringUtil.hpp"
-
 
 static std::wstring GetClipboardText() {
 	// 尝试打开剪贴板
@@ -66,4 +56,92 @@ inline bool CopyTextToClipboard(HWND hWnd, const std::wstring& text) {
 	SetClipboardData(CF_UNICODETEXT, hMem);
 	CloseClipboard(); // hMem 的释放权交给剪贴板
 	return true;
+}
+
+inline bool CopyTextToClipboard(HWND hWnd, const std::string& text) {
+	return CopyTextToClipboard(hWnd, utf8_to_wide(text));
+}
+
+// 从剪贴板获取文本内容并转换为UTF-8
+inline std::string GetClipboardTextAsUTF8() {
+	if (!OpenClipboard(NULL)) {
+		return "";
+	}
+
+	std::string result;
+	HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+	if (hData) {
+		wchar_t* pwszText = static_cast<wchar_t*>(GlobalLock(hData));
+		if (pwszText) {
+			// 转换 Unicode 到 UTF-8
+			int size = WideCharToMultiByte(CP_UTF8, 0, pwszText, -1, NULL, 0, NULL, NULL);
+			if (size > 0) {
+				std::vector<char> buffer(size);
+				WideCharToMultiByte(CP_UTF8, 0, pwszText, -1, buffer.data(), size, NULL, NULL);
+				result = buffer.data();
+			}
+			GlobalUnlock(hData);
+		}
+	}
+	CloseClipboard();
+	return result;
+}
+
+// 将文本写入剪贴板
+inline bool SetClipboardText(std::wstring_view text) {
+	if (!OpenClipboard(nullptr)) {
+		return false;
+	}
+
+	EmptyClipboard();
+
+	// 计算字节数（包含末尾的 '\0'）
+	const size_t charCount = text.size() + 1;
+	const size_t byteSize = charCount * sizeof(wchar_t);
+
+	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, byteSize);
+	if (!hMem) {
+		CloseClipboard();
+		return false;
+	}
+
+	auto* pMem = static_cast<wchar_t*>(GlobalLock(hMem));
+	if (!pMem) {
+		GlobalFree(hMem);
+		CloseClipboard();
+		return false;
+	}
+
+	// 直接内存拷贝，避免多次 API 扫描
+	memcpy(pMem, text.data(), text.size() * sizeof(wchar_t));
+	pMem[text.size()] = L'\0';
+
+	GlobalUnlock(hMem);
+
+	// 成功调用 SetClipboardData 后，内存块归系统所有，不能手动 GlobalFree
+	if (!SetClipboardData(CF_UNICODETEXT, hMem)) {
+		GlobalFree(hMem);
+		CloseClipboard();
+		return false;
+	}
+
+	CloseClipboard();
+	return true;
+}
+
+// 辅助重载：仅负责 UTF-8 到 UTF-16 的转换
+inline bool SetClipboardText(std::string_view textUtf8) {
+	if (textUtf8.empty()) {
+		return SetClipboardText(std::wstring_view{});
+	}
+
+	int size = MultiByteToWideChar(CP_UTF8, 0, textUtf8.data(), static_cast<int>(textUtf8.size()), nullptr, 0);
+	if (size <= 0) {
+		return false;
+	}
+
+	std::wstring wideStr(size, L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, textUtf8.data(), static_cast<int>(textUtf8.size()), wideStr.data(), size);
+
+	return SetClipboardText(wideStr);
 }

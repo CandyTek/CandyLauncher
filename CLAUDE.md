@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -98,6 +98,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - cpp-pinyin provides conversion of Chinese to pinyin
 - XML handling via zeux/pugixml
 - lunasvg for high-quality SVG icon rendering
+- cmark-gfm for URL detection through its autolink extension (`util/UrlUtil.hpp`)
 
 ### Build System
 - Primary: CMake with support for Visual Studio

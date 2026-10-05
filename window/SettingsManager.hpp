@@ -8,7 +8,7 @@
 #include "../common/Resource.h"
 #include "../common/Constants.hpp"
 #include "../util/ShortcutUtil.hpp"
-#include "../util/HotkeyUtils.h"
+#include "../util/HotkeyUtils.hpp"
 #include "../common/GlobalState.hpp"
 #include "../view/SwitchView.hpp"
 #include "../util/PinyinHelper.hpp"

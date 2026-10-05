@@ -23,6 +23,7 @@ set(PLUGIN_SOURCES
 		../../util/FileUtil.hpp
 		ContextMenuHelper.hpp
 		FileHelper.hpp
+		AutomationEditorAction.hpp
 )
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 

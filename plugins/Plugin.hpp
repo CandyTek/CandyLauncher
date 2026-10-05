@@ -70,6 +70,7 @@ public:
 	virtual void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) = 0;
 	virtual void PluginTaskDone() = 0;
 	virtual std::wstring& GetCurrectArgText() =0;
+	virtual bool MyShowWindow(int nCmdShow,bool isForeground) = 0;
 };
 
 class IPlugin {
@@ -116,7 +117,7 @@ public:
 	virtual void OnUserInput(const std::wstring& input) {
 	}
 	// 插件在这里监听 item 选中时的快捷键事件
-	virtual int OnSendHotKey(const std::shared_ptr<BaseAction> action,const UINT vk,const UINT currentModifiers,const WPARAM wparam) {
+	virtual int OnSendHotKey(std::shared_ptr<BaseAction>& action,const UINT vk,const UINT currentModifiers,const WPARAM wparam) {
 		return 0;
 	}
 

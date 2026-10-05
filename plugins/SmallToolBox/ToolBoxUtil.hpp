@@ -4,70 +4,9 @@
 #include <string>
 
 #include "util/BitmapUtil.hpp"
+#include "util/ClipboardUtil.hpp"
 #include "qrcodegen.hpp"
 #include <gdiplus.h>
-
-
-// 从剪贴板获取文本内容并转换为UTF-8
-inline std::string GetClipboardTextAsUTF8() {
-	if (!OpenClipboard(NULL)) {
-		return "";
-	}
-
-	std::string result;
-	HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-	if (hData) {
-		wchar_t* pwszText = static_cast<wchar_t*>(GlobalLock(hData));
-		if (pwszText) {
-			// 转换 Unicode 到 UTF-8
-			int size = WideCharToMultiByte(CP_UTF8, 0, pwszText, -1, NULL, 0, NULL, NULL);
-			if (size > 0) {
-				std::vector<char> buffer(size);
-				WideCharToMultiByte(CP_UTF8, 0, pwszText, -1, buffer.data(), size, NULL, NULL);
-				result = buffer.data();
-			}
-			GlobalUnlock(hData);
-		}
-	}
-	CloseClipboard();
-	return result;
-}
-
-// 将文本写入剪贴板
-inline bool SetClipboardText(const std::string& text) {
-	if (!OpenClipboard(NULL)) {
-		return false;
-	}
-
-	EmptyClipboard();
-
-	// 转换 UTF-8 到 Unicode
-	int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, NULL, 0);
-	if (size <= 0) {
-		CloseClipboard();
-		return false;
-	}
-
-	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size * sizeof(wchar_t));
-	if (!hMem) {
-		CloseClipboard();
-		return false;
-	}
-
-	wchar_t* pMem = static_cast<wchar_t*>(GlobalLock(hMem));
-	if (pMem) {
-		MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, pMem, size);
-		GlobalUnlock(hMem);
-		SetClipboardData(CF_UNICODETEXT, hMem);
-	} else {
-		GlobalFree(hMem);
-		CloseClipboard();
-		return false;
-	}
-
-	CloseClipboard();
-	return true;
-}
 
 // 去除字符串首尾空格
 inline std::string TrimString(const std::string& str) {

@@ -8,9 +8,11 @@ public:
 		pluginId = m_pluginId;
 	}
 
-	std::wstring searchUrl;
-	std::wstring title;
-	std::wstring subTitle;
+	std::wstring sourceUrl = L"";
+	std::wstring searchUrl = L"";
+	std::wstring title = L"";
+	std::wstring subTitle = L"";
+	uint16_t custom_action_id = 0;
 
 	std::wstring& getTitle() override {
 		return title;

@@ -114,7 +114,7 @@ public:
 		return {};
 	}
 
-	int OnSendHotKey(const std::shared_ptr<BaseAction> action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
 		if (!m_host) return 0;
 		if (currentModifiers == MOD_ALT && vk == 'A') {
 			auto action1 = std::dynamic_pointer_cast<VisualStudioAction>(action);

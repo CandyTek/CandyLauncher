@@ -64,3 +64,27 @@ if (MSVC)
 	target_compile_options(AutomationActionModelTest PRIVATE /utf-8)
 endif ()
 add_test(NAME AutomationActionModelTest COMMAND AutomationActionModelTest)
+
+add_executable(UrlUtilTest UrlUtilTest.cpp)
+target_link_libraries(UrlUtilTest PRIVATE libcmark-gfm-extensions_static libcmark-gfm_static)
+target_compile_definitions(UrlUtilTest PRIVATE CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE)
+target_include_directories(UrlUtilTest PRIVATE
+	${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/src
+	${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/extensions
+	${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/src
+	${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/extensions)
+if (MSVC)
+	target_compile_options(UrlUtilTest PRIVATE /utf-8)
+endif ()
+add_test(NAME UrlUtilTest COMMAND UrlUtilTest)
+
+#add_executable(ScreenToolsQrTest ScreenToolsQrTest.cpp)
+#target_link_libraries(ScreenToolsQrTest PRIVATE screen_tools_qr gdiplus)
+#add_test(NAME ScreenToolsQrTest COMMAND ScreenToolsQrTest
+#	${CMAKE_SOURCE_DIR}/plugins/ScreenTools2/test.png)
+
+add_executable(ScreenToolsZxingQrTest ScreenToolsZxingQrTest.cpp
+	${CMAKE_SOURCE_DIR}/plugins/ScreenTools/QrDecoder.cpp)
+target_link_libraries(ScreenToolsZxingQrTest PRIVATE screen_tools_zxing_qr gdiplus)
+add_test(NAME ScreenToolsZxingQrTest COMMAND ScreenToolsZxingQrTest
+	${CMAKE_SOURCE_DIR}/plugins/ScreenTools2/test.png)
