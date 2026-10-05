@@ -31,7 +31,7 @@
 
 #include "util/HotkeyUtils.h"
 
-inline bool IS_SHOW_INDEX_MANAGER_WINDOW = true;
+inline bool IS_SHOW_INDEX_MANAGER_WINDOW = false;
 
 // 任务队列系统
 constexpr const char* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = "openFolderIndexedManager";

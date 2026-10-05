@@ -341,8 +341,16 @@ inline int mainWindowHotkey(WPARAM wParam) {
 			} else {
 				// 判断全屏应用模式
 				bool shouldShow = true;
-				if (pref_hide_in_fullscreen) shouldShow = shouldShowInCurrentWindowMode(GetForegroundWindow());
-				else if (pref_hide_in_topmost_fullscreen) shouldShow = !isLikelyFullscreenGame(GetForegroundWindow());
+				const HWND foreground = GetForegroundWindow();
+				const auto gameList = g_settings_map.find("pref_hide_for_game_processes");
+				if (gameList != g_settings_map.end() &&
+					isForegroundProcessInList(foreground, gameList->second.stringArr)) {
+					shouldShow = false;
+				} else if (pref_hide_in_fullscreen) {
+					shouldShow = shouldShowInCurrentWindowMode(foreground);
+				} else if (pref_hide_in_topmost_fullscreen) {
+					shouldShow = !isLikelyFullscreenGame(foreground);
+				}
 
 				if (shouldShow) {
 					if (pref_show_window_and_release_modifier_key) ReleaseAltKey();

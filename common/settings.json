@@ -1,4 +1,4 @@
-{
+﻿{
 	"version": 1,
 	"prefList": [
 		{
@@ -189,6 +189,14 @@
 			"type": "bool",
 			"subPage": "feature",
 			"defValue": true
+		},
+		{
+			"key": "pref_hide_for_game_processes",
+			"title": "这些游戏在前台时不弹出窗口（每行一个 exe 名或完整路径）",
+			"title_en": "Do not show while these games are foreground (one exe name or full path per line)",
+			"type": "stringArr",
+			"subPage": "feature",
+			"defValue": []
 		},
 		{
 			"key": "pref_window_always_on_top",
