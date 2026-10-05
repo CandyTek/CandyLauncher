@@ -45,6 +45,18 @@
 	{
 		"exclude_words": [],
 		"excludes": [],
+		"exts": [".json", ".cmd"],
+		"folder": "\\plugins\\AutomationActions",
+		"index_files_only": true,
+		"is_contain_subfolder": false,
+		"name": "自动化动作组",
+		"rename_sources": [],
+		"rename_targets": [],
+		"type": "folder"
+	},
+	{
+		"exclude_words": [],
+		"excludes": [],
 		"exts": [],
 		"folder": "",
 		"index_files_only": true,

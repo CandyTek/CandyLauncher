@@ -15,6 +15,53 @@
 #include <memory>
 #include <fstream>
 
+// Existing user configurations predate the automation folder. Add only this
+// source, preserving every other user-defined index entry.
+static bool EnsureAutomationActionIndex() {
+	const std::string original = ReadUtf8File(RUNNER_CONFIG_PATH2);
+	if (original.empty()) return false;
+	try {
+		auto config = nlohmann::json::parse(original);
+		if (!config.is_array()) return false;
+		bool found = false;
+		for (auto& item : config) {
+			if (item.is_object() && item.value("folder", std::string()) == "\\plugins\\AutomationActions") {
+				if (item.value("exts", nlohmann::json::array()) == nlohmann::json::array({".json", ".cmd"}) &&
+					item.value("index_files_only", false) && !item.value("is_contain_subfolder", true)) return true;
+				item["exts"] = {".json", ".cmd"};
+				item["index_files_only"] = true;
+				item["is_contain_subfolder"] = false;
+				found = true;
+				break;
+			}
+		}
+		if (!found) config.push_back({
+			{"exclude_words", nlohmann::json::array()}, {"excludes", nlohmann::json::array()},
+			{"exts", {".json", ".cmd"}}, {"folder", "\\plugins\\AutomationActions"},
+			{"index_files_only", true}, {"is_contain_subfolder", false},
+			{"name", "自动化动作组"}, {"rename_sources", nlohmann::json::array()},
+			{"rename_targets", nlohmann::json::array()}, {"type", "folder"}
+		});
+		const std::wstring temporary = RUNNER_CONFIG_PATH2 + L".automation.tmp";
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) return false;
+		output.write("\xEF\xBB\xBF", 3);
+		output << config.dump(1, '\t');
+		output.close();
+		if (!output) {
+			DeleteFileW(temporary.c_str());
+			return false;
+		}
+		if (!MoveFileExW(temporary.c_str(), RUNNER_CONFIG_PATH2.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+			DeleteFileW(temporary.c_str());
+			return false;
+		}
+		return true;
+	} catch (const std::exception&) {
+		return false;
+	}
+}
+
 static std::vector<std::string> WideVectorToUtf8Vector(const std::vector<std::wstring>& values) {
 	std::vector<std::string> result;
 	result.reserve(values.size());

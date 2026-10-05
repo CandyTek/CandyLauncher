@@ -1,9 +1,11 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 project(FolderPlugin)
 
 # 插件源文件
 set(PLUGIN_SOURCES
 		FolderPlugin.cpp
+		AutomationActionWindow.hpp
+		AutomationActionModel.hpp
 		FolderPluginConfigUtils.hpp
 		SystemSettingsIndex.hpp
 		FileAction.hpp

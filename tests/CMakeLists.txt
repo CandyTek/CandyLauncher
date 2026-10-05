@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+﻿cmake_minimum_required(VERSION 3.10)
 
 project(tests C CXX)
 
@@ -53,3 +53,14 @@ endif ()
 
 
 add_test(NAME SplitWordsTest COMMAND SplitWordsTest)
+
+add_executable(AutomationActionModelTest
+	AutomationActionModelTest.cpp
+	../plugins/Folder/AutomationActionModel.hpp
+)
+set_target_properties(AutomationActionModelTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+target_link_libraries(AutomationActionModelTest PRIVATE shell32)
+if (MSVC)
+	target_compile_options(AutomationActionModelTest PRIVATE /utf-8)
+endif ()
+add_test(NAME AutomationActionModelTest COMMAND AutomationActionModelTest)

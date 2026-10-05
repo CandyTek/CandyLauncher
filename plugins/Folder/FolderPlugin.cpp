@@ -18,6 +18,8 @@
 
 #include "FileAction.hpp"
 #include "IndexManagerWindow.hpp"
+#include "AutomationActionWindow.hpp"
+#include "AutomationActionModel.hpp"
 #include "ContextMenuHelper.hpp"
 #include "FileHelper.hpp"
 #include "FolderPluginConfigUtils.hpp"
@@ -163,6 +165,7 @@ static std::wstring NormalizeActionTitleForDedup(const std::wstring& title) {
 class FolderPlugin : public IPlugin {
 private:
 	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	std::shared_ptr<AutomationEditorAction> automationEditorAction;
 	struct DirectorySnapshot {
 		std::filesystem::file_time_type modified;
 		std::vector<std::wstring> children;
@@ -219,6 +222,7 @@ public:
 	bool Initialize(IPluginHost* host) override {
 		g_host = host;
 		if (!g_host) return false;
+		EnsureAutomationActionIndex();
 		g_host->RegisterAppLaunchActionCallback(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY, []() {
 			ShowIndexedManagerWindow(nullptr);
 		});
@@ -232,6 +236,7 @@ public:
 
 	void OnPluginIdChange(const uint16_t pluginId) override {
 		m_pluginId = pluginId;
+		if (automationEditorAction) automationEditorAction->pluginId = pluginId;
 	}
 
 
@@ -246,7 +251,9 @@ public:
 
 	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
 		if (!g_host) return {};
-		return allPluginActions;
+		auto actions = allPluginActions;
+		if (automationEditorAction) actions.push_back(automationEditorAction);
+		return actions;
 	}
 
 	static void doActionAddIconIndex(std::vector<std::shared_ptr<FileAction>>& shareds) {
@@ -804,6 +811,13 @@ public:
 			"defValue": ""
 		},
 		{
+			"key": "com.candytek.folderplugin.create_automation_action",
+			"title": "创建或编辑自动化动作组",
+			"type": "button",
+			"subPage": "plugin",
+			"defValue": ""
+		},
+		{
 			"key": "com.candytek.folderplugin.hotkey_open_file_location",
 			"title": "打开项目文件所在位置",
 			"title_en": "Open item file location",
@@ -898,6 +912,8 @@ public:
 		hkCopyTargetPath = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_copy_target_path").stringValue);
 		hkOpenWithClipboard = ParseHotkeyString(settings.at("com.candytek.folderplugin.open_with_clipboard_params").stringValue);
 		hkRunAsAdmin = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
+		automationEditorAction = std::make_shared<AutomationEditorAction>();
+
 #if defined(DEBUG) || defined(_DEBUG)
 		if (IS_SHOW_INDEX_MANAGER_WINDOW)
 		{
@@ -910,9 +926,22 @@ public:
 
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!g_host) return false;
+		// 执行自定义行为
+		if (std::dynamic_pointer_cast<AutomationEditorAction>(action)) {
+			ShowAutomationActionWindow(nullptr);
+			return true;
+		}
 		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
 		if (!fileAction) return false;
-
+		// 执行自动化功能
+		const std::filesystem::path target(fileAction->GetTargetPath());
+		const std::filesystem::path automationFolder = std::filesystem::path(EXE_FOLDER_PATH2) / L"plugins\\AutomationActions";
+		if (_wcsicmp(target.extension().c_str(), L".json") == 0 &&
+			_wcsicmp(target.parent_path().lexically_normal().c_str(), automationFolder.lexically_normal().c_str()) == 0) {
+			RunAutomationDocument(target.wstring());
+			return true;
+		}
+		// 执行文件
 		fileAction->Invoke();
 		return true;
 	}
@@ -955,6 +984,8 @@ public:
 	void OnSettingItemExecute(const SettingItem* setting, HWND parentHwnd) override {
 		if (setting->key == "com.candytek.folderplugin.indexed_manager") {
 			ShowIndexedManagerWindow(parentHwnd);
+		} else if (setting->key == "com.candytek.folderplugin.create_automation_action") {
+			ShowAutomationActionWindow(parentHwnd);
 		}
 	}
 
