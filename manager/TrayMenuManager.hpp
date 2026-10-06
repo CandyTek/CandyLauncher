@@ -27,8 +27,19 @@ constexpr int TRAY_MENU_ID_HELP = 10007;
 constexpr int TRAY_MENU_ID_CHECK_UPDATE = 10009;
 constexpr int TRAY_MENU_ID_SETTINGS = 10010;
 constexpr int TRAY_MENU_ID_GITHUB_ISSUES = 10013;
+constexpr int TRAY_MENU_ID_PIN_THIS_TIME = 10014;
+constexpr int TRAY_MENU_ID_ALWAYS_ON_TOP = 10015;
+constexpr int TRAY_MENU_ID_LOCK_WINDOW_POSITION = 10016;
+constexpr int TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM = 10017;
 
-constexpr int TRAY_MENU_ID_BASE_END = 10014;
+constexpr int TRAY_MENU_ID_BASE_END = 10018;
+
+struct MainWindowMenuOptions {
+	bool pinned;
+	bool alwaysOnTop;
+	bool lockWindowPosition;
+	bool closeAfterOpenItem;
+};
 
 static HMENU g_hTrayMenu = nullptr;
 static HMENU g_hMoreSub = nullptr;
@@ -118,12 +129,28 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_EXIT, MF_BYCOMMAND, gBmpExit, gBmpExit);
 }
 
-static void TrayMenuShow(HWND hWnd) {
+static void TrayMenuShow(HWND hWnd, const MainWindowMenuOptions* options = nullptr) {
 	POINT pt;
 	GetCursorPos(&pt); // 获取鼠标位置
 	SetForegroundWindow(hWnd); // 让菜单不会点击后立即消失
+	if (options) {
+		InsertMenuW(g_hTrayMenu, 1, MF_BYPOSITION | MF_STRING | (options->pinned ? MF_CHECKED : MF_UNCHECKED),
+			TRAY_MENU_ID_PIN_THIS_TIME, L"本次钉住");
+		InsertMenuW(g_hTrayMenu, 2, MF_BYPOSITION | MF_STRING | (options->alwaysOnTop ? MF_CHECKED : MF_UNCHECKED),
+			TRAY_MENU_ID_ALWAYS_ON_TOP, L"主窗口置于顶层");
+		InsertMenuW(g_hTrayMenu, 3, MF_BYPOSITION | MF_STRING | (options->lockWindowPosition ? MF_CHECKED : MF_UNCHECKED),
+			TRAY_MENU_ID_LOCK_WINDOW_POSITION, L"锁定窗口位置");
+		InsertMenuW(g_hTrayMenu, 4, MF_BYPOSITION | MF_STRING | (options->closeAfterOpenItem ? MF_CHECKED : MF_UNCHECKED),
+			TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM, L"打开项目后关闭窗口");
+	}
 	TrackPopupMenu(g_hTrayMenu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
 					pt.x, pt.y, 0, hWnd, nullptr);
+	if (options) {
+		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_PIN_THIS_TIME, MF_BYCOMMAND);
+		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_ALWAYS_ON_TOP, MF_BYCOMMAND);
+		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_LOCK_WINDOW_POSITION, MF_BYCOMMAND);
+		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM, MF_BYCOMMAND);
+	}
 }
 
 static void TrayMenuDestroy() {

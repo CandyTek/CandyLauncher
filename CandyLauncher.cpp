@@ -48,6 +48,45 @@ Gdiplus::GdiplusStartupInput gdiplusStartupInput;
 inline ULONG_PTR gdiplusToken;
 static ULONGLONG lastDragAndDropTime;
 static UINT g_WM_TASKBARCREATED = 0;
+static bool g_isMainWindowPinned = false;
+
+static bool UpdateBooleanSettingItem(std::vector<SettingItem>& items, const std::string& key,
+	bool value, size_t& controlId, uint8_t* subPageIndex = nullptr) {
+	for (auto& item : items) {
+		++controlId;
+		if (item.key == key) {
+			item.setValue(nlohmann::json(value));
+			if (subPageIndex) *subPageIndex = item.subPageIndex;
+			return true;
+		}
+		if ((item.type == "expand" || item.type == "expandswitch") &&
+			UpdateBooleanSettingItem(item.children, key, value, controlId, subPageIndex)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void SetMainWindowBooleanSetting(const char* key, bool value) {
+	nlohmann::json newConfig;
+	newConfig[key] = value;
+	saveConfigToFile(USER_SETTINGS_PATH, newConfig);
+	g_settings_map[key].setValue(nlohmann::json(value));
+
+	size_t controlId = 2999;
+	UpdateBooleanSettingItem(g_settings_ui_last_save, key, value, controlId);
+	if (g_settingsHwnd && IsWindow(g_settingsHwnd)) {
+		controlId = 2999;
+		uint8_t subPageIndex = 0;
+		if (UpdateBooleanSettingItem(g_settings_ui, key, value, controlId, &subPageIndex)) {
+			if (HWND tab = FindTabHwndByIndex(subPageIndex)) {
+				if (HWND control = GetDlgItem(tab, static_cast<int>(controlId))) {
+					SetSwitchState(control, value);
+				}
+			}
+		}
+	}
+}
 
 static void ShowMainWindowSystemMenu(HWND hWnd) {
 	HMENU hSystemMenu = GetSystemMenu(hWnd, FALSE);
@@ -328,7 +367,27 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			if (hCtrl == g_editHwnd && wmEvent == EN_CHANGE) {
 				editTextInput();
 			} else if (wmId > TRAY_MENU_ID_BASE && wmId < TRAY_MENU_ID_BASE_END) {
-				TrayMenuClick(wmId);
+				if (wmId == TRAY_MENU_ID_PIN_THIS_TIME) {
+					g_isMainWindowPinned = !g_isMainWindowPinned;
+					if (g_isMainWindowPinned) {
+						KillTimer(hWnd, TIMER_DELAY_HIDE_WINDOW);
+						KillTimer(hWnd, TIMER_DETERMINE_FILE_DRAG_AND_DROP);
+						UninstallMouseHook();
+					}
+				} else if (wmId == TRAY_MENU_ID_ALWAYS_ON_TOP) {
+					const bool value = !g_settings_map["pref_window_always_on_top"].boolValue;
+					SetMainWindowBooleanSetting("pref_window_always_on_top", value);
+					SetWindowPos(hWnd, value ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+						SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+				} else if (wmId == TRAY_MENU_ID_LOCK_WINDOW_POSITION) {
+					pref_lock_window_popup_position = !pref_lock_window_popup_position;
+					SetMainWindowBooleanSetting("pref_lock_window_popup_position", pref_lock_window_popup_position);
+				} else if (wmId == TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM) {
+					pref_close_after_open_item = !pref_close_after_open_item;
+					SetMainWindowBooleanSetting("pref_close_after_open_item", pref_close_after_open_item);
+				} else {
+					TrayMenuClick(wmId);
+				}
 			}
 		}
 		break;
@@ -398,6 +457,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			// 如果是 WA_INACTIVE，说明窗口从激活变为非激活状态（失去焦点）
 			if (LOWORD(wParam) == WA_INACTIVE) {
 				if (hWnd == g_mainHwnd) {
+					if (g_isMainWindowPinned) break;
 					if (g_isOleFileDragDropInProgress) break;
 					// 设置界面在皮肤tab时，暂停随焦点消失关闭功能（皮肤预览需要主窗口保持可见）
 					bool isSettingsSkinTabActive = g_settingsHwnd != nullptr
@@ -573,11 +633,12 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			} else if (wParam == TIMER_DELAY_HIDE_WINDOW) {
 				KillTimer(hWnd, TIMER_DELAY_HIDE_WINDOW);
 				// 延迟后如果没有收到拖放事件，则隐藏窗口
-				if (GetTickCount64() - lastDragAndDropTime >= 70) {
+				if (!g_isMainWindowPinned && GetTickCount64() - lastDragAndDropTime >= 70) {
 					HideWindow();
 				}
 			} else if (wParam == TIMER_DETERMINE_FILE_DRAG_AND_DROP) {
 				KillTimer(hWnd, TIMER_DETERMINE_FILE_DRAG_AND_DROP);
+				if (g_isMainWindowPinned) break;
 				// 检查鼠标左键是否按下（正在拖动）
 				if (GetKeyState(VK_LBUTTON) & 0x8000) {
 					// 正在拖动，安装钩子等待释放
@@ -593,6 +654,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		break;
 	case WM_SHOWWINDOW:
 		if (wParam==FALSE) {
+			g_isMainWindowPinned = false;
 			g_pluginManager->OnMainWindowShowNotifi(false);
 		}
 		break;
@@ -675,7 +737,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			ListView_DeleteAllItems(g_listViewHwnd);
 			listViewCleanup();
 
-			// 关闭插件系统
+			// 关闭插件系统v
 			g_pluginManager->UnloadAllPlugins();
 			g_pluginManager.reset();
 
@@ -697,7 +759,13 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 	case WM_RBUTTONUP:
 	case WM_NCRBUTTONUP:
 		{
-			TrayMenuShow(hWnd);
+			const MainWindowMenuOptions options{
+				g_isMainWindowPinned,
+				g_settings_map["pref_window_always_on_top"].boolValue,
+				pref_lock_window_popup_position,
+				pref_close_after_open_item
+			};
+			TrayMenuShow(hWnd, &options);
 			return 0;
 		}
 	case WM_TRAYICON:
