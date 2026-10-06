@@ -290,17 +290,14 @@ inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
 	// 如果没有背景图，则填充纯色背景
 	if (g_skinJson != nullptr) {
 		if (g_BgImage) {
-			const Gdiplus::Rect rect(
-				ps.rcPaint.left,
-				ps.rcPaint.top,
-				ps.rcPaint.right - ps.rcPaint.left,
-				ps.rcPaint.bottom - ps.rcPaint.top
-			);
+			RECT clientRect;
+			GetClientRect(g_mainHwnd, &clientRect);
+			const Gdiplus::Rect rect(0, 0, clientRect.right, clientRect.bottom);
 			Gdiplus::Bitmap backBuffer(rect.Width, rect.Height, PixelFormat32bppPARGB);
 			Gdiplus::Graphics bufferGraphics(&backBuffer);
 			bufferGraphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
 			bufferGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
-			bufferGraphics.DrawImage(g_BgImage, Gdiplus::Rect(0, 0, rect.Width, rect.Height));
+			bufferGraphics.DrawImage(g_BgImage, rect);
 
 			Gdiplus::Graphics graphics(hdc);
 			graphics.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);

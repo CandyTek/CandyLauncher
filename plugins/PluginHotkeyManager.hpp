@@ -203,7 +203,7 @@ private:
     std::vector<Item> m_items;
     std::mutex m_mutex;
     HANDLE m_hThread = nullptr;
-    HANDLE m_readyEvent = nullptr;
+    HANDLE m_readyEvent = nullptr;`
     DWORD m_threadId = 0;
 };
 }

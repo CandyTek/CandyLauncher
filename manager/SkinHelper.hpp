@@ -7,6 +7,7 @@
 #include "../common/GlobalState.hpp"
 #include <gdiplus.h>
 #include <atomic>
+#include <cstring>
 #include "../util/StringUtil.hpp"
 
 // 监听皮肤文件改动
@@ -116,6 +117,71 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 			image = nullptr;
 			ShowErrorMsgBox(L"加载背景图片失败");
 		}
+	}
+}
+
+// Shape the window around the visible pixels of a skin background. Window regions
+// keep the existing child edit/list controls usable while making empty pixels
+// outside a character illustration transparent and click-through.
+static void updateSkinWindowRegion() {
+	if (!g_skinJson.value("window_shape_from_bg_alpha", false) || !g_BgImage) {
+		SetWindowRgn(g_mainHwnd, nullptr, TRUE);
+		return;
+	}
+
+	const int width = MAIN_WINDOW_WIDTH;
+	const int height = MAIN_WINDOW_HEIGHT;
+	if (width <= 0 || height <= 0) return;
+	const int threshold = std::clamp(g_skinJson.value("window_shape_alpha_threshold", 64), 0, 255);
+	Gdiplus::Bitmap mask(width, height, PixelFormat32bppARGB);
+	Gdiplus::Graphics graphics(&mask);
+	graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+	graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+	graphics.DrawImage(g_BgImage, Gdiplus::Rect(0, 0, width, height));
+
+	Gdiplus::BitmapData bitmapData{};
+	Gdiplus::Rect bounds(0, 0, width, height);
+	if (mask.LockBits(&bounds, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &bitmapData) != Gdiplus::Ok) {
+		Loge(L"SkinHelper", L"无法读取背景图片的透明区域");
+		return;
+	}
+
+	std::vector<RECT> runs;
+	for (int y = 0; y < height; ++y) {
+		const auto* row = static_cast<const BYTE*>(bitmapData.Scan0) + y * bitmapData.Stride;
+		int start = -1;
+		for (int x = 0; x <= width; ++x) {
+			const bool visible = x < width && row[x * 4 + 3] > threshold;
+			if (visible && start < 0) start = x;
+			if (!visible && start >= 0) {
+				runs.push_back(RECT{start, y, x, y + 1});
+				start = -1;
+			}
+		}
+	}
+	mask.UnlockBits(&bitmapData);
+	if (runs.empty()) {
+		Loge(L"SkinHelper", L"背景图片没有可见像素，窗口形状未更新");
+		return;
+	}
+
+	const size_t byteCount = sizeof(RGNDATAHEADER) + runs.size() * sizeof(RECT);
+	std::vector<BYTE> regionBytes(byteCount);
+	auto* regionData = reinterpret_cast<RGNDATA*>(regionBytes.data());
+	regionData->rdh.dwSize = sizeof(RGNDATAHEADER);
+	regionData->rdh.iType = RDH_RECTANGLES;
+	regionData->rdh.nCount = static_cast<DWORD>(runs.size());
+	regionData->rdh.nRgnSize = static_cast<DWORD>(runs.size() * sizeof(RECT));
+	regionData->rdh.rcBound = RECT{0, 0, width, height};
+	std::memcpy(regionData->Buffer, runs.data(), runs.size() * sizeof(RECT));
+	HRGN region = ExtCreateRegion(nullptr, static_cast<DWORD>(byteCount), regionData);
+	if (!region) {
+		Loge(L"SkinHelper", L"无法创建背景图片形状区域");
+		return;
+	}
+	if (!SetWindowRgn(g_mainHwnd, region, TRUE)) {
+		DeleteObject(region);
+		Loge(L"SkinHelper", L"无法设置背景图片形状区域");
 	}
 }
 
@@ -232,6 +298,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture", g_itemListWidth, g_itemListHeight);
 	getSkinPictureFile(g_listItemBgImage, "item_bg_picture", g_listItemWidth, g_listItemHeight);
 	getSkinPictureFile(g_listItemBgImageSelected, "item_bg_picture_selected", g_listItemWidth, g_listItemHeight);
+	updateSkinWindowRegion();
 
 	if (hEditFont) {
 		SendMessage(g_editHwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
