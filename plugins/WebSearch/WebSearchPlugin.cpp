@@ -246,18 +246,19 @@ public:
     {
         if (hkOpenWithSubBrowser.matches(vk, currentModifiers))
         {
-            m_host->PluginTaskDone();
-            return CustomActionExecute(action,m_host->GetCurrectArgText());
+            const bool launched = CustomActionExecute(action, m_host->GetCurrectArgText(), true);
+            if (launched) m_host->PluginTaskDone();
+            return launched ? 1 : 0;
         }
         return 0;
     }
 
     bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override
     {
-        return CustomActionExecute(action,arg);
+        return CustomActionExecute(action, arg, false);
     }
     
-    bool CustomActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg)
+    bool CustomActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg, bool useSubBrowser)
     {
         if (!m_host) return false;
         auto a = std::dynamic_pointer_cast<WebSearchAction>(action);
@@ -272,13 +273,13 @@ public:
             if (a->custom_action_id == 11)
             {
                 std::wstring url = arg;
-                return LaunchWebSearchUrl(url, false);
+                return LaunchWebSearchUrl(url, useSubBrowser);
             }else if (a->custom_action_id == 12)
             {
                 std::string url =getContainsUrl(arg);
                 if (!url.empty())
                 {
-                    return LaunchWebSearchUrl(url, false);
+                    return LaunchWebSearchUrl(url, useSubBrowser);
                 }
             }
         }
@@ -287,11 +288,11 @@ public:
             if (a->custom_action_id == 1)
             {
                 std::wstring url = BuildSearchUrl(a->sourceUrl, arg);
-                return LaunchWebSearchUrl(url, false);
+                return LaunchWebSearchUrl(url, useSubBrowser);
             }
             else if (a->custom_action_id == 0)
             {
-                return LaunchWebSearchUrl(a->searchUrl, false);
+                return LaunchWebSearchUrl(a->searchUrl, useSubBrowser);
             }
         }
 

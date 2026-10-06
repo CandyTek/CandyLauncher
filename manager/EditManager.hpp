@@ -238,6 +238,9 @@ private:
 				if (msg == WM_SYSCHAR &&
 					(MatchesListNavigationHotkey("pref_hotkey_list_up", vk, currentModifiers) ||
 					 MatchesListNavigationHotkey("pref_hotkey_list_down", vk, currentModifiers))) return 0;
+				// WM_SYSCHAR follows WM_SYSKEYDOWN for Alt combinations. Dispatching both
+				// executes plugin shortcuts such as Alt+Enter twice.
+				if (msg == WM_SYSCHAR) return 0;
 
 				// TODO: Alt+Space: 转发给父窗口触发系统菜单，但是单独按下alt后，仍然会发出beep的声音
 				// if (msg == WM_SYSKEYDOWN && vk == VK_SPACE && currentModifiers == MOD_ALT_KEY) {
