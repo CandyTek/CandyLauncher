@@ -50,8 +50,8 @@ public:
 		// 应该使用make_shared，而不是简单的ExampleAction，这样子iconBitmap 的图标才能正常显示
 		std::shared_ptr<SmallToolBoxAction> action1 = std::make_shared<SmallToolBoxAction>();
 		action1->id = L"show_qrcode";
-		action1->title = L"生成二维码";
-		action1->subTitle = L"qrcode:www.example.com";
+		action1->title = L"从剪贴板生成二维码";
+		action1->subTitle = L"";
 		action1->matchText = m_host->GetTheProcessedMatchingText(action1->title);
 		action1->iconBitmap = LoadShell32IconAsBitmap(15);
 		allPluginActions.push_back(action1);
@@ -109,6 +109,23 @@ public:
 		return allPluginActions;
 	}
 	
+	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override
+	{
+		if (StartsWith(input, L"qrcode "))
+		{
+			size_t spacePos = input.find(L' ');
+			std::wstring query = input.substr(spacePos + 1);
+
+			std::wstring name= L"生成二维码";
+			auto action = std::make_shared<SmallToolBoxAction>();
+			action->id = L"gen_qrcode";
+			action->title = name;
+			action->subTitle = query;
+			action->matchText = m_host->GetTheProcessedMatchingText(name);
+			return {action};
+		}
+		return {};
+	}
 
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
@@ -130,6 +147,24 @@ public:
 
 				// 显示二维码窗口
 				ShowQRCodeWindow(qr, clipboardText);
+			} catch (const std::exception& e) {
+				std::wstring errorMsg = L"生成二维码失败: " + std::wstring(e.what(), e.what() + strlen(e.what()));
+				MessageBoxW(NULL, errorMsg.c_str(), L"错误", MB_OK | MB_ICONERROR);
+				return false;
+			}
+		}else if (exampleAction->id == L"gen_qrcode") {
+			// 获取文本
+			if (exampleAction->subTitle.empty()) {
+				return false;
+			}
+
+			// 生成二维码
+			try {
+				using namespace qrcodegen;
+				QrCode qr = QrCode::encodeText(wide_to_utf8(exampleAction->subTitle).c_str(), QrCode::Ecc::MEDIUM);
+
+				// 显示二维码窗口
+				ShowQRCodeWindow(qr, wide_to_utf8(exampleAction->subTitle));
 			} catch (const std::exception& e) {
 				std::wstring errorMsg = L"生成二维码失败: " + std::wstring(e.what(), e.what() + strlen(e.what()));
 				MessageBoxW(NULL, errorMsg.c_str(), L"错误", MB_OK | MB_ICONERROR);

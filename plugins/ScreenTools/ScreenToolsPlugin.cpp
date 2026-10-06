@@ -432,8 +432,9 @@ namespace
                 {
                     size_t a = (static_cast<size_t>(oldY) * w + x) * 4;
                     size_t b = (static_cast<size_t>(y) * w + x) * 4;
-                    for (int c = 0; c < 3; ++c) error +=
-                        std::abs(int(previous.pixels[a + c]) - int(next.pixels[b + c]));
+                    for (int c = 0; c < 3; ++c)
+                        error +=
+                            std::abs(int(previous.pixels[a + c]) - int(next.pixels[b + c]));
                     samples += 3;
                 }
             }
@@ -579,31 +580,34 @@ public:
 
     void OnPluginIdChange(uint16_t value) override { pluginId = value; }
 
-    
+
     void InitWebSearchHotkeys() const
     {
         g_hotkeyMgr.Clear();
-        
+
         std::string qrcodeHotkey = host->GetSettingsMap().at("com.candytek.screentools.hotkey_qrcode_scan").stringValue;
-        if (!g_hotkeyMgr.AddHotkey(0x2800, utf8_to_wide(qrcodeHotkey), [this](int){
+        if (!g_hotkeyMgr.AddHotkey(0x2800, utf8_to_wide(qrcodeHotkey), [this](int)
+        {
             std::thread([this]()
             {
                 ReadQrCode(host);
             }).detach();
-        })) {
+        }))
+        {
             Loge(L"WebSearch", L"Invalid hotkey for search engine: ", L" (", qrcodeHotkey, L")");
         }
-        
+
         std::string longHotkey = host->GetSettingsMap().at("com.candytek.screentools.hotkey_qrcode_scan").stringValue;
-        if (!g_hotkeyMgr.AddHotkey(0x2800, utf8_to_wide(longHotkey), [](int){
+        if (!g_hotkeyMgr.AddHotkey(0x2800, utf8_to_wide(longHotkey), [](int)
+        {
             std::thread([]()
             {
                 CaptureLongImage();
             }).detach();
-        })) {
+        }))
+        {
             Loge(L"WebSearch", L"Invalid hotkey for search engine: ", L" (", longHotkey, L")");
         }
-        
 
 
         g_hotkeyMgr.Start();
@@ -626,7 +630,7 @@ public:
             actions.push_back(action);
         }
     }
-    
+
     void OnUserSettingsLoadDone() override
     {
         InitWebSearchHotkeys();

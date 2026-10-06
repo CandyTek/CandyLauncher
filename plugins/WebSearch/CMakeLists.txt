@@ -10,7 +10,6 @@ set(PLUGIN_SOURCES
 		WebSearchAction.hpp
 		WebSearchPluginData.hpp
 		WebSearchUtil.hpp
-		WebSearchHotkeyManager.hpp
 		SearchManagerWindow.hpp
 )
 

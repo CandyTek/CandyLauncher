@@ -86,7 +86,7 @@ add_executable(CandyLauncher WIN32
 		util/FullScreenDetectUtil.hpp
 		util/ShortCutDetectUtil.hpp
 		util/HotkeyUtils.hpp
-		util/ProcessWindowUtil.hpp
+		manager/ProcessManager.hpp
 )
 
 add_library(CandyLauncherLangZh SHARED
@@ -344,7 +344,7 @@ add_subdirectory(plugins/PluginTest)
 # Plugins that are rarely changed can be commented to speed up compilation.
 set(PLUGIN_DEPENDENCIES)
 
-#list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
+list(APPEND PLUGIN_DEPENDENCIES SmallToolBoxPlugin)
 list(APPEND PLUGIN_DEPENDENCIES FeatureLaunchPlugin)
 list(APPEND PLUGIN_DEPENDENCIES PluginBrowserPlugin)
 list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
