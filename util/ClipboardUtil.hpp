@@ -145,3 +145,60 @@ inline bool SetClipboardText(std::string_view textUtf8) {
 
 	return SetClipboardText(wideStr);
 }
+
+// Grabs currently selected text via simulated Ctrl+C
+static std::wstring GetSelectedText()
+{
+    if (OpenClipboard(nullptr))
+    {
+        EmptyClipboard();
+        CloseClipboard();
+    }
+
+    // Wait for hotkey modifier keys (Alt/Ctrl/Shift/Win) to be physically released.
+    // Without this, SendInput injects Ctrl+C while (e.g.) Alt is still held, making
+    // the target window receive Ctrl+Alt+C instead — which does nothing.
+    const DWORD deadline = GetTickCount() + 1500;
+    while (GetTickCount() < deadline)
+    {
+        bool anyDown =
+            (GetAsyncKeyState(VK_CONTROL) & 0x8000) ||
+            (GetAsyncKeyState(VK_MENU) & 0x8000) ||
+            (GetAsyncKeyState(VK_SHIFT) & 0x8000) ||
+            (GetAsyncKeyState(VK_LWIN) & 0x8000) ||
+            (GetAsyncKeyState(VK_RWIN) & 0x8000);
+        if (!anyDown) break;
+        Sleep(10);
+    }
+
+    INPUT inputs[4] = {};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_CONTROL;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = 'C';
+    inputs[2].type = INPUT_KEYBOARD;
+    inputs[2].ki.wVk = 'C';
+    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+    inputs[3].type = INPUT_KEYBOARD;
+    inputs[3].ki.wVk = VK_CONTROL;
+    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(4, inputs, sizeof(INPUT));
+    Sleep(150);
+
+    std::wstring result;
+    if (OpenClipboard(nullptr))
+    {
+        HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+        if (hData)
+        {
+            auto* p = static_cast<wchar_t*>(GlobalLock(hData));
+            if (p)
+            {
+                result = p;
+                GlobalUnlock(hData);
+            }
+        }
+        CloseClipboard();
+    }
+    return MyTrim(result);
+}

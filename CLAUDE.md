@@ -114,6 +114,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - The PinyinHelper.cpp file is not read, and it is just a code table with double pinyin
 - The json.hpp file is not read, and it is just a json parsing library
 - The exprtk.hpp file is not read, and it is just a scientific computing library
+- The stb_image_write.h file is not read
 
 ### App Update System
 

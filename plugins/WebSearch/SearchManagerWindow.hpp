@@ -178,7 +178,8 @@ static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 		} else if (id == WSM_IDC_BTN_SAVE) {
 			g_searchEngines = wsm_engines;
 			SaveWebSearchConfig();
-			MessageBoxW(hwnd, L"Saved. Reindex to apply changes.", L"Saved", MB_ICONINFORMATION);
+			InitWebSearchHotkeys();
+			MessageBoxW(hwnd, L"Saved. Hotkeys are active; reindex to update search actions.", L"Saved", MB_ICONINFORMATION);
 		}
 		break;
 	}

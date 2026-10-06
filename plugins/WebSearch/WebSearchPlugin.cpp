@@ -4,7 +4,6 @@
 #include "WebSearchAction.hpp"
 #include "WebSearchPluginData.hpp"
 #include "WebSearchUtil.hpp"
-#include "WebSearchHotkeyManager.hpp"
 #include "SearchManagerWindow.hpp"
 #include "plugins/SmallToolBox/ToolBoxUtil.hpp"
 #include "util/StringUtil.hpp"
@@ -136,6 +135,7 @@ public:
 
         Logi(L"WebSearch", L"RefreshAllActions start");
         LoadWebSearchConfig();
+        InitWebSearchHotkeys();
 
         allEngineActions.clear();
         textArgActions.clear();
@@ -178,10 +178,7 @@ public:
             textArgActions.push_back(action);
             urlArgActions.push_back(action);
         }
-
-        // 暂时还不知道用作什么
-        // WS_StartHotkeyThread();
-
+        
         Logi(L"WebSearch", L"Loaded ", allEngineActions.size(), L" engines");
     }
 
@@ -301,7 +298,7 @@ public:
 
     void Shutdown() override
     {
-        WS_StopHotkeyThread();
+        g_hotkeyMgr.Clear();
         urlArgActions.clear();
         textArgActions.clear();
         allEngineActions.clear();

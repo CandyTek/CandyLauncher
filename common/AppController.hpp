@@ -12,6 +12,7 @@
 #include "../manager/ListViewManager.hpp"
 #include <atomic>
 
+#include "manager/ProcessManager.hpp"
 #include "util/FullScreenDetectUtil.hpp"
 
 #if defined(_DEBUG) || !defined(NDEBUG)
@@ -201,10 +202,8 @@ static void TrayMenuClick(const int position) {
 		break;
 	case TRAY_MENU_ID_RESTART: // 重启
 		{
-			wchar_t path[MAX_PATH];
-			GetModuleFileName(nullptr, path, MAX_PATH);
-			ShellExecute(nullptr, L"open", path, nullptr, nullptr, SW_SHOWNORMAL);
-			// 显式销毁窗口 → 会自动触发 WM_DESTROY，里面会退出程序
+			g_restartRequested = true;
+			// 窗口销毁时释放单实例互斥量，再启动新进程。
 			DestroyWindow(g_mainHwnd);
 		}
 		break;

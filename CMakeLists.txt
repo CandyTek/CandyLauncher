@@ -86,6 +86,7 @@ add_executable(CandyLauncher WIN32
 		util/FullScreenDetectUtil.hpp
 		util/ShortCutDetectUtil.hpp
 		util/HotkeyUtils.hpp
+		util/ProcessWindowUtil.hpp
 )
 
 add_library(CandyLauncherLangZh SHARED

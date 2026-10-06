@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "../PluginHotkeyManager.hpp"
 
 #include "WebSearchPluginData.hpp"
 #include "util/FileUtil.hpp"
@@ -8,6 +9,8 @@
 
 #include <fstream>
 #include <filesystem>
+
+inline CommonUtil::PluginHotkeyManager g_hotkeyMgr;
 
 using json = nlohmann::json;
 
@@ -141,3 +144,27 @@ static std::wstring BuildSearchUrl(const std::wstring& urlTemplate, const std::w
 	return url;
 }
 
+static void InitWebSearchHotkeys() {
+	g_hotkeyMgr.Clear();
+
+	int id = 0x2800;
+	for (const auto& engine : g_searchEngines) {
+		if (engine.hotkey.empty()) continue;
+
+		// 通过闭包捕获特定参数，解耦业务
+		if (!g_hotkeyMgr.AddHotkey(id++, engine.hotkey, [engine](int) {
+			std::wstring query = GetSelectedText();
+			if (!query.empty()) {
+				std::wstring url = BuildSearchUrl(engine.url, query);
+				ShellExecuteW(nullptr, L"open", 
+					g_browser.empty() ? url.c_str() : g_browser.c_str(),
+					g_browser.empty() ? nullptr : url.c_str(), 
+					nullptr, SW_SHOWNORMAL);
+			}
+		})) {
+			Loge(L"WebSearch", L"Invalid hotkey for search engine: ", engine.key, L" (", engine.hotkey, L")");
+		}
+	}
+
+	g_hotkeyMgr.Start();
+}

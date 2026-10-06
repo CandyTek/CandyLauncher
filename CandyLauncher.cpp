@@ -29,6 +29,7 @@
 #include <Richedit.h>
 
 #include "util/MyToastUtil.hpp"
+#include "manager/ProcessManager.hpp"
 #include "util/UpdateManager.hpp"
 #include "view/CustomComboBox.hpp"
 #include "window/Shell32IconViewer.hpp"
@@ -75,6 +76,24 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 					_In_opt_ HINSTANCE hPrevInstance,
 					_In_ LPWSTR lpCmdLine,
 					_In_ int nCmdShow) {
+	const std::wstring executablePath = GetOwnExecutablePath();
+	if (executablePath.empty()) {
+		MessageBoxW(nullptr, L"无法获取程序路径。", L"CandyLauncher", MB_OK | MB_ICONERROR);
+		return -1;
+	}
+	g_WM_SHOW_EXISTING_INSTANCE = RegisterWindowMessageW(L"CandyLauncher.ShowExistingInstance");
+	g_instanceMutex = CreateMutexW(nullptr, FALSE, GetInstanceMutexName(executablePath).c_str());
+	if (!g_instanceMutex) {
+		MessageBoxW(nullptr, L"无法创建单实例互斥量。", L"CandyLauncher", MB_OK | MB_ICONERROR);
+		return -1;
+	}
+	if (GetLastError() == ERROR_ALREADY_EXISTS) {
+		CloseHandle(g_instanceMutex);
+		g_instanceMutex = nullptr;
+		ShowExistingInstance(executablePath);
+		return 0;
+	}
+
 	// 启动快捷方式可能没有指定“起始位置”，先固定工作目录再加载配置和插件。
 	if (!SetCurrentDirectoryW(EXE_FOLDER_PATH.c_str())) {
 		MessageBoxW(nullptr, L"无法将工作目录设置为程序所在目录。", L"CandyLauncher", MB_OK | MB_ICONERROR);
@@ -661,6 +680,16 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			g_pluginManager.reset();
 
 			TrayMenuDestroy();
+			if (g_instanceMutex) {
+				CloseHandle(g_instanceMutex);
+				g_instanceMutex = nullptr;
+			}
+			if (g_restartRequested) {
+				const std::wstring executablePath = GetOwnExecutablePath();
+				if (!executablePath.empty()) {
+					ShellExecuteW(nullptr, L"open", executablePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+				}
+			}
 			PostQuitMessage(0);
 			ExitProcess(0);
 		}
@@ -680,6 +709,10 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		break;
 
 	default:
+		if (g_WM_SHOW_EXISTING_INSTANCE && message == g_WM_SHOW_EXISTING_INSTANCE) {
+			ShowMainWindowSimple();
+			return 0;
+		}
 		if (g_WM_TASKBARCREATED && message == g_WM_TASKBARCREATED) {
 			ShowTrayIcon();
 			return 0;

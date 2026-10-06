@@ -59,9 +59,8 @@ static bool ParseHotkeyString(const std::string& hotkeyStr, UINT& modifiers, UIN
 	return true;
 }
 
-static ParsedHotkey ParseHotkeyString(const std::string& utf8Str) {
-	if (utf8Str.empty()) return {};
-	std::wstring str = utf8_to_wide(utf8Str);
+static ParsedHotkey ParseHotkeyString(const std::wstring& str) {
+	if (str.empty()) return {};
 
 	size_t posEnd = str.rfind(L')');
 	size_t posStart = str.rfind(L'(', posEnd);
@@ -89,6 +88,77 @@ static ParsedHotkey ParseHotkeyString(const std::string& utf8Str) {
 	return h;
 }
 
+static ParsedHotkey ParseHotkeyString(const std::string& str)
+{
+	return  ParseHotkeyString(utf8_to_wide(str));
+}
+
+// 解析热键字符串，支持两种格式：
+// 1. "Alt+G(4)(71)" 带尾随 (modifiers)(vk)
+// 2. "Ctrl+Alt+F1", "Shift+Win+A" 纯文本
+static bool ParseHotkey(const std::wstring& hotkeyStr, UINT& outMod, UINT& outVk) {
+    outMod = 0; outVk = 0;
+    if (hotkeyStr.empty()) return false;
+
+    // 格式 1: "Alt+G(4)(71)"
+    size_t p2End = hotkeyStr.rfind(L')');
+    if (p2End != std::wstring::npos) {
+        size_t p2Start = hotkeyStr.rfind(L'(', p2End);
+        if (p2Start != std::wstring::npos && p2Start > 0) {
+            size_t p1End = hotkeyStr.rfind(L')', p2Start - 1);
+            if (p1End != std::wstring::npos) {
+                size_t p1Start = hotkeyStr.rfind(L'(', p1End);
+                if (p1Start != std::wstring::npos) {
+                    try {
+                        outMod = std::stoul(hotkeyStr.substr(p1Start + 1, p1End - p1Start - 1));
+                        outVk  = std::stoul(hotkeyStr.substr(p2Start + 1, p2End - p2Start - 1));
+                        return outVk != 0;
+                    } catch (...) {}
+                }
+            }
+        }
+    }
+
+    // 格式 2: 纯文本按键解析
+    std::vector<std::wstring> tokens;
+    std::wstring cur;
+    for (wchar_t ch : hotkeyStr) {
+        if (ch == L'+') {
+            if (!cur.empty()) { tokens.push_back(cur); cur.clear(); }
+        } else if (ch != L' ' && ch != L'\t') {
+            cur += static_cast<wchar_t>(std::towlower(ch));
+        }
+    }
+    if (!cur.empty()) tokens.push_back(cur);
+    if (tokens.empty()) return false;
+
+    std::wstring keyToken = tokens.back();
+    tokens.pop_back();
+
+    for (const auto& mod : tokens) {
+        if (mod == L"ctrl" || mod == L"control") outMod |= MOD_CONTROL;
+        else if (mod == L"alt")                 outMod |= MOD_ALT;
+        else if (mod == L"shift")               outMod |= MOD_SHIFT;
+        else if (mod == L"win")                 outMod |= MOD_WIN;
+    }
+
+    if (keyToken.size() == 1) {
+        wchar_t ch = static_cast<wchar_t>(std::towupper(keyToken[0]));
+        if ((ch >= L'A' && ch <= L'Z') || (ch >= L'0' && ch <= L'9')) {
+            outVk = ch;
+        } else {
+            SHORT s = VkKeyScanW(ch);
+            if (s != -1) outVk = LOBYTE(s);
+        }
+    } else if (keyToken.size() >= 2 && keyToken[0] == L'f') {
+        try {
+            int fn = std::stoi(keyToken.substr(1));
+            if (fn >= 1 && fn <= 24) outVk = static_cast<UINT>(VK_F1 + fn - 1);
+        } catch (...) {}
+    }
+
+    return outVk != 0;
+}
 
 static bool RegisterHotkeyFromString(HWND hWnd, const std::string& hotkeyStr, int hotkeyId);
 
