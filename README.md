@@ -1,51 +1,51 @@
-# CandyLauncher
+#CandyLauncher
 
-CandyLauncher 是一个用 C++ 编写的轻量级 Windows 快捷启动器，仿 wox，通过搜索快速启动各插件里的行为
+CandyLauncher is a lightweight Windows shortcut launcher written in C++, imitating Wox, and quickly launches the actions in each plug-in through search
 
-## 软件核心目标
+[![English badge](https://img.shields.io/badge/%E8%8B%B1%E6%96%87-English-blue)](./README.md)
+[![简体中文 badge](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-Simplified%20Chinese-blue)](./README_ZH.md)
 
-- 极速显示匹配结果
-- 较低的内存占用
-- 支持模糊搜索和拼音匹配
-- 支持 Windows7+
+## Core goals of software
 
-## 功能介绍
+- Quickly display matching results
+- Lower memory usage
+- Support fuzzy search and pinyin matching
+- Support Windows7+
 
-- 主面板可通过自定义热键呼出或隐藏
-- 在列表中快速执行项目、以管理员权限运行或打开文件夹
-- 支持读取 `config_folder_plugin.json` 扫描目录
-- 主题皮肤及窗口特效可通过配置文件调整
+## Function introduction
 
-## note
+- The main panel can be called out or hidden through custom hotkeys
+- Quickly execute items in a list, run as administrator or open a folder
+- Support reading `config_folder_plugin.json` and scanning directories
+- Theme skin and window effects can be adjusted through configuration files
+- Support loading various custom plugins
 
-- 使用 UTF-8 with BOM 保存文件
-
-## 构建方式
+## Build method
 
 ### Visual Studio 2022
 
-- 安装组件：使用 C++ 的桌面开发（含 Windows SDK、MSVC 工具集、CMake 集成）
-- 打开仓库根目录文件夹
-- 选择其中一项配置进行生成（推荐 ninja-msvc）
-- 运行项选择 CandyLauncher.exe，点击运行按钮
+- Installation components: Desktop development using C++ (including Windows SDK, MSVC toolset, CMake integration)
+- Open the warehouse root folder
+- Select one of the configurations to generate (ninja-msvc is recommended)
+- Select CandyLauncher.exe as the run item and click the Run button
 
-### CLion
+### CLions
 
-- 打开仓库根目录文件夹
-- 不使用 Cmake预设，使用默认的Debug配置，手动选择工具链、生成器（推荐 Visual Studio + Ninja）
-- 运行项选择 CandyLauncher，点击运行按钮
+- Open the warehouse root folder
+- Do not use Cmake preset, use the default Debug configuration, and manually select the tool chain and generator (Visual Studio + Ninja recommended)
+- Select CandyLauncher as the run item and click the run button
 
-### VsCode + 插件 (CMake Tools + C/C++)
+### VsCode + Plugin (CMake Tools + C/C++)
 
-- 打开仓库根目录文件夹
-- 快捷键 Ctrl+Shift+P，Cmake: 选择配置预设
-- 选择其中一项配置进行生成（推荐 ninja-msvc）
-- 底部状态栏点击生成
-- 点击运行按钮，运行项选择 CandyLauncher
+- Open the warehouse root folder
+- Shortcut key Ctrl+Shift+P, Cmake: select configuration preset
+- Select one of the configurations to generate (ninja-msvc is recommended)
+- Click to generate in the bottom status bar
+- Click the run button and select CandyLauncher as the run item
 
-### 命令行 (Native Tools Command Prompt for VS 2022)
+### Command line (Native Tools Command Prompt for VS 2022)
 
-在仓库根目录打开终端
+Open a terminal in the root directory of the repository
 
 #### CMake + Ninja + MSVC
 
@@ -64,9 +64,9 @@ ctest -C Debug --test-dir build
 ```
 
 
-### 命令行
+### Command line
 
-使用命令检查 MinGW
+Check MinGW using command
 
 ```commandline
 where gcc
