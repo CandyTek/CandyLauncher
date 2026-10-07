@@ -21,7 +21,9 @@ static Gdiplus::Color GetColor(const char* key, const char* def) {
 
 static void drawBackground(HWND hwnd, Gdiplus::Graphics& graphics, RECT rc) {
 	if (g_skinJson != nullptr) {
-		if (g_editBgImage) {
+		if (g_editBgCachedBitmap) {
+			graphics.DrawCachedBitmap(g_editBgCachedBitmap, rc.left, rc.top);
+		} else if (g_editBgImage) {
 			const Gdiplus::Rect rect(rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
 			graphics.DrawImage(g_editBgImage, rect);
 		} else {

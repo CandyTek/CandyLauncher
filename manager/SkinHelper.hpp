@@ -20,6 +20,39 @@ inline std::atomic g_shouldStop{false}; // 停止标志
 inline std::vector<std::wstring> g_skinFilePaths;
 inline size_t g_prefSkinIndex;
 
+static void clearBackgroundCachedBitmaps() {
+	delete g_BgCachedBitmap;
+	g_BgCachedBitmap = nullptr;
+	delete g_editBgCachedBitmap;
+	g_editBgCachedBitmap = nullptr;
+	delete g_listViewBgCachedBitmap;
+	g_listViewBgCachedBitmap = nullptr;
+}
+
+static Gdiplus::CachedBitmap* createBackgroundCachedBitmap(Gdiplus::Image* image, HWND hwnd,
+														const int width, const int height) {
+	if (!image || !hwnd || !IsWindow(hwnd) || width <= 0 || height <= 0) return nullptr;
+
+	HDC hdc = GetDC(hwnd);
+	if (!hdc) return nullptr;
+
+	Gdiplus::Bitmap bitmap(width, height, PixelFormat32bppPARGB);
+	Gdiplus::Graphics bitmapGraphics(&bitmap);
+	bitmapGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+	bitmapGraphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+	bitmapGraphics.DrawImage(image, 0, 0, width, height);
+	bitmapGraphics.Flush(Gdiplus::FlushIntentionSync);
+
+	Gdiplus::Graphics targetGraphics(hdc);
+	auto* cachedBitmap = new Gdiplus::CachedBitmap(&bitmap, &targetGraphics);
+	if (cachedBitmap->GetLastStatus() != Gdiplus::Ok) {
+		delete cachedBitmap;
+		cachedBitmap = nullptr;
+	}
+	ReleaseDC(hwnd, hdc);
+	return cachedBitmap;
+}
+
 // 外部变量声明
 //inline std::atomic<bool> g_shouldStop;
 
@@ -276,6 +309,10 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	g_listViewWidth = g_skinJson.value("listview_width", 580);
 	g_listViewHeight = g_skinJson.value("listview_height", 380);
 
+	// CachedBitmap is tied to its target graphics device, so discard all old
+	// caches before replacing the source images or changing control sizes.
+	clearBackgroundCachedBitmaps();
+
 	// 处理背景图片
 	getSkinPictureFile(g_BgImage, "window_bg_picture", MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	//RenderNinePatchToSize
@@ -291,9 +328,19 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER);
 	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
+	
+	// Each control gets a cache created against its own DC. CachedBitmap is
+	// device-specific and cannot safely be shared between these windows.
+	g_BgCachedBitmap = createBackgroundCachedBitmap(g_BgImage, g_mainHwnd,
+													 MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
+	g_editBgCachedBitmap = createBackgroundCachedBitmap(g_editBgImage, g_editHwnd,
+													  editWidth, editHeight);
+	g_listViewBgCachedBitmap = createBackgroundCachedBitmap(g_listViewBgImage, g_listViewHwnd,
+														g_listViewWidth, g_listViewHeight);
+	
 	g_listViewHideScrollbar = g_skinJson.value("listview_hide_scrollbar", false);
-	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
 	// 这里是调节列表item宽度重要的地方，调好了横向滚动条就不存在
+	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
 	ListView_SetColumnWidth(g_listViewHwnd, 0, g_listViewWidth - thumbWidth - 0);
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
 	UpdateListViewScrollbarStyle();

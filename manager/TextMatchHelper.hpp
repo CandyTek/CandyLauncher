@@ -34,23 +34,17 @@ static void Fuzzymatch_MultiThreaded2(const std::wstring& keyword, const std::ve
 									std::vector<std::shared_ptr<BaseAction>>& filteredActions) {
 	const std::wstring lowerKeyword = MyToLower(keyword);
 
-	// 拷贝快照，保证并行只读
-	std::vector<std::shared_ptr<BaseAction>> snapshot = allActions;
-
-	// 1) 并行打分到等长缓冲区
-	std::vector<std::optional<ScoredAction>> tmp(snapshot.size());
-	std::vector<size_t> idx(snapshot.size());
-	std::iota(idx.begin(), idx.end(), 0);
-
-	std::for_each(std::execution::par, idx.begin(), idx.end(), [&](size_t i) {
-		const auto& action = snapshot[i];
-		const std::wstring& searchableText = action->matchText;
-
-		if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword, searchableText); score >=
-			pref_fuzzy_match_score_threshold) {
-			tmp[i] = ScoredAction{action, score, action->pluginPriority};
-		}
-	});
+	// 并行打分到等长缓冲区。直接读取稳定的 action 列表，避免每次输入都
+	// 复制全部 shared_ptr，并避免为索引再分配一个等长数组。
+	std::vector<std::optional<ScoredAction>> tmp(allActions.size());
+	std::transform(std::execution::par, allActions.begin(), allActions.end(), tmp.begin(),
+					[&lowerKeyword](const std::shared_ptr<BaseAction>& action) -> std::optional<ScoredAction> {
+						if (const double score = rapidfuzz::fuzz::WRatio(lowerKeyword, action->matchText);
+							score >= pref_fuzzy_match_score_threshold) {
+							return ScoredAction{action, score, action->pluginPriority};
+						}
+						return std::nullopt;
+					});
 
 	// 2) 压缩有效项
 	std::vector<ScoredAction> scored;
@@ -64,10 +58,7 @@ static void Fuzzymatch_MultiThreaded2(const std::wstring& keyword, const std::ve
 
 	if (scored.size() > limit) {
 		auto nth = scored.begin() + limit;
-		std::nth_element(scored.begin(), nth, scored.end(),
-						[](const ScoredAction& a, const ScoredAction& b) {
-							return a.score > b.score;
-						});
+		std::nth_element(scored.begin(), nth, scored.end(), std::greater<>());
 		scored.erase(nth, scored.end());
 	}
 	std::sort(scored.begin(), scored.end(), std::greater<>());
@@ -97,16 +88,18 @@ static void Fuzzymatch(const std::wstring& keyword, const std::vector<std::share
 		}
 	}
 
-	// 3. 排序：按分数从高到低排序
-	std::sort(scoredActions.begin(), scoredActions.end(), std::greater<>());
+	// 只排序最终会显示的前 K 项，避免限制结果数量时仍对全部命中项排序。
+	if (pref_max_search_results > 0 &&
+		scoredActions.size() > static_cast<size_t>(pref_max_search_results)) {
+		const auto resultEnd = scoredActions.begin() + static_cast<std::ptrdiff_t>(pref_max_search_results);
+		std::partial_sort(scoredActions.begin(), resultEnd, scoredActions.end(), std::greater<>());
+		scoredActions.erase(resultEnd, scoredActions.end());
+	} else {
+		std::sort(scoredActions.begin(), scoredActions.end(), std::greater<>());
+	}
 
-	int matchedCount = 0;
 	for (const auto& [action, score, priority] : scoredActions) {
 		filteredActions.push_back(action);
-		if (pref_max_search_results > 0) {
-			matchedCount++;
-			if (matchedCount >= pref_max_search_results) break;
-		}
 	}
 }
 
@@ -118,8 +111,22 @@ static void Fuzzymatch(const std::wstring& keyword, const std::vector<std::share
  */
 static void Exactmatch_Optimized(const std::wstring& keyword, const std::vector<std::shared_ptr<BaseAction>>& allActions,
 								std::vector<std::shared_ptr<BaseAction>>& filteredActions) {
+	const std::wstring lowerKeyword = MyToLower(keyword);
+	if (lowerKeyword.find_first_of(L" \t\r\n") == std::wstring::npos) {
+		for (const auto& action : allActions) {
+			if (action->matchText.find(lowerKeyword) != std::wstring::npos) {
+				filteredActions.push_back(action);
+				if (pref_max_search_results > 0 &&
+					filteredActions.size() >= static_cast<size_t>(pref_max_search_results)) {
+					break;
+				}
+			}
+		}
+		return;
+	}
+
 	// 分隔关键字
-	std::wstringstream ss(MyToLower(keyword));
+	std::wstringstream ss(lowerKeyword);
 	std::wstring word;
 	std::vector<std::wstring> words;
 	while (ss >> word) {
@@ -292,11 +299,11 @@ inline void TextMatch(const std::wstring& keyword, const std::vector<std::shared
 		// Fuzzymatch_MultiThreaded(keyword);
 		Fuzzymatch_MultiThreaded2(keyword,allActions,filteredActions);
 #endif
-		// MethodTimerEnd(L"fuzzymatch");
+		MethodTimerEnd(L"fuzzymatch");
 	} else {
 		MethodTimerStart(L"Exactmatch");
 		// Exactmatch(keyword);
 		Exactmatch_Optimized(keyword, allActions, filteredActions);
-		// MethodTimerEnd(L"Exactmatch");
+		MethodTimerEnd(L"Exactmatch");
 	}
 }

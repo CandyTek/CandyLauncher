@@ -21,6 +21,7 @@
 
 // Static variable definitions
 inline HIMAGELIST g_listFileImageList = nullptr;
+inline bool g_measureInputDisplayPending = false;
 
 inline bool listViewFontsInitialized = false;
 
@@ -216,7 +217,7 @@ static bool HandleListNavigationHotkey(const UINT vk, const UINT modifiers) {
 }
 
 static ULONGLONG g_lastScrollTick = 0;
-static bool g_isScrollbarVisible = false;
+static bool g_scrollbarForceVisible = false;
 
 constexpr UINT_PTR TIMER_TRIGGER_HIDE_PAINT = 0x9003;
 constexpr ULONGLONG HIDE_DELAY_MS = 2000;
@@ -228,7 +229,7 @@ static void OnUserScroll(HWND hWnd) {
 		return;
 	}
 	g_lastScrollTick = GetTickCount64();
-	g_isScrollbarVisible = true;
+	g_scrollbarForceVisible = true;
 	ShowScrollBar(hWnd, SB_VERT, TRUE);
 	SetTimer(hWnd, TIMER_TRIGGER_HIDE_PAINT, HIDE_DELAY_MS, nullptr);
 }
@@ -238,27 +239,36 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 											UINT_PTR, const DWORD_PTR dwRefData) {
 	switch (message) {
 	case WM_PAINT:
-		if (g_listViewHideScrollbar)
-		{
-			if (!g_isScrollbarVisible || GetTickCount64() - g_lastScrollTick >= HIDE_DELAY_MS) {
-				// 超时强制压制隐藏
-				ShowScrollBar(hWnd, SB_VERT, FALSE);
-				g_isScrollbarVisible = false;
-			}
+		if (g_measureInputDisplayPending) {
+			MethodTimerEnd(L"test_input_to_paint");
+			MethodTimerStart(L"test_list_paint");
 		}
-		break;
+		if (g_listViewHideScrollbar && !g_scrollbarForceVisible &&
+			GetTickCount64() - g_lastScrollTick >= HIDE_DELAY_MS) {
+			ShowScrollBar(hWnd, SB_VERT, FALSE);
+		}
+		{
+			const LRESULT result = DefSubclassProc(hWnd, message, wParam, lParam);
+			if (g_measureInputDisplayPending) {
+				g_measureInputDisplayPending = false;
+				MethodTimerEnd(L"test_list_paint");
+				MethodTimerEnd(L"===test_input_duration");
+			}
+			return result;
+		}
 	case WM_TIMER:
 		if (wParam == TIMER_TRIGGER_HIDE_PAINT) {
+			g_scrollbarForceVisible = false;
 			KillTimer(hWnd, TIMER_TRIGGER_HIDE_PAINT);
 			InvalidateRect(hWnd, nullptr, FALSE);
-			// SetWindowPos(hWnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 			return 0;
 		}
 		break;
 	case WM_KEYDOWN: break;
 	case WM_MBUTTONUP: TimerIDSetFocusEdit = SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
 		break;
-	case WM_LISTVIEW_REFRESH_RESOURCE: listViewCleanupGraphicsResources();
+	case WM_LISTVIEW_REFRESH_RESOURCE:
+		listViewCleanupGraphicsResources();
 		listViewInitializeGraphicsResources(); // 确保字体和画刷已初始化
 		break;
 	case WM_MOUSEWHEEL:
@@ -333,6 +343,10 @@ static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, co
 		LVS_NOCOLUMNHEADER | LVS_OWNERDATA;
 	g_listViewHwnd = CreateWindowExW(0, WC_LISTVIEW, L"", style,
 									x, y, width, height, parent, reinterpret_cast<HMENU>(2), hInstance, nullptr);
+	// Do not enable LVS_EX_DOUBLEBUFFER here. This list view is owner-drawn and
+	// mixes GDI+ item painting with GDI/AlphaBlend icon painting. The native
+	// double-buffer path loses those icons when selection invalidates individual
+	// rows; a full repaint (for example, paging) only makes them reappear.
 
 	// 设置列 0（主标题），即使我们不显示它，也必须添加
 	LVCOLUMN col = {LVCF_TEXT | LVCF_WIDTH};
@@ -359,7 +373,7 @@ static void addActionDone() {
 		// 确保第一项可见
 		ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
 	}
-	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 }
 
 static void clearVisibleActionReferences() {
@@ -367,7 +381,7 @@ static void clearVisibleActionReferences() {
 	allActions.clear();
 	if (g_listViewHwnd) {
 		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
-		InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+		InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 	}
 }
 
@@ -546,6 +560,10 @@ static void listViewDrawItem(const DRAWITEMSTRUCT* lpDrawItem) {
 							g_listItemTextColorBrush2.get());
 	}
 
+	// The icon is drawn with GDI/AlphaBlend below. Flush pending GDI+ commands first;
+	// otherwise a delayed GDI+ background/text flush can overwrite the icon when
+	// only the old and new selected rows are invalidated by keyboard navigation.
+	graphics.Flush(Gdiplus::FlushIntentionSync);
 
 	// 图标绘制
 
@@ -653,7 +671,9 @@ static LRESULT listViewOnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 		if (g_skinJson != nullptr) {
 			const Gdiplus::Rect rect(rcClient.left - 1, rcClient.top - 1, rcClient.right - rcClient.left + 1,
 									rcClient.bottom - rcClient.top + 1);
-			if (g_listViewBgImage) {
+			if (g_listViewBgCachedBitmap) {
+				graphics.DrawCachedBitmap(g_listViewBgCachedBitmap, rcClient.left, rcClient.top);
+			} else if (g_listViewBgImage) {
 				graphics.DrawImage(g_listViewBgImage, rect);
 			} else {
 				const std::string colorString = g_skinJson.value("listview_bg_color", "");
@@ -760,16 +780,31 @@ inline void textMatching() {
 }
 
 inline void editTextInput() {
-	editTextBuffer.resize(1000, L'\0');
-	editTextBuffer.resize(GetWindowTextW(g_editHwnd, &editTextBuffer[0], 1000));
+#if defined(DEBUG) || defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
+	g_measureInputDisplayPending = true;
+	MethodTimerStart(L"===test_input_duration");
+	MethodTimerStart(L"test_input_processing");
+	MethodTimerStart(L"test_input_to_paint");
+#endif
+
+	const int textLength = GetWindowTextLengthW(g_editHwnd);
+	editTextBuffer.resize(static_cast<size_t>(textLength) + 1);
+	const int copiedLength = GetWindowTextW(g_editHwnd, editTextBuffer.data(), textLength + 1);
+	editTextBuffer.resize(static_cast<size_t>(copiedLength));
 	if (editTextBuffer.empty()) {
 		clearVisibleActionReferences();
-		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		if (IsWindowVisible(g_listViewHwnd)) {
+			UpdateWindow(g_listViewHwnd);
+		}
 		return;
 	}
-	SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0);
 	textMatching();
-	SendMessage(g_listViewHwnd, WM_SETREDRAW, TRUE, 0);
+	if (g_measureInputDisplayPending) {
+		MethodTimerEnd(L"test_input_processing");
+	}
+	if (IsWindowVisible(g_listViewHwnd)) {
+		UpdateWindow(g_listViewHwnd);
+	}
 }
 
 inline void refreshVisibleActionsFromCurrentInput() {

@@ -291,19 +291,16 @@ inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
 	// 使用 GDI+ 绘制背景图
 	// 如果没有背景图，则填充纯色背景
 	if (g_skinJson != nullptr) {
-		if (g_BgImage) {
+		if (g_BgCachedBitmap) {
+			Gdiplus::Graphics graphics(hdc);
+			// 直接将烘焙好的硬件级位图推送到目标 DC，速度与 BitBlt 相当
+			graphics.DrawCachedBitmap(g_BgCachedBitmap, 0, 0);
+		} else if (g_BgImage) {
+			// 兜底策略：如果缓存构建失败，回退到普通绘制（但不要临时新建 backBuffer）
+			Gdiplus::Graphics graphics(hdc);
 			RECT clientRect;
 			GetClientRect(g_mainHwnd, &clientRect);
-			const Gdiplus::Rect rect(0, 0, clientRect.right, clientRect.bottom);
-			Gdiplus::Bitmap backBuffer(rect.Width, rect.Height, PixelFormat32bppPARGB);
-			Gdiplus::Graphics bufferGraphics(&backBuffer);
-			bufferGraphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
-			bufferGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
-			bufferGraphics.DrawImage(g_BgImage, rect);
-
-			Gdiplus::Graphics graphics(hdc);
-			graphics.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-			graphics.DrawImage(&backBuffer, rect);
+			graphics.DrawImage(g_BgImage, 0, 0, clientRect.right, clientRect.bottom);
 		} else {
 			std::string bgColorStr = g_skinJson.value("window_bg_color", "#FFFFFF");
 			if (bgColorStr.empty()) {
@@ -315,9 +312,9 @@ inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
 				Gdiplus::Graphics graphics(hdc);
 				graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
 				Gdiplus::Rect rect(ps.rcPaint.left,
-									ps.rcPaint.top,
-									ps.rcPaint.right - ps.rcPaint.left,
-									ps.rcPaint.bottom - ps.rcPaint.top);
+								   ps.rcPaint.top,
+								   ps.rcPaint.right - ps.rcPaint.left,
+								   ps.rcPaint.bottom - ps.rcPaint.top);
 				graphics.FillRectangle(&bgBrush, rect);
 			}
 		}

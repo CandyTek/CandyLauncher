@@ -127,4 +127,5 @@ read [DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)
 - Use ``util/LogUtil.hpp`` funtion ``Loge(const std::wstring& tag, ...)`` print error
 - Save files using UTF-8 with BOM, `Get-Content` command requires parameter `-Encoding UTF8` to read the file.
 - No need to resolve warning and node reminder when building
-
+- The app is still under development.
+- 

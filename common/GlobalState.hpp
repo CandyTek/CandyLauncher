@@ -106,6 +106,10 @@ extern Gdiplus::Image* g_listItemBgImageSelected;
 extern Gdiplus::Color g_listItemBgColor;
 extern Gdiplus::Color g_listItemBgColorSelected;
 
+inline Gdiplus::CachedBitmap* g_BgCachedBitmap = nullptr; // 新增背景缓存
+inline Gdiplus::CachedBitmap* g_editBgCachedBitmap = nullptr;
+inline Gdiplus::CachedBitmap* g_listViewBgCachedBitmap = nullptr;
+
 // extern Gdiplus::Color g_listItemBgColor;
 // extern Gdiplus::Color g_listItemBgColorSelected;
 

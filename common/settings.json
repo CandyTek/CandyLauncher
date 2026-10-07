@@ -31,7 +31,7 @@
 			"title_en": "Start hidden",
 			"type": "bool",
 			"subPage": "normal",
-			"defValue": true
+			"defValue": false
 		},
 		{
 			"key": "pref_check_app_version",

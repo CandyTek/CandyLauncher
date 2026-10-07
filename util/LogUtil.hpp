@@ -141,10 +141,13 @@ static void MyPrint(const std::wstring& msg) {
 inline std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> methodTimerStartTimestamp;
 
 inline void MethodTimerStart(const std::wstring& label = L"Method") {
+#if defined(DEBUG) || defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
 	methodTimerStartTimestamp[label] = std::chrono::steady_clock::now();
+#endif
 }
 
 inline void MethodTimerEnd(const std::wstring& label = L"Method") {
+#if defined(DEBUG) || defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
 	auto it = methodTimerStartTimestamp.find(label);
 
 	if (it != methodTimerStartTimestamp.end()) {
@@ -156,4 +159,5 @@ inline void MethodTimerEnd(const std::wstring& label = L"Method") {
 	} else {
 		Logi(L"MethodTimer", label, L": timer not found");
 	}
+#endif
 }

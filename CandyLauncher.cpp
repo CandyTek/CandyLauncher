@@ -282,7 +282,16 @@ static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd) {
 	//ListView_SetBkColor(g_listViewHwnd, COLOR_UI_BG);
 	//ListView_SetTextBkColor(g_listViewHwnd, COLOR_UI_BG);
 
-	// SetWindowText(g_editHwnd, L"hn");
+#if defined(DEBUG) || defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
+	// 用于测试，程序启动键入词条
+	SetTimer(hWnd, 1001, 1500, [](HWND hwnd, UINT, UINT_PTR id, DWORD) {
+		KillTimer(hwnd, id);
+		if (g_editHwnd && IsWindow(g_editHwnd)) {
+			SetWindowText(g_editHwnd, L"a");
+		}
+	});
+#endif
+
 }
 
 
@@ -500,10 +509,10 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 							bgColor = g_skinJson.value("listview_bg_color", "");
 						}
 						if (g_listViewBgImage != nullptr || !bgColor.empty()) {
-							// Forward to our manager and return the result
+							// Forward to our manager and return the result. WM_NOTIFY is
+							// not a dialog message, so DWLP_MSGRESULT would be ignored.
 							LPNMLVCUSTOMDRAW lplvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lParam);
-							SetWindowLongPtr(hWnd, DWLP_MSGRESULT, listViewOnCustomDraw(lplvcd));
-							// return TRUE;
+							return listViewOnCustomDraw(lplvcd);
 						}
 					}
 					break;
@@ -727,6 +736,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 	case WM_DESTROY:
 		{
 			// 程序退出时释放 GDI+ 资源
+			clearBackgroundCachedBitmaps();
 			if (g_BgImage) {
 				delete g_BgImage;
 				g_BgImage = nullptr;
