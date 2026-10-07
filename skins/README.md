@@ -18,6 +18,16 @@
 | `skin_winter_courier.json` | 冬日信使少女，冰蓝搜索面板。 |
 | `skin_desert_mechanic.json` | 沙漠机械师少女，琥珀色搜索面板。 |
 | `skin_cherry_tea_artist.json` | 樱花茶艺少女，酒红与玫瑰金搜索面板。 |
+| `skin_solarpunk_conservatory.json` | 太阳朋克温室，翡翠绿与黄铜色面板。 |
+| `skin_noir_city.json` | 雨夜黑色电影，炭灰与琥珀色面板。 |
+| `skin_art_deco_jazz.json` | 装饰艺术爵士乐，午夜蓝与金色面板。 |
+| `skin_cottage_kitchen.json` | 乡村小屋厨房，奶油色与鼠尾草绿面板。 |
+| `skin_brutalist_mono.json` | 粗野主义建筑，象牙白与石墨灰面板。 |
+| `skin_space_station.json` | 轨道空间站，靛蓝与青色面板。 |
+| `skin_autumn_library.json` | 秋日图书馆，深棕与暖橙色面板。 |
+| `skin_vaporwave_pool.json` | 蒸汽波泳池，薰衣草紫与粉橙色面板。 |
+| `skin_gothic_glass.json` | 哥特彩窗，紫黑与红宝石色面板。 |
+| `skin_ukiyoe_mountain.json` | 浮世绘山景，和纸色与靛蓝面板。 |
 
 `skin_test_bk.json` 和 `skin_test_bk2.json` 是测试备份文件。
 
@@ -31,3 +41,5 @@
 浮窗牛仔武士皮肤的 CC0 原图、背景图及制作记录见 [`cowgirl_samurai/README.md`](cowgirl_samurai/README.md)。其 `window_shape_from_bg_alpha` 选项会按背景 PNG 的 alpha 通道裁切窗口；只有需要这种窗口形状的皮肤才应启用。
 
 新增的八款少女皮肤各有独立素材目录和生成记录，背景图由内置 imagegen 工具原创生成。它们也启用 `window_shape_from_bg_alpha`，使面板和人物以外的透明区域不阻挡桌面点击。
+
+新增的十款主题皮肤同样各有独立素材目录和生成记录。其原创背景图由内置 imagegen 工具生成，并使用 PNG alpha 通道裁切窗口。它们涵盖自然、复古、建筑、科幻与传统绘画等不同风格。
