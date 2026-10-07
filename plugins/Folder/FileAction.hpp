@@ -178,7 +178,7 @@ public:
 			const ULONGLONG start = GetTickCount64();
 			iconFilePathIndex = GetSysImageIndex(targetFilePath);
 			const ULONGLONG elapsed = GetTickCount64() - start;
-			if (elapsed >= 20) Logi(L"FolderPlugin", L"lazy icon ms=", elapsed, L" path=", targetFilePath);
+			if (elapsed >= 100) Logi(L"FolderPlugin", L"lazy icon ms=", elapsed, L" path=", targetFilePath);
 		}
 		return iconFilePathIndex;
 	}

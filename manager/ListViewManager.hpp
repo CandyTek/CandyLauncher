@@ -4,6 +4,13 @@
 #include <vector>
 #include <memory>
 #include <sstream>
+#include <array>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <commoncontrols.h>
 #include <gdiplus.h>
 
@@ -22,6 +29,172 @@
 // Static variable definitions
 inline HIMAGELIST g_listFileImageList = nullptr;
 inline bool g_measureInputDisplayPending = false;
+
+constexpr UINT WM_LISTVIEW_SYSTEM_ICONS_READY = WM_USER + 108;
+
+// Shell image lists resolve some entries lazily. Resolving them from WM_DRAWITEM
+// makes the first result paint much slower, so warm them on a background thread.
+class ListViewSystemIconWarmer {
+public:
+	ListViewSystemIconWarmer() {
+		for (size_t i = 0; i < workers.size(); ++i)
+			workers[i] = std::thread(&ListViewSystemIconWarmer::run, this, i);
+	}
+
+	~ListViewSystemIconWarmer() {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			stopping = true;
+			++requestedGeneration;
+			tasks.clear();
+		}
+		condition.notify_all();
+		waitCondition.notify_all();
+		for (auto& worker : workers) {
+			if (worker.joinable()) worker.join();
+		}
+	}
+
+	void reset(HWND listView, const std::vector<std::shared_ptr<BaseAction>>& actions) {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			++requestedGeneration;
+			listViewWindow = listView;
+			tasks.clear();
+			requestedActions.clear();
+			readyIndices.clear();
+			pendingVisibleCount = 0;
+		}
+		requestVisible(listView, actions);
+	}
+
+	void requestVisible(HWND listView, const std::vector<std::shared_ptr<BaseAction>>& actions) {
+		if (!listView || actions.empty()) return;
+
+		const int topIndex = std::max(0, ListView_GetTopIndex(listView));
+		const int countPerPage = std::max(1, ListView_GetCountPerPage(listView));
+		const size_t begin = std::min(static_cast<size_t>(topIndex), actions.size());
+		const size_t end = std::min(begin + static_cast<size_t>(countPerPage) + 1, actions.size());
+		bool queued = false;
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (stopping || listView != listViewWindow) return;
+			for (size_t i = begin; i < end; ++i) {
+				const auto& action = actions[i];
+				if (!action || action->getIconBitmap() || !requestedActions.insert(action).second) continue;
+				// 标记需要等待的可见项数量
+				tasks.push_back({requestedGeneration, listView, static_cast<int>(i), action, true});
+				++pendingVisibleCount;
+				queued = true;
+			}
+		}
+		if (queued) condition.notify_all();
+	}
+
+	// 阻塞 UI 线程最多 timeoutMs 毫秒，等待当前首屏可见项图标就绪
+	void waitForVisible(int timeoutMs) {
+		std::unique_lock<std::mutex> lock(mutex);
+		if (pendingVisibleCount == 0 || tasks.empty()) return;
+
+		waitCondition.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this]() {
+			return pendingVisibleCount == 0 || stopping;
+		});
+	}
+
+	void cancel(HWND listView) {
+		std::lock_guard<std::mutex> lock(mutex);
+		if (listView != listViewWindow) return;
+		++requestedGeneration;
+		listViewWindow = nullptr;
+		tasks.clear();
+		requestedActions.clear();
+		readyIndices.clear();
+		pendingVisibleCount = 0;
+		waitCondition.notify_all();
+	}
+
+	bool tryGet(const std::shared_ptr<BaseAction>& action, int& index) const {
+		std::lock_guard<std::mutex> lock(mutex);
+		const auto found = readyIndices.find(action);
+		if (found == readyIndices.end()) return false;
+		index = found->second;
+		return true;
+	}
+
+	bool isCurrent(const UINT generation) const {
+		std::lock_guard<std::mutex> lock(mutex);
+		return generation == requestedGeneration;
+	}
+
+private:
+	struct Task {
+		UINT generation;
+		HWND listView;
+		int itemIndex;
+		std::shared_ptr<BaseAction> action;
+		bool isVisibleItem = false;
+	};
+
+	void run(const size_t workerIndex) {
+		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		IImageList2* imageList = nullptr;
+		SHGetImageList(SHIL_EXTRALARGE, IID_IImageList2, reinterpret_cast<void**>(&imageList));
+		if (workerIndex == 0 && imageList && unknown_file_icon_index >= 0)
+			imageList->ForceImagePresent(unknown_file_icon_index, ILFIP_ALWAYS);
+
+		for (;;) {
+			Task task{};
+			{
+				std::unique_lock<std::mutex> lock(mutex);
+				condition.wait(lock, [this] { return stopping || !tasks.empty(); });
+				if (stopping) break;
+				task = std::move(tasks.front());
+				tasks.pop_front();
+			}
+
+			const int index = task.action->getIconFilePathIndex();
+			if (imageList && index >= 0) imageList->ForceImagePresent(index, ILFIP_ALWAYS);
+
+			bool notifyWait = false;
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				if (task.isVisibleItem && pendingVisibleCount > 0) {
+					--pendingVisibleCount;
+					if (pendingVisibleCount == 0) notifyWait = true;
+				}
+				if (stopping || task.generation != requestedGeneration || task.listView != listViewWindow) {
+					if (notifyWait) waitCondition.notify_all();
+					continue;
+				}
+				readyIndices.emplace(task.action, index);
+			}
+
+			if (notifyWait) {
+				waitCondition.notify_all();
+			}
+
+			if (IsWindow(task.listView))
+				PostMessageW(task.listView, WM_LISTVIEW_SYSTEM_ICONS_READY, task.generation,
+							 static_cast<LPARAM>(task.itemIndex));
+		}
+		if (imageList) imageList->Release();
+		if (SUCCEEDED(comResult)) CoUninitialize();
+	}
+
+	mutable std::mutex mutex;
+	std::condition_variable condition;
+	std::condition_variable waitCondition; // 用于 16ms 等待的条件变量
+	std::array<std::thread, 2> workers;
+	std::deque<Task> tasks;
+	bool stopping = false;
+	UINT requestedGeneration = 0;
+	size_t pendingVisibleCount = 0;        // 当前首屏未完成的任务计数
+	HWND listViewWindow = nullptr;
+	std::unordered_set<std::shared_ptr<BaseAction>> requestedActions;
+	std::unordered_map<std::shared_ptr<BaseAction>, int> readyIndices;
+};
+
+inline ListViewSystemIconWarmer g_listViewSystemIconWarmer;
 
 inline bool listViewFontsInitialized = false;
 
@@ -239,6 +412,7 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 											UINT_PTR, const DWORD_PTR dwRefData) {
 	switch (message) {
 	case WM_PAINT:
+		g_listViewSystemIconWarmer.requestVisible(hWnd, filteredActions);
 		if (g_measureInputDisplayPending) {
 			MethodTimerEnd(L"test_input_to_paint");
 			MethodTimerStart(L"test_list_paint");
@@ -271,6 +445,24 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 		listViewCleanupGraphicsResources();
 		listViewInitializeGraphicsResources(); // 确保字体和画刷已初始化
 		break;
+	case WM_LISTVIEW_SYSTEM_ICONS_READY:
+		if (g_listViewSystemIconWarmer.isCurrent(static_cast<UINT>(wParam))) {
+			const int itemIndex = static_cast<int>(lParam);
+			RECT itemRect{};
+			if (ListView_GetItemRect(hWnd, itemIndex, &itemRect, LVIR_BOUNDS)) {
+				const bool selected = (ListView_GetItemState(hWnd, itemIndex, LVIS_SELECTED) & LVIS_SELECTED) != 0;
+				const int iconX = selected ? g_itemIconSelectedX : g_itemIconX;
+				const int iconY = selected ? g_itemIconSelectedY : g_itemIconY;
+				const RECT iconRect = {
+					itemRect.left + iconX,
+					itemRect.top + iconY,
+					itemRect.left + iconX + LISTITEM_ICON_SIZE,
+					itemRect.top + iconY + LISTITEM_ICON_SIZE
+				};
+				InvalidateRect(hWnd, &iconRect, FALSE);
+			}
+		}
+		return 0;
 	case WM_MOUSEWHEEL:
 		{
 			// 在Shift+滚动上键时，会触发列表的NM_DBLCLK,不知怎么回事，干脆直接屏蔽这个组合
@@ -286,6 +478,7 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 		break;
 	case WM_NCDESTROY:
 		KillTimer(hWnd, TIMER_TRIGGER_HIDE_PAINT);
+		g_listViewSystemIconWarmer.cancel(hWnd);
 		break;
 	default: break;
 	}
@@ -373,6 +566,9 @@ static void addActionDone() {
 		// 确保第一项可见
 		ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
 	}
+	g_listViewSystemIconWarmer.reset(g_listViewHwnd, filteredActions);
+	// 强行等待最多 16ms，能拿到多少图标就拿多少
+	g_listViewSystemIconWarmer.waitForVisible(20);
 	InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 }
 
@@ -381,6 +577,7 @@ static void clearVisibleActionReferences() {
 	allActions.clear();
 	if (g_listViewHwnd) {
 		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+		g_listViewSystemIconWarmer.reset(g_listViewHwnd, filteredActions);
 		InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 	}
 }
@@ -423,7 +620,10 @@ static void listViewCustomDataOnGetDispInfo(NMLVDISPINFOW* pdi) {
 
 	// ListView 会请求图像索引
 	if (pdi->item.mask & LVIF_IMAGE) {
-		pdi->item.iImage = (action->getIconFilePathIndex() == -1) ? unknown_file_icon_index : action->getIconFilePathIndex();
+		int iconIndex = -1;
+		pdi->item.iImage = g_listViewSystemIconWarmer.tryGet(action, iconIndex) && iconIndex >= 0
+			? iconIndex
+			: I_IMAGECALLBACK;
 	}
 
 	// 如果有其他状态（如选中），也可以在这里设置
@@ -627,13 +827,17 @@ static void listViewDrawItem(const DRAWITEMSTRUCT* lpDrawItem) {
 	// }
 	// }
 	else {
-		if (g_listFileImageList && action->getIconFilePathIndex() >= 0) {
+		int iconIndex = -1;
+		if (!g_listViewSystemIconWarmer.tryGet(action, iconIndex)) {
+			return;
+		}
+		if (g_listFileImageList && iconIndex >= 0) {
 			if (isSelected) {
-				ImageList_Draw(g_listFileImageList, action->getIconFilePathIndex(), hdc, rc.left + g_itemIconSelectedX,
+				ImageList_Draw(g_listFileImageList, iconIndex, hdc, rc.left + g_itemIconSelectedX,
 								rc.top + g_itemIconSelectedY,
 								ILD_TRANSPARENT);
 			} else {
-				ImageList_Draw(g_listFileImageList, action->getIconFilePathIndex(), hdc, rc.left + g_itemIconX,
+				ImageList_Draw(g_listFileImageList, iconIndex, hdc, rc.left + g_itemIconX,
 								rc.top + g_itemIconY,
 								ILD_TRANSPARENT);
 			}

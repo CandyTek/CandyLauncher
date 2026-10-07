@@ -150,7 +150,7 @@ static void updateSkinWindowRegion() {
 	const int width = MAIN_WINDOW_WIDTH;
 	const int height = MAIN_WINDOW_HEIGHT;
 	if (width <= 0 || height <= 0) return;
-	const int threshold = std::clamp(g_skinJson.value("window_shape_alpha_threshold", 64), 0, 255);
+	const int threshold = std::clamp(g_skinJson.value("window_shape_alpha_threshold", 6), 0, 255);
 	Gdiplus::Bitmap mask(width, height, PixelFormat32bppARGB);
 	Gdiplus::Graphics graphics(&mask);
 	graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
