@@ -90,23 +90,36 @@ add_executable(CandyLauncher WIN32
 		manager/SkinFileUtil.hpp
 )
 
-add_library(CandyLauncherLangZh SHARED
-		lang/ResourceDllEntry.cpp #平时去掉可以加快编译速度，资源改动时取消注释
-		lang/zh-CN.rc
-)
-set_target_properties(CandyLauncherLangZh PROPERTIES
-		OUTPUT_NAME "zh-CN"
-		PREFIX ""
+# 语言配置
+set(LANG_RC_DEPS "${CMAKE_SOURCE_DIR}/common/I18nResource.h")
+
+set(SUPPORTED_LANGUAGES
+		"zh-CN"
+		"en-US"
 )
 
-add_library(CandyLauncherLangEn SHARED
-		lang/ResourceDllEntry.cpp
-		lang/en-US.rc
-)
-set_target_properties(CandyLauncherLangEn PROPERTIES
-		OUTPUT_NAME "en-US"
-		PREFIX ""
-)
+foreach(lang ${SUPPORTED_LANGUAGES})
+	string(REPLACE "-" "_" lang_target_suffix ${lang})
+	set(target_name "CandyLauncherLang_${lang_target_suffix}")
+	set(rc_file "lang/${lang}.rc")
+
+	set_source_files_properties(${rc_file} PROPERTIES
+			OBJECT_DEPENDS "${LANG_RC_DEPS}"
+	)
+
+	add_library(${target_name} SHARED ${rc_file})
+
+	set_target_properties(${target_name} PROPERTIES
+			OUTPUT_NAME "${lang}"
+			PREFIX ""
+	)
+
+	target_compile_definitions(${target_name} PRIVATE UNICODE _UNICODE)
+
+	if (MSVC)
+		target_link_options(${target_name} PRIVATE /NOENTRY)
+	endif()
+endforeach()
 
 target_precompile_headers(CandyLauncher
 		PRIVATE
@@ -124,8 +137,6 @@ target_compile_definitions(CandyLauncher PRIVATE UNICODE _UNICODE
 		$<$<CONFIG:Release>:NDEBUG=1>
 		$<$<CONFIG:RelWithDebInfo>:REL_WITH_DEB_INFO_DEBUG=1>
 )
-target_compile_definitions(CandyLauncherLangZh PRIVATE UNICODE _UNICODE)
-target_compile_definitions(CandyLauncherLangEn PRIVATE UNICODE _UNICODE)
 
 # Add /bigobj flag for MSVC to handle large object files (ExprTk)
 if (MSVC)
@@ -136,8 +147,6 @@ if (MSVC)
 	# 禁用特定的第三方库警告
 	#    target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4819)
 	target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4996)
-	target_compile_options(CandyLauncherLangZh PRIVATE /bigobj /wd4251 /wd4996)
-	target_compile_options(CandyLauncherLangEn PRIVATE /bigobj /wd4251 /wd4996)
 endif ()
 
 
@@ -255,18 +264,6 @@ add_custom_command(TARGET CandyLauncher POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		$<TARGET_FILE:cpp-pinyin>
 		$<TARGET_FILE_DIR:CandyLauncher>)
-
-add_custom_command(TARGET CandyLauncher POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E make_directory
-		$<TARGET_FILE_DIR:CandyLauncher>/lang
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		$<TARGET_FILE:CandyLauncherLangZh>
-		$<TARGET_FILE_DIR:CandyLauncher>/lang
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		$<TARGET_FILE:CandyLauncherLangEn>
-		$<TARGET_FILE_DIR:CandyLauncher>/lang
-)
-#add_dependencies(CandyLauncher CandyLauncherLangZh CandyLauncherLangEn)
 
 # 复制多音字拼音库字典
 add_custom_command(TARGET CandyLauncher POST_BUILD

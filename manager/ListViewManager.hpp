@@ -3,34 +3,17 @@
 #include <commctrl.h>
 #include <vector>
 #include <memory>
-// #include "ListedRunnerPlugin.h"
-#include "../util/ThreadPool.hpp"
-#include "../util/MainTools.hpp"
-#include <shlobj.h>
-#include <shlguid.h>
 #include <sstream>
-#include <Shobjidl.h>    // For IImageList
 #include <commoncontrols.h>
 #include <gdiplus.h>
-#include <rapidfuzz/fuzz.hpp>
 
 #include "../common/GlobalState.hpp"
-#include <optional>
-#include <execution>
-#include <vector>
 #include <string>
-#include <algorithm>
-#include <memory>
-#include <functional> // For std::greater
-#include <thread>     // For std::thread::hardware_concurrency
-#include <future>     // For std::async and std::future
+#include <functional>
 
 #include "TextMatchHelper.hpp"
 #include "plugins/BaseLaunchAction.hpp"
 #include "plugins/PluginManager.hpp"
-#include "util/ColorUtil.hpp"
-#include "util/ColorUtil.hpp"
-#include "util/ColorUtil.hpp"
 #include "util/ColorUtil.hpp"
 
 #pragma comment(lib, "Shell32.lib")
@@ -39,12 +22,6 @@
 // Static variable definitions
 inline HIMAGELIST g_listFileImageList = nullptr;
 
-// inline HBRUSH hNormalBrush = CreateSolidBrush(COLOR_UI_BG);
-// inline HBRUSH hSelectedBrush = CreateSolidBrush(COLOR_UI_BG_DEEP);
-
-// std::unique_ptr<Gdiplus::SolidBrush> whiteBrush;
-// std::unique_ptr<Gdiplus::SolidBrush> grayBrush;
-// std::unique_ptr<Gdiplus::SolidBrush> blackBrush;
 inline bool listViewFontsInitialized = false;
 
 typedef HRESULT (WINAPI *SHGetImageListPtr)(int iImageList, REFIID riid, void** ppv);
@@ -781,15 +758,6 @@ inline void textMatching() {
 	}
 	actionFilter(editTextBuffer2);
 }
-
-// void ExecutePluginAction(const std::wstring& actionId)
-// {
-// 	if (g_pluginManager)
-// 	{
-// 		std::wstring actionIdStr = (actionId);
-// 		g_pluginManager->DispatchActionExecute(actionIdStr);
-// 	}
-// }
 
 inline void editTextInput() {
 	editTextBuffer.resize(1000, L'\0');

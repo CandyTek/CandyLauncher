@@ -42,29 +42,6 @@
 			"defValue": true
 		},
 		{
-			"key": "pref_ui_language",
-			"title": "界面语言",
-			"title_en": "UI language",
-			"type": "list",
-			"entries": [
-				"跟随系统",
-				"中文",
-				"English"
-			],
-			"entries_en": [
-				"Follow system",
-				"Chinese",
-				"English"
-			],
-			"entryValues": [
-				"system",
-				"zh",
-				"en"
-			],
-			"subPage": "normal",
-			"defValue": "system"
-		},
-		{
 			"key": "pref_night_mode",
 			"title": "夜间模式",
 			"title_en": "Theme mode",
@@ -86,6 +63,28 @@
 			],
 			"subPage": "normal",
 			"defValue": "day_mode"
+		},
+		{
+			"key": "pref_ui_language",
+			"title": "Language",
+			"type": "list",
+			"entries": [
+				"跟随系统",
+				"中文",
+				"English"
+			],
+			"entries_en": [
+				"Follow system",
+				"Chinese",
+				"English"
+			],
+			"entryValues": [
+				"system",
+				"zh",
+				"en"
+			],
+			"subPage": "normal",
+			"defValue": "system"
 		},
 		{
 			"key": "pref_hotkey_toggle_main_panel",
