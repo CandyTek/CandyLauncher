@@ -13,6 +13,7 @@
 #include "../view/SwitchView.hpp"
 #include "../util/PinyinHelper.hpp"
 #include "../util/FileSystemTraverser.hpp"
+#include "manager/SkinFileUtil.hpp"
 #include "plugins/PluginManager.hpp"
 #include "util/FileUtil.hpp"
 #include "util/MyJsonUtil.hpp"
@@ -53,7 +54,7 @@ static std::vector<std::wstring> FindSkinFiles() {
 // 获取 settings.json 文件内容
 static std::string GetSettingsJsonText() {
 	// 正式版使用程序内嵌的文本，debug版使用绝对路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本
-#ifndef DEBUG
+#if defined(DEBUG) || defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
 	std::string jsonText = ReadUtf8File(EXE_FOLDER_PATH + LR"(\..\common\settings.json)");
 	if (jsonText.empty()) {
 		return GetAppResourceText(IDR_SETTINGS_JSON);
@@ -542,6 +543,12 @@ static void handleButtonAction(HWND hwnd, const std::string& key) {
 		} else {
 			ShellExecute(nullptr, L"open", L"https://github.com/CandyTek/CandyLauncher/wiki/English", nullptr, nullptr, SW_SHOW);
 		}
+	} else if (key == "btn_open_skin_folder") {
+		std::wstring currentSkinFileName = getCurrectSkinPath(g_currectSkinFilePath);
+		OpenAndSelectFileWithShellExecute(currentSkinFileName);
+	} else if (key == "btn_edit_skin_file") {
+		std::wstring currentSkinFileName = getCurrectSkinPath(g_currectSkinFilePath);
+		OpenFileInDefaultProgram(currentSkinFileName);
 	}
 }
 

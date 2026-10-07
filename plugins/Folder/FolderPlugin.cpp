@@ -916,7 +916,7 @@ public:
 		hkRunAsAdmin = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
 		automationEditorAction = std::make_shared<AutomationEditorAction>();
 
-#if defined(DEBUG) || defined(_DEBUG)
+#if defined(DEBUG) || defined(_DEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
 		if (IS_SHOW_INDEX_MANAGER_WINDOW)
 		{
 			ShowIndexedManagerWindow(nullptr);

@@ -607,6 +607,22 @@
 			"entryValues": [
 			],
 			"defValue": "normal"
+		},
+		{
+			"key": "btn_open_skin_folder",
+			"title": "打开皮肤所在文件夹",
+			"title_en": "Open the folder where the skin",
+			"type": "button",
+			"subPage": "skin",
+			"defValue": ""
+		},
+		{
+			"key": "btn_edit_skin_file",
+			"title": "编辑皮肤配置",
+			"title_en": "Edit skin file",
+			"type": "button",
+			"subPage": "skin",
+			"defValue": ""
 		}
 	]
 }

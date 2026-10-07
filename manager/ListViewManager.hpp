@@ -238,10 +238,46 @@ static bool HandleListNavigationHotkey(const UINT vk, const UINT modifiers) {
 	return false;
 }
 
+static ULONGLONG g_lastScrollTick = 0;
+static bool g_isScrollbarVisible = false;
+
+constexpr UINT_PTR TIMER_TRIGGER_HIDE_PAINT = 0x9003;
+constexpr ULONGLONG HIDE_DELAY_MS = 2000;
+
+// 更新时间并标记当前处于可见激活期
+static void OnUserScroll(HWND hWnd) {
+	if (!g_listViewHideScrollbar)
+	{
+		return;
+	}
+	g_lastScrollTick = GetTickCount64();
+	g_isScrollbarVisible = true;
+	ShowScrollBar(hWnd, SB_VERT, TRUE);
+	SetTimer(hWnd, TIMER_TRIGGER_HIDE_PAINT, HIDE_DELAY_MS, nullptr);
+}
+
 // 使listview监听esc键
 static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, const WPARAM wParam, const LPARAM lParam,
 											UINT_PTR, const DWORD_PTR dwRefData) {
 	switch (message) {
+	case WM_PAINT:
+		if (g_listViewHideScrollbar)
+		{
+			if (!g_isScrollbarVisible || GetTickCount64() - g_lastScrollTick >= HIDE_DELAY_MS) {
+				// 超时强制压制隐藏
+				ShowScrollBar(hWnd, SB_VERT, FALSE);
+				g_isScrollbarVisible = false;
+			}
+		}
+		break;
+	case WM_TIMER:
+		if (wParam == TIMER_TRIGGER_HIDE_PAINT) {
+			KillTimer(hWnd, TIMER_TRIGGER_HIDE_PAINT);
+			InvalidateRect(hWnd, nullptr, FALSE);
+			// SetWindowPos(hWnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+			return 0;
+		}
+		break;
 	case WM_KEYDOWN: break;
 	case WM_MBUTTONUP: TimerIDSetFocusEdit = SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
 		break;
@@ -255,7 +291,14 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 			if (shiftDown) {
 				return 0;
 			}
+			OnUserScroll(hWnd);
 		}
+		break;
+	case WM_VSCROLL:
+		OnUserScroll(hWnd);
+		break;
+	case WM_NCDESTROY:
+		KillTimer(hWnd, TIMER_TRIGGER_HIDE_PAINT);
 		break;
 	default: break;
 	}
@@ -317,7 +360,7 @@ static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, co
 	// 设置列 0（主标题），即使我们不显示它，也必须添加
 	LVCOLUMN col = {LVCF_TEXT | LVCF_WIDTH};
 	col.pszText = const_cast<LPWSTR>(L"Title");
-	col.cx = 500;
+	col.cx = 0;
 	ListView_InsertColumn(g_listViewHwnd, 0, &col);
 
 	//hImageList = GetSystemImageList(true);

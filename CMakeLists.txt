@@ -87,6 +87,7 @@ add_executable(CandyLauncher WIN32
 		util/ShortCutDetectUtil.hpp
 		util/HotkeyUtils.hpp
 		manager/ProcessManager.hpp
+		manager/SkinFileUtil.hpp
 )
 
 add_library(CandyLauncherLangZh SHARED
@@ -121,6 +122,7 @@ target_compile_definitions(CandyLauncher PRIVATE UNICODE _UNICODE
 		CMARK_GFM_STATIC_DEFINE CMARK_GFM_EXTENSIONS_STATIC_DEFINE
 		$<$<CONFIG:Debug>:DEBUG=1>
 		$<$<CONFIG:Release>:NDEBUG=1>
+		$<$<CONFIG:RelWithDebInfo>:REL_WITH_DEB_INFO_DEBUG=1>
 )
 target_compile_definitions(CandyLauncherLangZh PRIVATE UNICODE _UNICODE)
 target_compile_definitions(CandyLauncherLangEn PRIVATE UNICODE _UNICODE)

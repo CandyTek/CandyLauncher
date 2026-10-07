@@ -8,6 +8,8 @@
 #include <gdiplus.h>
 #include <atomic>
 #include <cstring>
+
+#include "SkinFileUtil.hpp"
 #include "../util/StringUtil.hpp"
 
 // 监听皮肤文件改动
@@ -20,23 +22,6 @@ inline size_t g_prefSkinIndex;
 
 // 外部变量声明
 //inline std::atomic<bool> g_shouldStop;
-
-static std::wstring getCurrectSkinPath(std::wstring skinPath) {
-	std::wstring result;
-	if (skinPath == L"default") {
-		result = DEFAULT_SKIN_PATH;
-	} else if (skinPath == L"night_mode") {
-		result = NIGHT_SKIN_PATH;
-	} else {
-		skinPath = NormalizePath(skinPath);
-		if (StartsWith(skinPath, L"/") || StartsWith(skinPath, L"\\")) {
-			result = EXE_FOLDER_PATH + skinPath;
-		} else {
-			result = skinPath;
-		}
-	}
-	return result;
-}
 
 // 判断系统是否启用了深色模式
 static bool IsSystemDarkMode() {
@@ -288,14 +273,14 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 
 	int listX = g_skinJson.value("listview_x", 10);
 	int listY = g_skinJson.value("listview_y", 45);
-	g_itemListWidth = g_skinJson.value("listview_width", 580);
-	g_itemListHeight = g_skinJson.value("listview_height", 380);
+	g_listViewWidth = g_skinJson.value("listview_width", 580);
+	g_listViewHeight = g_skinJson.value("listview_height", 380);
 
 	// 处理背景图片
 	getSkinPictureFile(g_BgImage, "window_bg_picture", MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	//RenderNinePatchToSize
 	getSkinPictureFile(g_editBgImage, "editbox_bg_picture", editWidth, editHeight);
-	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture", g_itemListWidth, g_itemListHeight);
+	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture", g_listViewWidth, g_listViewHeight);
 	getSkinPictureFile(g_listItemBgImage, "item_bg_picture", g_listItemWidth, g_listItemHeight);
 	getSkinPictureFile(g_listItemBgImageSelected, "item_bg_picture_selected", g_listItemWidth, g_listItemHeight);
 	updateSkinWindowRegion();
@@ -304,11 +289,12 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 		SendMessage(g_editHwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
 	}
 	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
-	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_itemListWidth, g_itemListHeight, SWP_NOZORDER);
+	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER);
 	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
 	g_listViewHideScrollbar = g_skinJson.value("listview_hide_scrollbar", false);
-	int thumbWidth = g_listViewHideScrollbar ? 0 : GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
-	ListView_SetColumnWidth(g_listViewHwnd, 0, g_itemListWidth - thumbWidth - 6);
+	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
+	// 这里是调节列表item宽度重要的地方，调好了横向滚动条就不存在
+	ListView_SetColumnWidth(g_listViewHwnd, 0, g_listViewWidth - thumbWidth - 0);
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
 	UpdateListViewScrollbarStyle();
 	InvalidateRect(g_listViewHwnd, nullptr, TRUE);

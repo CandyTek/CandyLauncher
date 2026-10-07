@@ -121,7 +121,7 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 	// 设置 & 退出
 	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_SETTINGS, L"设置(&S)");
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_SETTINGS, MF_BYCOMMAND, gBmpSettings, gBmpSettings);
-#if defined(_DEBUG) || !defined(NDEBUG)
+#if defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG)
 	AppendMenuW(g_hTrayMenu, MF_STRING, 10999, L"当前为DEBUG版本");
 #endif
 

@@ -140,8 +140,8 @@ extern int g_itemTextPosSelectedY1;
 extern int g_itemTextPosSelectedX2;
 extern int g_itemTextPosSelectedY2;
 
-extern int g_itemListWidth;
-extern int g_itemListHeight;
+extern int g_listViewWidth;
+extern int g_listViewHeight;
 
 extern double g_item_font_size_1;
 extern double g_item_font_size_2;

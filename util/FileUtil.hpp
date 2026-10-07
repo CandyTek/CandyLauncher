@@ -177,3 +177,44 @@ inline std::wstring ShortToLongPathWithEnvironment(const std::wstring& shortPath
 	// 返回结果，移除结尾的空字符
 	return longPath;
 }
+
+static void OpenFileInDefaultProgram(const std::wstring& path)
+{
+	// 调用系统默认关联程序打开该文件
+	HINSTANCE result = ShellExecuteW(
+		NULL,                       // 父窗口句柄（没有可传 NULL）
+		L"open",                    // 操作动词：打开
+		path.c_str(),// 目标文件路径
+		NULL,                       // 启动参数（打开文件填 NULL）
+		NULL,                       // 工作目录（默认填 NULL）
+		SW_SHOWNORMAL               // 显示方式：正常显示并激活窗口
+	);
+
+	// ShellExecute 返回值大于 32 表示启动成功
+	if (reinterpret_cast<INT_PTR>(result) <= 32) {
+		// 打开失败时的备选处理：例如系统未关联 .json 打开方式时，可弹出“打开方式”对话框
+		ShellExecuteW(
+			NULL,
+			L"openas",              // 弹出系统“选择打开方式”弹窗
+			path.c_str(),
+			NULL,
+			NULL,
+			SW_SHOWNORMAL
+		);
+	}
+}
+static void OpenAndSelectFileWithShellExecute(const std::wstring& path)
+{
+	// 构造参数：/select,"C:\path\to\file.exe"
+	// 注意：/select, 与路径之间不要带空格；路径用双引号包裹以防路径中包含空格
+	std::wstring params = L"/select,\"" + path + L"\"";
+
+	ShellExecuteW(
+		nullptr,
+		L"open",
+		L"explorer.exe",
+		params.c_str(),
+		nullptr,
+		SW_SHOWNORMAL
+	);
+}

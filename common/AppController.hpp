@@ -15,7 +15,7 @@
 #include "manager/ProcessManager.hpp"
 #include "util/FullScreenDetectUtil.hpp"
 
-#if defined(_DEBUG) || !defined(NDEBUG)
+#if defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
@@ -175,9 +175,11 @@ static void TrayMenuClick(const int position) {
 	case TRAY_MENU_ID_OPEN_FOLDER: // 打开程序目录
 		{
 			wchar_t path[MAX_PATH];
-			GetModuleFileName(nullptr, path, MAX_PATH);
-			PathRemoveFileSpec(path);
-			ShellExecute(nullptr, L"open", path, nullptr, nullptr, SW_SHOW);
+			const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+			if (length == 0 || length == MAX_PATH) {
+				return;
+			}
+			OpenAndSelectFileWithShellExecute(path);
 		}
 		break;
 	case TRAY_MENU_ID_SETTINGS: // 前往设置
