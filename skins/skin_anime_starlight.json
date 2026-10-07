@@ -64,5 +64,5 @@
 	"item_bg_picture": "",
 	"item_bg_picture_selected": "",
 	"window_shape_from_bg_alpha": true,
-	"window_shape_alpha_threshold": 64
+	"window_shape_alpha_threshold": 6
 }
