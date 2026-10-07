@@ -1,4 +1,4 @@
-#CandyLauncher
+# CandyLauncher
 
 CandyLauncher is a lightweight Windows shortcut launcher written in C++, imitating Wox, and quickly launches the actions in each plug-in through search
 
