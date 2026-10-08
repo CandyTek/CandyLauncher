@@ -86,6 +86,7 @@ add_executable(CandyLauncher WIN32
 		util/FullScreenDetectUtil.hpp
 		util/ShortCutDetectUtil.hpp
 		util/HotkeyUtils.hpp
+		util/SvgUtil.hpp
 		manager/ProcessManager.hpp
 		manager/SkinFileUtil.hpp
 )
@@ -98,6 +99,7 @@ set(SUPPORTED_LANGUAGES
 		"en-US"
 )
 
+set(LANGUAGE_TARGETS)
 foreach(lang ${SUPPORTED_LANGUAGES})
 	string(REPLACE "-" "_" lang_target_suffix ${lang})
 	set(target_name "CandyLauncherLang_${lang_target_suffix}")
@@ -107,19 +109,19 @@ foreach(lang ${SUPPORTED_LANGUAGES})
 			OBJECT_DEPENDS "${LANG_RC_DEPS}"
 	)
 
-	add_library(${target_name} SHARED ${rc_file})
+	add_library(${target_name} MODULE ${rc_file} lang/ResourceDllEntry.cpp)
 
 	set_target_properties(${target_name} PROPERTIES
 			OUTPUT_NAME "${lang}"
 			PREFIX ""
+			RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:CandyLauncher>/lang"
+			LIBRARY_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:CandyLauncher>/lang"
 	)
+	list(APPEND LANGUAGE_TARGETS ${target_name})
 
 	target_compile_definitions(${target_name} PRIVATE UNICODE _UNICODE)
-
-	if (MSVC)
-		target_link_options(${target_name} PRIVATE /NOENTRY)
-	endif()
 endforeach()
+add_dependencies(CandyLauncher ${LANGUAGE_TARGETS})
 
 target_precompile_headers(CandyLauncher
 		PRIVATE
@@ -146,7 +148,7 @@ if (MSVC)
 	add_compile_options(/external:anglebrackets /external:W0)
 	# 禁用特定的第三方库警告
 	#    target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4819)
-	target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4996)
+#	target_compile_options(CandyLauncher PRIVATE /wd4251 /wd4996)
 endif ()
 
 
@@ -327,7 +329,20 @@ add_subdirectory(plugins/BrowserHistory)
 add_subdirectory(plugins/Registry)
 add_subdirectory(plugins/Service)
 add_subdirectory(plugins/WindowsSearch)
-add_subdirectory(plugins/OneNote)
+if (MSVC)
+	include(CheckCXXSourceCompiles)
+	# Recheck when CMake runs so installing or removing OneNote updates the target list.
+	unset(HAVE_ONENOTE_TYPELIB CACHE)
+	check_cxx_source_compiles([=[
+#import "libid:0EA692EE-BB50-4E3C-AEF0-356D91732725" rename_namespace("OneNoteLib") raw_interfaces_only exclude("tagPOINT")
+int main() { return 0; }
+]=] HAVE_ONENOTE_TYPELIB)
+	if (HAVE_ONENOTE_TYPELIB)
+		add_subdirectory(plugins/OneNote)
+	else ()
+		message(STATUS "OneNote type library unavailable; skipping OneNotePlugin")
+	endif ()
+endif ()
 add_subdirectory(plugins/TextFile)
 add_subdirectory(plugins/EverNote)
 add_subdirectory(plugins/VisualStudio)
@@ -336,7 +351,7 @@ add_subdirectory(plugins/WebSearch)
 add_subdirectory(plugins/NodeJsPlugin)
 add_subdirectory(plugins/AirPods)
 add_subdirectory(plugins/ScreenTools)
-add_subdirectory(plugins/ScreenTools2)
+#add_subdirectory(plugins/ScreenTools2)#DEPRECATED
 
 
 add_subdirectory(plugins/PluginTest)
@@ -350,11 +365,13 @@ list(APPEND PLUGIN_DEPENDENCIES WebSearchPlugin)
 list(APPEND PLUGIN_DEPENDENCIES NodeJsPlugin)
 list(APPEND PLUGIN_DEPENDENCIES AirPodsBatteryPlugin)
 list(APPEND PLUGIN_DEPENDENCIES ScreenToolsPlugin)
-list(APPEND PLUGIN_DEPENDENCIES ScreenToolsPlugin2)
+#list(APPEND PLUGIN_DEPENDENCIES ScreenToolsPlugin2)#DEPRECATED
 list(APPEND PLUGIN_DEPENDENCIES EverNotePlugin)
 list(APPEND PLUGIN_DEPENDENCIES VisualStudioPlugin)
 list(APPEND PLUGIN_DEPENDENCIES BrowserHistoryPlugin)
-list(APPEND PLUGIN_DEPENDENCIES OneNotePlugin)
+if (TARGET OneNotePlugin)
+	list(APPEND PLUGIN_DEPENDENCIES OneNotePlugin)
+endif ()
 list(APPEND PLUGIN_DEPENDENCIES TextFilePlugin)
 list(APPEND PLUGIN_DEPENDENCIES ExamplePlugin)
 list(APPEND PLUGIN_DEPENDENCIES VSCodeWorkspacesPlugin)
@@ -396,6 +413,9 @@ if (MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
 			NodeJsPlugin
 			AirPodsBatteryPlugin
 	 )
+	if (TARGET OneNotePlugin)
+		list(APPEND PLUGIN_DEPENDENCIES OneNotePlugin)
+	endif ()
 
 	set(PLUGIN_OUTPUT_DIR $<TARGET_FILE_DIR:CandyLauncher>/plugins)
 
@@ -421,3 +441,21 @@ endif ()
 
 message(STATUS "CMAKE_GENERATOR = ${CMAKE_GENERATOR}")
 message(STATUS "CMAKE_CXX_COMPILER_ID = ${CMAKE_CXX_COMPILER_ID}")
+
+set(_third_party_targets plutovg lunasvg cpp-pinyin)
+
+if(MSVC)
+	set(_suppress_flags 
+			/wd4244 /wd4996 /wd4018 /wd5287
+			/wd4267 /wd4554 /wd4146 /wd4311
+			INTERFACE /wd4251
+	)
+else()
+	set(_suppress_flags -Wno-parentheses -Wno-conversion)
+endif()
+
+foreach(_tgt IN LISTS _third_party_targets)
+	if(TARGET ${_tgt})
+		target_compile_options(${_tgt} PRIVATE ${_suppress_flags})
+	endif()
+endforeach()

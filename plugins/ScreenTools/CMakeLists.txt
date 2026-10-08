@@ -51,3 +51,21 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	${CMAKE_SOURCE_DIR}/3rdparty/cmark-gfm/extensions
 	${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/src
 	${CMAKE_BINARY_DIR}/3rdparty/cmark-gfm/extensions)
+
+if(MSVC)
+	target_compile_options(screen_tools_zxing_qr PRIVATE
+			/wd4244
+			/wd4996
+			/wd4018
+			/wd5287
+			/wd4267
+			/wd4554
+			/wd4146
+			/wd4311
+	)
+else()
+	target_compile_options(screen_tools_zxing_qr PRIVATE
+			-Wno-parentheses
+			-Wno-conversion
+	)
+endif()

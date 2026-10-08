@@ -146,7 +146,8 @@ public:
 		it->second.setValue(value);
 		return true;
 	}
-	
+	HBITMAP LoadSvgAsHBITMAP(const wchar_t* absolutePath,UINT targetWidth,UINT targetHeight) override {return nullptr;}
+
 };
 
 int main() {

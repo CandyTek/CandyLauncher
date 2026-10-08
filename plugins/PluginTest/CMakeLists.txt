@@ -44,13 +44,11 @@ endif ()
 target_include_directories(${PROJECT_NAME} PRIVATE
 		${CMAKE_SOURCE_DIR}
 		SYSTEM ${CMAKE_SOURCE_DIR}/3rdparty/sqlite-amalgamation
-		${CMAKE_SOURCE_DIR}/3rdparty/lunasvg/include
 )
 
 # 链接 SQLite3 库
 target_link_libraries(${PROJECT_NAME} PRIVATE
 		SQLite3
-		lunasvg
 		gdiplus
 		comctl32
 		kernel32

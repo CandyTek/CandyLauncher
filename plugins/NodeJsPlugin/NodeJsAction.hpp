@@ -2,6 +2,7 @@
 #include "../BaseAction.hpp"
 #include "../../util/json.hpp"
 #include "util/BitmapUtil.hpp"
+#include "NodeJsPluginData.hpp"
 
 class NodeJsAction : public BaseAction {
 public:
@@ -46,7 +47,7 @@ public:
             if (EndsWithAnyIgnoreCase(iconFilePath, {L".ico",L".png",L".jpeg",L".jpg",L".bmp",L".tiff",L".gif"})) {
                 iconBitmap = LoadPngAsHBITMAP(iconFilePath.c_str(), 48, 48);
             } else if (EndsWithIgnoreCase(iconFilePath, L".svg")) {
-                iconBitmap = LoadSvgAsHBITMAP(iconFilePath.c_str(), 48, 48);
+                iconBitmap = m_host->LoadSvgAsHBITMAP(iconFilePath.c_str(), 48, 48);
             } else {
                 iconFilePathIndex = GetSysImageIndex(iconFilePath);
                 return nullptr;

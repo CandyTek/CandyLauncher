@@ -76,6 +76,8 @@ public:
 	// value 的类型需与设置项类型一致：string/list 用字符串，bool 用布尔，long 用整数，double 用浮点数
 	// 修改成功后会写入 user_settings.json 并同步到 GetSettingsMap()，不会回调 OnUserSettingsLoadDone
 	virtual bool SetPluginSettingValue(uint16_t callerPluginId, const std::string& key, const nlohmann::json& value) = 0;
+	virtual HBITMAP LoadSvgAsHBITMAP(const wchar_t* absolutePath,UINT targetWidth,UINT targetHeight) = 0;
+	
 };
 
 class IPlugin {

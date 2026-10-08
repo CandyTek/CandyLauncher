@@ -19,6 +19,7 @@ set(PLUGIN_SOURCES
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
+target_link_libraries(${PROJECT_NAME} PRIVATE shlwapi)
 
 # 引用公共 CMake 模块
 include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)

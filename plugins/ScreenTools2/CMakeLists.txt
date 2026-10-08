@@ -48,6 +48,24 @@ target_link_libraries(screen_tools_zbar PRIVATE screen_tools_iconv winmm)
 add_library(screen_tools_qr STATIC QrDecoder.cpp)
 target_link_libraries(screen_tools_qr PUBLIC screen_tools_zbar)
 
+if(MSVC)
+	target_compile_options(screen_tools_zbar PRIVATE
+			/wd4244
+			/wd4996
+			/wd4018
+			/wd5287
+			/wd4267
+			/wd4554
+			/wd4146
+			/wd4311
+	)
+else()
+	target_compile_options(screen_tools_zbar PRIVATE
+			-Wno-parentheses
+			-Wno-conversion
+	)
+endif()
+
 add_library(${PROJECT_NAME} SHARED ScreenToolsPlugin.cpp)
 include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)
 target_link_libraries(${PROJECT_NAME} PRIVATE screen_tools_qr gdi32 user32 shell32 gdiplus)

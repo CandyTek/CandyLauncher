@@ -16,7 +16,6 @@
 class NodeJsPlugin : public IPlugin {
     
 private:
-    IPluginHost* m_host = nullptr;
     uint16_t m_pluginId = 0;
     std::shared_ptr<NodeJsBridge> m_bridge;
     std::shared_ptr<NodeJsScriptManager> m_scriptManager;
@@ -256,7 +255,7 @@ public:
             }
 
             if (!finalResults.empty()) {
-                if (this->m_host->GetEditTextText() == queryInput) {
+                if (m_host->GetEditTextText() == queryInput) {
                     MethodTimerEnd(L"nodejsplugin query");
                     // 关键：异步完成后刷新结果
                     lastResultActions =std::make_pair( futuresPtr->at(0).first,finalResults);

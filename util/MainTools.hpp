@@ -4,8 +4,6 @@
 
 #include <windows.h>
 #include <string>
-#include <debugapi.h>
-#include <sstream>
 #include <ShlObj.h>
 #include <thread>
 #include <commctrl.h>
@@ -14,13 +12,7 @@
 #include <shobjidl.h>
 #include <shellapi.h>
 #include <comdef.h>
-#include <fstream>
-#include <iostream>
-#include <set>
-#include <stdexcept>
-#include <array>
 #include <dwmapi.h>
-#include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 #include <io.h>
 #include <fcntl.h>
@@ -29,7 +21,6 @@
 
 #include "BaseTools.hpp"
 #include "ShortcutUtil.hpp"
-#include "../common/Constants.hpp"
 #include "../common/GlobalState.hpp"
 #include "../plugins/BaseAction.hpp"
 #include "../model/TraverseOptions.hpp"

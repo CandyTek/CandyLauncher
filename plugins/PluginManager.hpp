@@ -20,6 +20,7 @@
 #include "util/MyToastUtil.hpp"
 #include "util/OleFileDragDrop.hpp"
 #include "util/FileSystemTraverser.hpp"
+#include "util/SvgUtil.hpp"
 
 struct PluginInfo {
 	HMODULE handle = nullptr;
@@ -881,6 +882,11 @@ public:
 		SetSettingValueInList(g_settings_ui, key, value);
 		SaveUserConfigValue(key, value);
 		return true;
+	}
+	
+	HBITMAP LoadSvgAsHBITMAP(const wchar_t* absolutePath,UINT targetWidth,UINT targetHeight) override
+	{
+		return MyLoadSvgAsHBITMAP(absolutePath, targetWidth, targetHeight);
 	}
 
 private:

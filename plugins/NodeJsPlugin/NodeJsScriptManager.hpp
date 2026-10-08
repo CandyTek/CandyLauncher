@@ -63,7 +63,7 @@ public:
                 if (EndsWithAnyIgnoreCase(iconFilePath, {L".ico", L".png", L".jpeg", L".jpg", L".bmp", L".tiff", L".gif"})) {
                     iconBitmap = LoadPngAsHBITMAP(iconFilePath.c_str(), 48, 48);
                 } else if (EndsWithIgnoreCase(iconFilePath, L".svg")) {
-                    iconBitmap = LoadSvgAsHBITMAP(iconFilePath.c_str(), 48, 48);
+                    iconBitmap = m_host->LoadSvgAsHBITMAP(iconFilePath.c_str(), 48, 48);
                 } else {
                     iconBitmap = GetIconFromPathAsBitmap(iconFilePath.c_str());
                 }

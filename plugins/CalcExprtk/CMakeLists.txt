@@ -23,3 +23,7 @@ add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/ExprTk)
 target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
+
+if (MSVC)
+	target_compile_options(${PROJECT_NAME} PRIVATE /bigobj)
+endif ()

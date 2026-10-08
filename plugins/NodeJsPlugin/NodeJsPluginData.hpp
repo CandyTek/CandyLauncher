@@ -1,9 +1,12 @@
 ﻿#pragma once
 #include <string>
 
+#include "plugins/Plugin.hpp"
+
 struct NodeJsPluginData {
     // Any global data for the plugin
 };
+inline IPluginHost* m_host = nullptr;
 
 struct HBitmapDeleter {
     void operator()(HBITMAP h) const {
