@@ -412,7 +412,7 @@ public:
 	}
 
 	int DispatchSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT uint, const WPARAM wparam) {
-		if (m_plugins.find(action->pluginId) == m_plugins.end()) {
+		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
 			return 0;
 		}
 		return m_plugins[action->pluginId].plugin->OnSendHotKey(action, vk, uint, wparam);

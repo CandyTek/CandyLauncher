@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Build main program and plugins
 ```bash
-./scripts/run_build.cmd
+./scripts/run_build.cmd 2>&1 | tail -25
 ```
 
 ### Just use the following command, the command will cause the program to stop itself and output debugging logs after 3 seconds

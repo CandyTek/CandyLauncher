@@ -205,7 +205,12 @@ private:
 					}
 				}
 				if (!filteredActions.empty()) {
-					int pluginResult = g_pluginManager->DispatchSendHotKey(filteredActions[0], vk, currentModifiers, wParam);
+					// 必须取列表中当前选中项，否则快捷键操作的目标会和界面选中项不一致
+					const std::shared_ptr<BaseAction>& selectedAction = GetListViewSelectedAction(
+						g_listViewHwnd, filteredActions);
+					int pluginResult = selectedAction
+											? g_pluginManager->DispatchSendHotKey(selectedAction, vk, currentModifiers, wParam)
+											: 0;
 					if (pluginResult == 0) {
 						break;
 					} else {
@@ -254,7 +259,11 @@ private:
 					}
 				}
 				if (!filteredActions.empty()) {
-					return g_pluginManager->DispatchSendHotKey(filteredActions[0], vk, currentModifiers, wParam);
+					// 必须取列表中当前选中项，否则快捷键操作的目标会和界面选中项不一致
+					if (const std::shared_ptr<BaseAction>& selectedAction = GetListViewSelectedAction(
+						g_listViewHwnd, filteredActions)) {
+						return g_pluginManager->DispatchSendHotKey(selectedAction, vk, currentModifiers, wParam);
+					}
 				}
 				g_caretOn = true;
 				return 0; // 屏蔽 ALT 键的干扰和 beep
