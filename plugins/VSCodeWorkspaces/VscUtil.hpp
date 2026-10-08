@@ -144,7 +144,7 @@ inline std::shared_ptr<VscAction> ParseVSCodeUri(
 	const std::string& uri,
 	const std::string& authority,
 	const VSCodeInstance& instance,
-	const int iconFilePathIndex,
+	const std::shared_ptr<LazySysImageIndex>& icon,
 	bool isWorkspace = false) {
 	if (uri.empty()) {
 		return nullptr;
@@ -227,8 +227,7 @@ inline std::shared_ptr<VscAction> ParseVSCodeUri(
 
 	action->title = title;
 	action->subTitle = widePath;
-	action->iconFilePath = instance.executablePath;
-	action->iconFilePathIndex = iconFilePathIndex;
+	action->icon = icon;
 	action->projectPath = widePath;
 
 	// Store original URI for launching
@@ -249,7 +248,8 @@ inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 	std::vector<std::shared_ptr<VscAction>> results;
 
 	try {
-		int iconFilePathIndex = GetSysImageIndex(instance.executablePath);
+		// 所有条目共享 VSCode 图标，显示时再获取
+		const auto icon = std::make_shared<LazySysImageIndex>(instance.executablePath);
 		std::filesystem::path p(jsonPath);
 		std::ifstream file(p, std::ios::binary);
 		if (!file.is_open()) {
@@ -271,7 +271,7 @@ inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 						// Determine if it's a workspace file
 						bool isWorkspaceFile = uri.find(".code-workspace") != std::string::npos;
 
-						auto action = ParseVSCodeUri(uri, "", instance, iconFilePathIndex, isWorkspaceFile);
+						auto action = ParseVSCodeUri(uri, "", instance, icon, isWorkspaceFile);
 						if (action) {
 							results.push_back(action);
 						}
@@ -288,7 +288,7 @@ inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 			if (openedPathsList.contains("workspaces3") && openedPathsList["workspaces3"].is_array()) {
 				for (const auto& workspaceUri : openedPathsList["workspaces3"]) {
 					if (workspaceUri.is_string()) {
-						auto action = ParseVSCodeUri(workspaceUri.get<std::string>(), "", instance, iconFilePathIndex);
+						auto action = ParseVSCodeUri(workspaceUri.get<std::string>(), "", instance, icon);
 						if (action) {
 							results.push_back(action);
 						}
@@ -319,7 +319,7 @@ inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 					}
 
 					if (!uri.empty()) {
-						auto action = ParseVSCodeUri(uri, remoteAuthority, instance, iconFilePathIndex, isWorkspaceFile);
+						auto action = ParseVSCodeUri(uri, remoteAuthority, instance, icon, isWorkspaceFile);
 						if (action) {
 							results.push_back(action);
 						}

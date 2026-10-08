@@ -1,5 +1,7 @@
 ﻿#pragma once
+#include <memory>
 #include "plugins/BaseAction.hpp"
+#include "util/BitmapUtil.hpp"
 #include "ServicePluginData.hpp"
 
 class ServiceAction final : public BaseAction {
@@ -14,11 +16,10 @@ public:
 	std::wstring startMode; // 启动模式（自动、手动、禁用）
 	bool isRunning = false; // 是否正在运行
 
-	// 图标
-	std::wstring iconFilePath;
+	// 所有服务共享图标
+	std::shared_ptr<LazySysImageIndex> icon;
 	std::wstring title;
 	std::wstring subTitle;
-	int iconFilePathIndex = -1;
 
 	std::wstring& getTitle() override {
 		return title;
@@ -29,11 +30,12 @@ public:
 	}
 
 	std::wstring& getIconFilePath() override {
-		return iconFilePath;
+		static std::wstring empty;
+		return icon ? icon->path : empty;
 	}
 
 	int getIconFilePathIndex() override {
-		return iconFilePathIndex;
+		return icon ? icon->get() : -1;
 	}
 
 	HBITMAP getIconBitmap() override {

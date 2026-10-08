@@ -27,7 +27,9 @@ static std::wstring GetServiceStatusString(DWORD status) {
 }
 
 // 将服务启动类型转换为可读字符串
-static std::wstring GetServiceStartModeString(DWORD startType, const std::wstring& serviceName) {
+static std::wstring GetServiceStartModeString(DWORD startType, bool delayedAutoStart) {
+	if (startType == SERVICE_AUTO_START && delayedAutoStart) return L"自动（延迟启动）";
+
 	std::wstring result;
 
 	switch (startType) {
@@ -45,27 +47,57 @@ static std::wstring GetServiceStartModeString(DWORD startType, const std::wstrin
 		break;
 	}
 
-	// 检查是否为延迟启动
-	if (startType == SERVICE_AUTO_START) {
-		std::wstring regPath = L"SYSTEM\\CurrentControlSet\\Services\\" + serviceName;
-		HKEY hKey;
+	return result;
+}
 
-		if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-			DWORD delayedAutoStart = 0;
-			DWORD dataSize = sizeof(DWORD);
+// 通过 SCM 查询服务启动类型（较慢，每个服务都需要多次 RPC 调用）
+static std::wstring QueryServiceStartModeFromScm(SC_HANDLE hSCManager, const std::wstring& serviceName) {
+	SC_HANDLE hService = OpenServiceW(hSCManager, serviceName.c_str(), SERVICE_QUERY_CONFIG);
+	if (!hService) return L"未知";
 
-			if (RegQueryValueExW(hKey, L"DelayedAutostart", nullptr, nullptr,
-								(LPBYTE)&delayedAutoStart, &dataSize) == ERROR_SUCCESS) {
-				if (delayedAutoStart == 1) {
-					result = L"自动（延迟启动）";
+	std::wstring startMode = L"未知";
+	DWORD bytesNeeded = 0;
+	QueryServiceConfigW(hService, nullptr, 0, &bytesNeeded);
+	if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+		std::vector<BYTE> buffer(bytesNeeded);
+		auto config = reinterpret_cast<LPQUERY_SERVICE_CONFIGW>(buffer.data());
+		if (QueryServiceConfigW(hService, config, bytesNeeded, &bytesNeeded)) {
+			bool delayed = false;
+			if (config->dwStartType == SERVICE_AUTO_START) {
+				SERVICE_DELAYED_AUTO_START_INFO info = {};
+				DWORD infoBytes = 0;
+				if (QueryServiceConfig2W(hService, SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
+										reinterpret_cast<LPBYTE>(&info), sizeof(info), &infoBytes)) {
+					delayed = info.fDelayedAutostart != FALSE;
 				}
 			}
-
-			RegCloseKey(hKey);
+			startMode = GetServiceStartModeString(config->dwStartType, delayed);
 		}
 	}
+	CloseServiceHandle(hService);
+	return startMode;
+}
 
-	return result;
+// 直接从注册表读取服务启动类型，比逐个调用 QueryServiceConfigW 快得多
+static bool ReadServiceStartModeFromRegistry(HKEY hServicesKey, const std::wstring& serviceName, std::wstring& startMode) {
+	HKEY hKey;
+	if (RegOpenKeyExW(hServicesKey, serviceName.c_str(), 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS) {
+		return false;
+	}
+
+	DWORD startType = 0;
+	DWORD dataSize = sizeof(DWORD);
+	const bool ok = RegGetValueW(hKey, nullptr, L"Start", RRF_RT_REG_DWORD, nullptr, &startType, &dataSize) == ERROR_SUCCESS;
+	if (ok) {
+		DWORD delayedAutoStart = 0;
+		if (startType == SERVICE_AUTO_START) {
+			dataSize = sizeof(DWORD);
+			RegGetValueW(hKey, nullptr, L"DelayedAutostart", RRF_RT_REG_DWORD, nullptr, &delayedAutoStart, &dataSize);
+		}
+		startMode = GetServiceStartModeString(startType, delayedAutoStart == 1);
+	}
+	RegCloseKey(hKey);
+	return ok;
 }
 
 // 获取所有 Windows 服务
@@ -80,54 +112,46 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 			return result;
 		}
 
-		// 第一次调用获取所需缓冲区大小
+		// 预分配足够大的缓冲区，通常一次调用即可拿到全部服务，省去先查询所需大小的那次调用
 		DWORD bytesNeeded = 0;
 		DWORD servicesReturned = 0;
-		DWORD resumeHandle = 0;
+		std::vector<BYTE> buffer(256 * 1024);
+		BOOL enumOk = FALSE;
+		for (int attempt = 0; attempt < 3; ++attempt) {
+			DWORD resumeHandle = 0;
+			enumOk = EnumServicesStatusExW(
+				hSCManager,
+				SC_ENUM_PROCESS_INFO,
+				SERVICE_WIN32,
+				SERVICE_STATE_ALL,
+				buffer.data(),
+				static_cast<DWORD>(buffer.size()),
+				&bytesNeeded,
+				&servicesReturned,
+				&resumeHandle,
+				nullptr
+			);
+			if (enumOk || GetLastError() != ERROR_MORE_DATA) break;
+			// 缓冲区不足：bytesNeeded 只是剩余部分的大小，扩容后从头重新获取
+			buffer.resize(buffer.size() + bytesNeeded);
+		}
 
-		EnumServicesStatusExW(
-			hSCManager,
-			SC_ENUM_PROCESS_INFO,
-			SERVICE_WIN32,
-			SERVICE_STATE_ALL,
-			nullptr,
-			0,
-			&bytesNeeded,
-			&servicesReturned,
-			&resumeHandle,
-			nullptr
-		);
-
-		if (GetLastError() != ERROR_MORE_DATA) {
+		if (!enumOk) {
 			CloseServiceHandle(hSCManager);
 			Loge(L"Service", L"Failed to enumerate services: ", GetLastError());
 			return result;
 		}
-
-		// 分配缓冲区并获取服务列表
-		std::vector<BYTE> buffer(bytesNeeded);
 		auto services = reinterpret_cast<LPENUM_SERVICE_STATUS_PROCESSW>(buffer.data());
 
-		if (!EnumServicesStatusExW(
-			hSCManager,
-			SC_ENUM_PROCESS_INFO,
-			SERVICE_WIN32,
-			SERVICE_STATE_ALL,
-			buffer.data(),
-			bytesNeeded,
-			&bytesNeeded,
-			&servicesReturned,
-			&resumeHandle,
-			nullptr
-		)) {
-			CloseServiceHandle(hSCManager);
-			Loge(L"Service", L"Failed to enumerate services: ", GetLastError());
-			return result;
+		HKEY hServicesKey = nullptr;
+		if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services", 0,
+						KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &hServicesKey) != ERROR_SUCCESS) {
+			hServicesKey = nullptr;
 		}
 
-		// 获取服务图标路径（使用 services.msc）
-		std::wstring serviceIconPath = L"C:\\Windows\\System32\\mmc.exe";
-		int iconFilePathIndex = GetSysImageIndex(serviceIconPath);
+		// 服务图标（使用 services.msc），所有条目共享，显示时再获取
+		const auto icon = std::make_shared<LazySysImageIndex>(L"C:\\Windows\\System32\\mmc.exe");
+		result.reserve(servicesReturned);
 
 		// 遍历所有服务
 		for (DWORD i = 0; i < servicesReturned; i++) {
@@ -142,24 +166,9 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 			action->status = GetServiceStatusString(status);
 			action->isRunning = (status == SERVICE_RUNNING);
 
-			// 打开服务以获取启动类型
-			SC_HANDLE hService = OpenServiceW(hSCManager, action->serviceName.c_str(), SERVICE_QUERY_CONFIG);
-			if (hService) {
-				DWORD configBytesNeeded = 0;
-				QueryServiceConfigW(hService, nullptr, 0, &configBytesNeeded);
-
-				if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-					std::vector<BYTE> configBuffer(configBytesNeeded);
-					auto serviceConfig = reinterpret_cast<LPQUERY_SERVICE_CONFIGW>(configBuffer.data());
-
-					if (QueryServiceConfigW(hService, serviceConfig, configBytesNeeded, &configBytesNeeded)) {
-						action->startMode = GetServiceStartModeString(serviceConfig->dwStartType, action->serviceName);
-					}
-				}
-
-				CloseServiceHandle(hService);
-			} else {
-				action->startMode = L"未知";
+			// 获取启动类型，注册表读取失败时回退到 SCM 查询
+			if (!hServicesKey || !ReadServiceStartModeFromRegistry(hServicesKey, action->serviceName, action->startMode)) {
+				action->startMode = QueryServiceStartModeFromScm(hSCManager, action->serviceName);
 			}
 
 			// 设置标题和副标题
@@ -169,8 +178,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 				L" - 名称: " + action->serviceName;
 
 			// 设置图标
-			action->iconFilePath = serviceIconPath;
-			action->iconFilePathIndex = iconFilePathIndex;
+			action->icon = icon;
 
 			// 设置匹配文本
 			try {
@@ -187,18 +195,15 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 			result.push_back(action);
 		}
 
+		if (hServicesKey) RegCloseKey(hServicesKey);
 		CloseServiceHandle(hSCManager);
 
-		// 按显示名称排序
+		// 按显示名称排序（result 中全部是 ServiceAction）
 		std::sort(result.begin(), result.end(),
 				[](const std::shared_ptr<BaseAction>& a, const std::shared_ptr<BaseAction>& b) {
-					auto actionA = std::dynamic_pointer_cast<ServiceAction>(a);
-					auto actionB = std::dynamic_pointer_cast<ServiceAction>(b);
-					if (!actionA || !actionB) return false;
-					return actionA->displayName < actionB->displayName;
+					return static_cast<ServiceAction*>(a.get())->displayName <
+						static_cast<ServiceAction*>(b.get())->displayName;
 				});
-
-		Logi(L"Service", L"Loaded ", result.size(), L" services");
 	} catch (const std::exception& e) {
 		Loge(L"Service", L"Exception in GetAllWindowsServices: ", e.what());
 	}

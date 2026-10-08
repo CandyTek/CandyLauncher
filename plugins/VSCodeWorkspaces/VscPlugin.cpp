@@ -104,9 +104,9 @@ public:
 	}
 
 	static std::wstring GetActionFileIconPath(const std::shared_ptr<VscAction>& workspaceAction) {
-		if (!workspaceAction->iconFilePath.empty() &&
-			GetFileAttributesW(workspaceAction->iconFilePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
-			return workspaceAction->iconFilePath;
+		const std::wstring& exePath = workspaceAction->getIconFilePath();
+		if (!exePath.empty() && GetFileAttributesW(exePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+			return exePath;
 		}
 		return L"";
 	}

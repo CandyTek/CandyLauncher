@@ -6,7 +6,6 @@
 #include <memory>
 #include <string>
 #include <map>
-#include <regex>
 #include <Windows.h>
 #include <ShlObj.h>
 #include "3rdparty/pugixml/src/pugixml.hpp"
@@ -127,6 +126,22 @@ inline std::wstring GetRoamingAppDataPath() {
 // 	return L"JetBrains IDE";
 // }
 
+// 遍历 dir 下的直接子目录，fn 参数为子目录完整路径
+template <class Fn>
+void ForEachSubDirectory(const std::wstring& dir, Fn&& fn) {
+	WIN32_FIND_DATAW findData;
+	const std::wstring pattern = dir + L"\\*";
+	HANDLE hFind = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &findData,
+									FindExSearchLimitToDirectories, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+	if (hFind == INVALID_HANDLE_VALUE) return;
+	do {
+		if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+		if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) continue;
+		fn(dir + L"\\" + findData.cFileName);
+	} while (FindNextFileW(hFind, &findData));
+	FindClose(hFind);
+}
+
 // Find all JetBrains IDEs and their recentProjects.xml files
 inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 	std::vector<JetBrainsIDE> ides;
@@ -136,74 +151,56 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 		return ides;
 	}
 
-	// Search for recentProjects.xml files in AppData\Roaming\JetBrains\*
-	std::wstring searchPath = roamingPath;
+	// Path structure: AppData\Roaming\<Vendor>\<ProductCode><Version>\options\recentProjects.xml
+	// Example: AppData\Roaming\Google\AndroidStudio2021.1\options\recentProjects.xml
+	// 直接遍历两层目录，比通过 Everything SDK 搜索整个 Roaming 快得多，且不依赖 Everything 运行
+	struct Candidate {
+		JetBrainsIDE ide;
+		std::vector<unsigned long> version;
+	};
+	// Map to store unique IDE installations by product name
+	std::map<std::wstring, Candidate> ideMap;
 
-	// Map to store unique IDE installations by product code
-	std::map<std::wstring, JetBrainsIDE> ideMap;
-
-	m_host->TraverseFilesSimpleForEverythingSDK(
-		searchPath, true, {L".xml"}, LR"(\options\recentProjects.xml)",true,
-		[&](const std::wstring& name, const std::wstring& fullPath,
-			const std::wstring& parent, const std::wstring& ext) {
-			if (name == L"recentProjects") {
-				// ConsolePrintln(fullPath);
-
-				// Try to extract product code from path
-				// Path structure: AppData\Roaming\JetBrains\<ProductCode><Version>\options\recentProjects.xml
-				// Example: AppData\Roaming\JetBrains\AndroidStudio2021.1\options\recentProjects.xml
-
-				// Get the parent directory name (should contain product code)
-				// size_t lastSlash = parent.find_last_of(L"\\/");
-				// if (lastSlash != std::wstring::npos) {
-				std::wregex re(LR"(\\Roaming\\([^\\]+)\\([^\\]+)\\options)");
-				std::wsmatch match;
-				// std::wstring productCode = L"JB";
-				JetBrainsIDE ide;
-				ide.name = L"Jbrains";
-
-				if (std::regex_search(parent, match, re)) {
-					// std::cout << "Word1: " << match[1] << std::endl;
-					// std::cout << "Word2: " << match[2] << std::endl;
-					// productCode
-					std::wstring word2 = match[2]; // CLion2025.1
-
-					// 去掉 word2 末尾的数字和点
-					std::wregex trim_re(LR"([\d\.]+$)");
-					word2 = std::regex_replace(word2, trim_re, L"");
-
-					ide.name = word2;
-				}
-				// std::wstring parentDir = parent.substr(lastSlash + 1);
-
-				// Extract product code (usually first 2-3 characters)
-				// std::wregex productRegex(L"^([A-Z]{2,3})");
-				// std::wsmatch match;
-				// std::wstring productCode = L"JB";
-
-				// if (std::regex_search(parentDir, match, productRegex)) {
-				// 	productCode = match[1].str();
-				// }
-
-				// Only add if we haven't seen this product code yet, or if this is a newer version
-				// if (ideMap.find(productCode) == ideMap.end()) {
-				// ide.name = GetIDEName(productCode);
-				// ide.productCode = productCode;
-				ide.recentProjectsXmlPath = fullPath;
-
-				// Try to find IDE executable (simplified - could be enhanced)
-				ide.exePath = L""; // Will be left empty, icon will be default
-
-				ideMap[ide.name] = ide;
-				// }
-				// }
+	ForEachSubDirectory(roamingPath, [&](const std::wstring& vendorDir) {
+		ForEachSubDirectory(vendorDir, [&](const std::wstring& productDir) {
+			const std::wstring xmlPath = productDir + LR"(\options\recentProjects.xml)";
+			const DWORD attrs = GetFileAttributesW(xmlPath.c_str());
+			if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+				return;
 			}
-		}
-	);
+
+			// 去掉目录名末尾的数字和点，CLion2025.1 -> CLion
+			const std::wstring dirName = productDir.substr(productDir.find_last_of(L'\\') + 1);
+			const size_t end = dirName.find_last_not_of(L"0123456789.");
+			const std::wstring name = dirName.substr(0, end == std::wstring::npos ? 0 : end + 1);
+			if (name.empty()) return;
+
+			// 解析版本号 2025.1 -> {2025, 1}
+			std::vector<unsigned long> version;
+			for (size_t pos = name.size(); pos < dirName.size();) {
+				size_t dot = dirName.find(L'.', pos);
+				if (dot == std::wstring::npos) dot = dirName.size();
+				if (dot > pos) version.push_back(std::wcstoul(dirName.c_str() + pos, nullptr, 10));
+				pos = dot + 1;
+			}
+
+			// 同一 IDE 存在多个版本时，取版本号最高的那个（旧版本的 xml 格式可能不同）
+			auto it = ideMap.find(name);
+			if (it != ideMap.end() && it->second.version >= version) return;
+
+			Candidate& candidate = ideMap[name];
+			candidate.ide.name = name;
+			candidate.ide.recentProjectsXmlPath = xmlPath;
+			// Try to find IDE executable (simplified - could be enhanced)
+			candidate.ide.exePath = L""; // Will be left empty, icon will be default
+			candidate.version = std::move(version);
+		});
+	});
 
 	// Convert map to vector
-	for (const auto& pair : ideMap) {
-		ides.push_back(pair.second);
+	ides.reserve(ideMap.size());
+	for (auto& pair : ideMap) {
+		ides.push_back(std::move(pair.second.ide));
 	}
 
 	return ides;
