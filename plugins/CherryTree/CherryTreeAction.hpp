@@ -1,5 +1,7 @@
 ﻿#pragma once
+#include <memory>
 #include "plugins/BaseAction.hpp"
+#include "util/BitmapUtil.hpp"
 #include "CherryTreePluginData.hpp"
 
 class CherryTreeAction final : public BaseAction {
@@ -13,11 +15,10 @@ public:
 	std::wstring text;
 
 
-	// 图标，只要是文件就可以
-	std::wstring iconFilePath;
+	// 同一语法类型的所有条目共享图标
+	std::shared_ptr<LazySysImageIndex> icon;
 	std::wstring title;
 	std::wstring subTitle;
-	int iconFilePathIndex = -1;
 
 	std::wstring& getTitle() override {
 		return title;
@@ -28,11 +29,12 @@ public:
 	}
 
 	std::wstring& getIconFilePath() override {
-		return iconFilePath;
+		static std::wstring empty;
+		return icon ? icon->path : empty;
 	}
 
 	int getIconFilePathIndex() override {
-		return iconFilePathIndex;
+		return icon ? icon->get() : -1;
 	}
 
 	HBITMAP getIconBitmap() override {

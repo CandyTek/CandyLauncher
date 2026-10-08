@@ -6,6 +6,7 @@
 #include <vector>
 #include <sqlite3.h>
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <unordered_set>
@@ -13,6 +14,7 @@
 #include "CherryTreeAction.hpp"
 #include "../../util/StringUtil.hpp"
 #include "util/BitmapUtil.hpp"
+#include "util/ParallelUtil.hpp"
 #include "util/LogUtil.hpp"
 
 // 结构体定义
@@ -101,20 +103,46 @@ inline void CreateActionsFromNodes(
 	}
 
 	Logi(L"CherryTree", L"Creating ", id_path.size(), L" CherryTreeAction objects...");
+	// 图标按语法类型共享，首次显示时才解析，避免每个节点都调用 SHGetFileInfo
+	std::unordered_map<std::string, std::shared_ptr<LazySysImageIndex>> iconBySyntax;
+	std::vector<std::pair<int, const NodePath*>> items;
+	std::vector<std::shared_ptr<LazySysImageIndex>> itemIcons;
+	items.reserve(id_path.size());
+	itemIcons.reserve(id_path.size());
 	for (const auto& [id, np] : id_path) {
-		auto action = std::make_shared<CherryTreeAction>();
-		action->title = utf8_to_wide(np.path);
-		action->subTitle = utf8_to_wide(np.path_file);
-		action->nodeId = id;
-		action->url = L"cherrytree://node/" + std::to_wstring(id);
-		action->text = utf8_to_wide(map_node.at(id).text);
-		action->iconFilePathIndex = GetSysImageIndex(ICON_FOLDER_PATH + utf8_to_wide(np.syntax) + L".ico");
-		if (action->iconFilePathIndex == 0) {
-			Logi(L"CherryTree", L"icon not found: ", ICON_FOLDER_PATH, np.syntax, L".ico");
+		auto& icon = iconBySyntax[np.syntax];
+		if (!icon) {
+			std::wstring iconPath = ICON_FOLDER_PATH + utf8_to_wide(np.syntax) + L".ico";
+			if (GetFileAttributesW(iconPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+				Logi(L"CherryTree", L"icon not found: ", iconPath);
+			}
+			icon = std::make_shared<LazySysImageIndex>(std::move(iconPath));
 		}
-		action->matchText = m_host->GetTheProcessedMatchingText(utf8_to_wide(np.path));
-		allActions.push_back(action);
+		items.emplace_back(id, &np);
+		itemIcons.push_back(icon);
 	}
+
+	const size_t base = allActions.size();
+	allActions.resize(base + items.size());
+	ParallelForRange(items.size(), 64, [&](const size_t begin, const size_t end) {
+		for (size_t i = begin; i < end; ++i) {
+			const int id = items[i].first;
+			const NodePath& np = *items[i].second;
+			auto action = std::make_shared<CherryTreeAction>();
+			Utf8ToWideFast(np.path, action->title);
+			Utf8ToWideFast(np.path_file, action->subTitle);
+			action->nodeId = id;
+			action->url = L"cherrytree://node/" + std::to_wstring(id);
+			Utf8ToWideFast(map_node.at(id).text, action->text);
+			action->icon = itemIcons[i];
+			try {
+				action->matchText = m_host->GetTheProcessedMatchingText(action->title);
+			} catch (...) {
+				action->matchText = action->title;
+			}
+			allActions[base + i] = std::move(action);
+		}
+	});
 }
 
 // 执行 SQL 并读取结果
@@ -202,14 +230,60 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 	Logi(L"CherryTree", L"db_parse complete, created ", allActions.size(), L" actions");
 }
 
+// 拼接节点下所有 rich_text 的文本，手动遍历比每个节点编译一次 XPath 快
+inline void AppendRichText(const pugi::xml_node& parent, std::string& out) {
+	for (pugi::xml_node child = parent.first_child(); child; child = child.next_sibling()) {
+		if (child.type() != pugi::node_element) continue;
+		if (std::strcmp(child.name(), "rich_text") == 0) {
+			if (!out.empty()) out += '\n';
+			out += child.text().as_string();
+		}
+		AppendRichText(child, out);
+	}
+}
+
+// 解析单个 node.xml，成功时填充 row 与 fatherId
+inline bool ParseNodeXml(const std::filesystem::path& xmlPath, const std::filesystem::path& rootPath,
+	NodeRow& row, int& fatherId) {
+	pugi::xml_document document;
+	pugi::xml_parse_result result = document.load_file(xmlPath.c_str());
+	if (!result) {
+		Loge(L"CherryTree", L"XML 解析失败: ", xmlPath.wstring(), L" (", result.description(), L")");
+		return false;
+	}
+	pugi::xml_node node = document.child("cherrytree").child("node");
+	if (!node) {
+		Logw(L"CherryTree", L"找不到 node 元素: ", xmlPath.wstring());
+		return false;
+	}
+	const int nodeId = node.attribute("unique_id").as_int();
+	if (nodeId <= 0) {
+		Logw(L"CherryTree", L"无效的节点 ID: ", xmlPath.wstring());
+		return false;
+	}
+	row.id = nodeId;
+	row.name = node.attribute("name").as_string();
+	row.tags = node.attribute("tags").as_string();
+	row.syntax = node.attribute("prog_lang").as_string("plain-text");
+	AppendRichText(node, row.text);
+
+	const std::filesystem::path parentNodeDirectory = xmlPath.parent_path().parent_path();
+	fatherId = 0;
+	if (parentNodeDirectory != rootPath) {
+		try {
+			fatherId = std::stoi(parentNodeDirectory.filename().string());
+		} catch (const std::exception&) {
+			Logw(L"CherryTree", L"无法确定父节点: ", xmlPath.wstring());
+		}
+	}
+	return true;
+}
+
 // 解析 CherryTree 多文件存储目录。每个节点目录包含 node.xml，父目录即父节点。
 inline void folder_parse(
 	const std::filesystem::path& directoryPath,
 	std::vector<std::shared_ptr<BaseAction>>& allActions) {
 	Logi(L"CherryTree", L"folder_parse start");
-	std::unordered_map<int, int> map_father;
-	std::unordered_map<int, NodeRow> map_node;
-
 	std::error_code pathError;
 	std::filesystem::path rootPath = std::filesystem::weakly_canonical(directoryPath, pathError);
 	if (pathError) {
@@ -227,57 +301,44 @@ inline void folder_parse(
 		return;
 	}
 
+	// 1. 先收集所有 node.xml 路径
+	std::vector<std::filesystem::path> xmlPaths;
 	while (iterator != end) {
 		const auto& entry = *iterator;
 		std::error_code entryError;
-		if (entry.is_regular_file(entryError) && entry.path().filename() == L"node.xml") {
-			pugi::xml_document document;
-			pugi::xml_parse_result result = document.load_file(entry.path().c_str());
-			if (!result) {
-				Loge(L"CherryTree", L"XML 解析失败: ", entry.path().wstring(),
-					L" (", result.description(), L")");
-			} else {
-				pugi::xml_node node = document.child("cherrytree").child("node");
-				if (!node) {
-					Logw(L"CherryTree", L"找不到 node 元素: ", entry.path().wstring());
-				} else {
-					int nodeId = node.attribute("unique_id").as_int();
-					if (nodeId <= 0) {
-						Logw(L"CherryTree", L"无效的节点 ID: ", entry.path().wstring());
-					} else {
-						NodeRow row;
-						row.id = nodeId;
-						row.name = node.attribute("name").as_string();
-						row.tags = node.attribute("tags").as_string();
-						row.syntax = node.attribute("prog_lang").as_string("plain-text");
-						for (pugi::xpath_node richTextNode : node.select_nodes(".//rich_text")) {
-							std::string richText = richTextNode.node().text().as_string();
-							if (!row.text.empty()) row.text += '\n';
-							row.text += richText;
-						}
-						map_node[nodeId] = std::move(row);
-
-						std::filesystem::path parentNodeDirectory = entry.path().parent_path().parent_path();
-						if (parentNodeDirectory == rootPath) {
-							map_father[nodeId] = 0;
-						} else {
-							try {
-								map_father[nodeId] = std::stoi(parentNodeDirectory.filename().string());
-							} catch (const std::exception&) {
-								Logw(L"CherryTree", L"无法确定父节点: ", entry.path().wstring());
-								map_father[nodeId] = 0;
-							}
-						}
-					}
-				}
-			}
+		if (entry.path().filename() == L"node.xml" && entry.is_regular_file(entryError)) {
+			xmlPaths.push_back(entry.path());
 		}
-
 		iterator.increment(pathError);
 		if (pathError) {
 			Loge(L"CherryTree", L"扫描目录时发生错误: ", pathError.message());
 			pathError.clear();
 		}
+	}
+
+	// 2. 并行解析 XML
+	std::vector<NodeRow> rows(xmlPaths.size());
+	std::vector<int> fatherIds(xmlPaths.size(), 0);
+	std::vector<char> parsed(xmlPaths.size(), 0);
+	ParallelForRange(xmlPaths.size(), 16, [&](const size_t begin, const size_t end) {
+		for (size_t i = begin; i < end; ++i) {
+			try {
+				parsed[i] = ParseNodeXml(xmlPaths[i], rootPath, rows[i], fatherIds[i]);
+			} catch (...) {
+				parsed[i] = 0;
+			}
+		}
+	});
+
+	std::unordered_map<int, int> map_father;
+	std::unordered_map<int, NodeRow> map_node;
+	map_father.reserve(rows.size());
+	map_node.reserve(rows.size());
+	for (size_t i = 0; i < rows.size(); ++i) {
+		if (!parsed[i]) continue;
+		const int nodeId = rows[i].id;
+		map_father[nodeId] = fatherIds[i];
+		map_node[nodeId] = std::move(rows[i]);
 	}
 
 	CreateActionsFromNodes(map_father, map_node, allActions);

@@ -25,6 +25,7 @@
 .vs/
 Debug/
 Release/
+!scripts/release/
 x64/
 ipch/
 

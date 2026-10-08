@@ -30,7 +30,7 @@ add_custom_command(TARGET SplitWordsTest POST_BUILD
 add_custom_command(TARGET SplitWordsTest POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/tests
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${CMAKE_BINARY_DIR}/bin/cpp-pinyind.dll"
+		"$<TARGET_FILE:cpp-pinyin>"
 		"${CMAKE_BINARY_DIR}/tests/"
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${CMAKE_BINARY_DIR}/3rdparty/pugixml/pugixml.dll"
