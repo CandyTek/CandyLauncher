@@ -7,6 +7,7 @@
 
 #include <gdiplus.h>
 #include "common/GlobalState.hpp"
+#include "BackgroundLayerPainter.hpp"
 
 inline UINT_PTR g_caretTimerId = 1001;
 inline bool g_caretOn = true; // 由定时器翻转
@@ -21,6 +22,7 @@ static Gdiplus::Color GetColor(const char* key, const char* def) {
 
 static void drawBackground(HWND hwnd, Gdiplus::Graphics& graphics, RECT rc) {
 	if (g_skinJson != nullptr) {
+		paintMainWindowBackgroundUnderChild(hwnd, graphics, rc);
 		if (g_editBgCachedBitmap) {
 			graphics.DrawCachedBitmap(g_editBgCachedBitmap, rc.left, rc.top);
 		} else if (g_editBgImage) {

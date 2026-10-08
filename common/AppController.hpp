@@ -291,16 +291,24 @@ inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
 	// 使用 GDI+ 绘制背景图
 	// 如果没有背景图，则填充纯色背景
 	if (g_skinJson != nullptr) {
+		// 窗口表面会保留上一次绘制的像素（WM_ERASEBKGND 不擦除），半透明背景直接叠加绘制会越叠越深，
+		// 所以先把重绘区域清成全透明，再绘制背景
+		{
+			Gdiplus::Graphics clearGraphics(hdc);
+			clearGraphics.SetClip(Gdiplus::Rect(ps.rcPaint.left, ps.rcPaint.top,
+												ps.rcPaint.right - ps.rcPaint.left,
+												ps.rcPaint.bottom - ps.rcPaint.top));
+			clearGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+		}
 		if (g_BgCachedBitmap) {
 			Gdiplus::Graphics graphics(hdc);
 			// 直接将烘焙好的硬件级位图推送到目标 DC，速度与 BitBlt 相当
 			graphics.DrawCachedBitmap(g_BgCachedBitmap, 0, 0);
-		} else if (g_BgImage) {
-			// 兜底策略：如果缓存构建失败，回退到普通绘制（但不要临时新建 backBuffer）
+		} else if (g_BgScaledBitmap) {
 			Gdiplus::Graphics graphics(hdc);
-			RECT clientRect;
-			GetClientRect(g_mainHwnd, &clientRect);
-			graphics.DrawImage(g_BgImage, 0, 0, clientRect.right, clientRect.bottom);
+			graphics.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+			graphics.DrawImage(g_BgScaledBitmap, 0, 0, ps.rcPaint.right - ps.rcPaint.left,
+												ps.rcPaint.bottom - ps.rcPaint.top);
 		} else {
 			std::string bgColorStr = g_skinJson.value("window_bg_color", "#FFFFFF");
 			if (bgColorStr.empty()) {

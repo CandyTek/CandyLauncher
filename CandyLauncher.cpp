@@ -758,10 +758,6 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		{
 			// 程序退出时释放 GDI+ 资源
 			clearBackgroundCachedBitmaps();
-			if (g_BgImage) {
-				delete g_BgImage;
-				g_BgImage = nullptr;
-			}
 			UnregisterMainPanelToggleHotkey(hWnd);
 			RevokeDragDrop(g_editHwnd);
 			UninstallMouseHook();

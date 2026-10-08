@@ -144,6 +144,8 @@ extern int g_itemTextPosSelectedY1;
 extern int g_itemTextPosSelectedX2;
 extern int g_itemTextPosSelectedY2;
 
+inline std::string g_windowBgColor = "#FFFFFF";
+
 extern int g_listViewWidth;
 extern int g_listViewHeight;
 

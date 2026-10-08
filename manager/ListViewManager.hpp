@@ -22,6 +22,7 @@
 #include "plugins/BaseLaunchAction.hpp"
 #include "plugins/PluginManager.hpp"
 #include "util/ColorUtil.hpp"
+#include "BackgroundLayerPainter.hpp"
 
 #pragma comment(lib, "Shell32.lib")
 #pragma comment(lib, "Comctl32.lib")
@@ -261,6 +262,7 @@ static void listViewInitializeGraphicsResources() {
 		g_itemTextPosY1 = g_skinJson.value("item_text_y_1", 4);
 		g_itemTextPosX2 = g_skinJson.value("item_text_x_2", 60);
 		g_itemTextPosY2 = g_skinJson.value("item_text_y_2", 22);
+		g_windowBgColor = g_skinJson.value("window_bg_color", "#FFFFFF");
 
 		g_itemTextPosSelectedX1 = g_skinJson.value("item_text_selected_x_1", 60);
 		g_itemTextPosSelectedY1 = g_skinJson.value("item_text_selected_y_1", 4);
@@ -875,6 +877,7 @@ static LRESULT listViewOnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 		if (g_skinJson != nullptr) {
 			const Gdiplus::Rect rect(rcClient.left - 1, rcClient.top - 1, rcClient.right - rcClient.left + 1,
 									rcClient.bottom - rcClient.top + 1);
+			paintMainWindowBackgroundUnderChild(hWnd, graphics, rcClient);
 			if (g_listViewBgCachedBitmap) {
 				graphics.DrawCachedBitmap(g_listViewBgCachedBitmap, rcClient.left, rcClient.top);
 			} else if (g_listViewBgImage) {

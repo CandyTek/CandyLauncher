@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "SkinFileUtil.hpp"
+#include "BackgroundLayerPainter.hpp"
 #include "../util/StringUtil.hpp"
 
 // 监听皮肤文件改动
@@ -27,6 +28,10 @@ static void clearBackgroundCachedBitmaps() {
 	g_editBgCachedBitmap = nullptr;
 	delete g_listViewBgCachedBitmap;
 	g_listViewBgCachedBitmap = nullptr;
+	delete g_BgScaledBitmap;
+	g_BgScaledBitmap = nullptr;
+	delete g_BgImage;
+	g_BgImage = nullptr;
 }
 
 static Gdiplus::CachedBitmap* createBackgroundCachedBitmap(Gdiplus::Image* image, HWND hwnd,
@@ -333,6 +338,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	// device-specific and cannot safely be shared between these windows.
 	g_BgCachedBitmap = createBackgroundCachedBitmap(g_BgImage, g_mainHwnd,
 													 MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
+	g_BgScaledBitmap = createScaledBackgroundBitmap(g_BgImage, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	g_editBgCachedBitmap = createBackgroundCachedBitmap(g_editBgImage, g_editHwnd,
 													  editWidth, editHeight);
 	g_listViewBgCachedBitmap = createBackgroundCachedBitmap(g_listViewBgImage, g_listViewHwnd,
