@@ -121,6 +121,24 @@ public:
 		return {};
 	}
 	
+	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+		if (!m_host) return 0;
+		if (currentModifiers == MOD_ALT && vk == VK_RETURN) {
+			auto workspaceAction = std::dynamic_pointer_cast<JbAction>(action);
+			if (!workspaceAction) return 0;
+			// Alt+Enter: 直接用对应的 IDE 打开项目
+			if (workspaceAction->iconFilePath.empty() || workspaceAction->projectPath.empty()) {
+				// m_host->ShowSimpleToast(L"无法打开项目", L"未找到 " + workspaceAction->ideName + L" 的安装路径");
+				return 0;
+			}
+			ShellExecuteW(nullptr, L"open", workspaceAction->iconFilePath.c_str(),
+						(L"\"" + workspaceAction->projectPath + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+			m_host->PluginTaskDone();
+			return 1;
+		}
+		return 0;
+	}
+
 	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
 		if (!m_host) return false;
 		auto workspaceAction = std::dynamic_pointer_cast<JbAction>(action);

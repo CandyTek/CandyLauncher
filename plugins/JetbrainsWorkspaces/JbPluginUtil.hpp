@@ -6,19 +6,45 @@
 #include <memory>
 #include <string>
 #include <map>
+#include <fstream>
+#include <algorithm>
 #include <Windows.h>
 #include <ShlObj.h>
 #include "3rdparty/pugixml/src/pugixml.hpp"
 #include "util/LogUtil.hpp"
 #include "util/StringUtil.hpp"
+#include "util/BitmapUtil.hpp"
 
 // Structure to hold JetBrains IDE information
 struct JetBrainsIDE {
 	std::wstring name; // e.g., "IntelliJ IDEA", "PyCharm", "Android Studio"
 	// std::wstring productCode; // e.g., "AI", "PY", "IU"
 	std::wstring exePath; // Full path to the IDE executable
+	int iconIndex = -1; // exePath 在系统图像列表中的索引
 	std::wstring recentProjectsXmlPath;
 };
+
+// 展开 recentProjects.xml 中的路径宏，并转为 Windows 路径分隔符
+// $USER_HOME$/CLionProjects/demo -> C:\Users\xxx\CLionProjects\demo
+inline std::wstring ExpandIdePathMacros(std::wstring path, const std::wstring& configDir) {
+	static const std::wstring userHome = [] {
+		wchar_t buffer[MAX_PATH]{};
+		const DWORD len = GetEnvironmentVariableW(L"USERPROFILE", buffer, MAX_PATH);
+		return len > 0 && len < MAX_PATH ? std::wstring(buffer, len) : std::wstring();
+	}();
+	const std::pair<std::wstring, const std::wstring*> macros[] = {
+		{L"$USER_HOME$", &userHome},
+		{L"$APPLICATION_CONFIG_DIR$", &configDir},
+	};
+	for (const auto& [macro, value] : macros) {
+		if (value->empty()) continue;
+		for (size_t pos = path.find(macro); pos != std::wstring::npos; pos = path.find(macro, pos + value->size())) {
+			path.replace(pos, macro.size(), *value);
+		}
+	}
+	std::replace(path.begin(), path.end(), L'/', L'\\');
+	return path;
+}
 
 // Parse a single recentProjects.xml file
 inline std::vector<std::shared_ptr<JbAction>> ParseRecentProjectsXml(
@@ -34,6 +60,10 @@ inline std::vector<std::shared_ptr<JbAction>> ParseRecentProjectsXml(
 	if (!parseResult) {
 		return result;
 	}
+	// xmlPath: <configDir>\options\recentProjects.xml
+	std::wstring configDir = xmlPath.substr(0, xmlPath.find_last_of(L'\\'));
+	configDir = configDir.substr(0, configDir.find_last_of(L'\\'));
+
 	pugi::xpath_node_set entries = doc.select_nodes(
 		"/application/component[@name='RecentProjectsManager']"
 		"/option[@name='additionalInfo']/map/entry"
@@ -75,10 +105,10 @@ inline std::vector<std::shared_ptr<JbAction>> ParseRecentProjectsXml(
 		action->title = ide.name + L" - " + projectName;
 		action->subTitle = projectPath;
 		action->iconFilePath = ide.exePath;
-		action->iconFilePathIndex = 0;
+		action->iconFilePathIndex = ide.iconIndex;
 
 		// Store additional data
-		action->projectPath = projectPath;
+		action->projectPath = ExpandIdePathMacros(projectPath, configDir);
 		action->ideName = ide.name;
 
 		// Match text includes IDE name, project name, and path for better searching
@@ -91,13 +121,123 @@ inline std::vector<std::shared_ptr<JbAction>> ParseRecentProjectsXml(
 	return result;
 }
 
-// Get the AppData\Roaming path
-inline std::wstring GetRoamingAppDataPath() {
+// 遍历 dir 下的直接子目录，fn 参数为子目录完整路径
+template <class Fn>
+void ForEachSubDirectory(const std::wstring& dir, Fn&& fn) {
+	WIN32_FIND_DATAW findData;
+	const std::wstring pattern = dir + L"\\*";
+	HANDLE hFind = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &findData,
+									FindExSearchLimitToDirectories, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+	if (hFind == INVALID_HANDLE_VALUE) return;
+	do {
+		if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+		if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) continue;
+		fn(dir + L"\\" + findData.cFileName);
+	} while (FindNextFileW(hFind, &findData));
+	FindClose(hFind);
+}
+
+inline std::wstring GetKnownFolder(REFKNOWNFOLDERID folderId) {
 	wchar_t* path = nullptr;
-	if (SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &path) == S_OK) {
+	if (SHGetKnownFolderPath(folderId, 0, nullptr, &path) == S_OK) {
 		std::wstring result(path);
 		CoTaskMemFree(path);
 		return result;
+	}
+	return L"";
+}
+
+// Get the AppData\Roaming path
+inline std::wstring GetRoamingAppDataPath() {
+	return GetKnownFolder(FOLDERID_RoamingAppData);
+}
+
+inline bool IsExistingFile(const std::wstring& path) {
+	const DWORD attrs = GetFileAttributesW(path.c_str());
+	return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+// 拆分配置目录名，CLion2025.1 -> name: CLion, version: {2025, 1}
+inline void ParseIdeDirName(const std::wstring& dirName, std::wstring& name, std::vector<unsigned long>& version) {
+	const size_t end = dirName.find_last_not_of(L"0123456789.");
+	name = dirName.substr(0, end == std::wstring::npos ? 0 : end + 1);
+	version.clear();
+	for (size_t pos = name.size(); pos < dirName.size();) {
+		size_t dot = dirName.find(L'.', pos);
+		if (dot == std::wstring::npos) dot = dirName.size();
+		if (dot > pos) version.push_back(std::wcstoul(dirName.c_str() + pos, nullptr, 10));
+		pos = dot + 1;
+	}
+}
+
+// 在 IDE 安装目录中找到启动程序
+// 优先读取 product-info.json 中的 launcherPath，否则取 bin 下的 *64.exe
+inline std::wstring FindIdeExecutable(const std::wstring& homeDir) {
+	std::ifstream productInfo(homeDir + L"\\product-info.json", std::ios::binary);
+	if (productInfo) {
+		const std::string content((std::istreambuf_iterator<char>(productInfo)), std::istreambuf_iterator<char>());
+		const std::string key = "\"launcherPath\"";
+		for (size_t pos = content.find(key); pos != std::string::npos; pos = content.find(key, pos + key.size())) {
+			const size_t colon = content.find(':', pos + key.size());
+			if (colon == std::string::npos) break;
+			const size_t start = content.find('"', colon);
+			if (start == std::string::npos) break;
+			const size_t end = content.find('"', start + 1);
+			if (end == std::string::npos) break;
+			std::wstring launcher = utf8_to_wide(content.substr(start + 1, end - start - 1));
+			if (!EndsWithIgnoreCase(launcher, L".exe")) continue;
+			std::replace(launcher.begin(), launcher.end(), L'/', L'\\');
+			std::wstring exePath = homeDir + L"\\" + launcher;
+			if (IsExistingFile(exePath)) return exePath;
+		}
+	}
+
+	WIN32_FIND_DATAW findData;
+	HANDLE hFind = FindFirstFileExW((homeDir + L"\\bin\\*64.exe").c_str(), FindExInfoBasic, &findData,
+									FindExSearchNameMatch, nullptr, 0);
+	if (hFind == INVALID_HANDLE_VALUE) return L"";
+	std::wstring result;
+	do {
+		if (_wcsicmp(findData.cFileName, L"jetbrains_client64.exe") == 0) continue;
+		result = homeDir + L"\\bin\\" + findData.cFileName;
+		break;
+	} while (FindNextFileW(hFind, &findData));
+	FindClose(hFind);
+	return result;
+}
+
+// IDE 会在 LocalAppData\<Vendor>\<Product><Version>\.home 中记录安装目录
+inline std::wstring FindIdeExecutableFromSystemDir(const std::wstring& systemDir) {
+	std::ifstream file(systemDir + L"\\.home", std::ios::binary);
+	if (!file) return L"";
+	std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+	if (content.size() >= 3 && content.compare(0, 3, "\xEF\xBB\xBF") == 0) content.erase(0, 3);
+	const size_t end = content.find_last_not_of(" \t\r\n");
+	if (end == std::string::npos) return L"";
+	content.resize(end + 1);
+	return FindIdeExecutable(utf8_to_wide(content));
+}
+
+// 根据 Roaming 下的配置目录找到 IDE 启动程序
+// 同版本的 LocalAppData 目录没有记录时，退而使用该 IDE 其他版本记录的安装目录（版本高者优先）
+inline std::wstring ResolveIdeExecutable(const std::wstring& localAppData, const std::wstring& vendor,
+										const std::wstring& dirName, const std::wstring& name) {
+	if (localAppData.empty()) return L"";
+	const std::wstring vendorDir = localAppData + L"\\" + vendor;
+	std::wstring exePath = FindIdeExecutableFromSystemDir(vendorDir + L"\\" + dirName);
+	if (!exePath.empty()) return exePath;
+
+	std::vector<std::pair<std::vector<unsigned long>, std::wstring>> others;
+	ForEachSubDirectory(vendorDir, [&](const std::wstring& systemDir) {
+		std::wstring otherName;
+		std::vector<unsigned long> version;
+		ParseIdeDirName(systemDir.substr(systemDir.find_last_of(L'\\') + 1), otherName, version);
+		if (otherName == name) others.emplace_back(std::move(version), systemDir);
+	});
+	std::sort(others.begin(), others.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+	for (const auto& other : others) {
+		exePath = FindIdeExecutableFromSystemDir(other.second);
+		if (!exePath.empty()) return exePath;
 	}
 	return L"";
 }
@@ -126,22 +266,6 @@ inline std::wstring GetRoamingAppDataPath() {
 // 	return L"JetBrains IDE";
 // }
 
-// 遍历 dir 下的直接子目录，fn 参数为子目录完整路径
-template <class Fn>
-void ForEachSubDirectory(const std::wstring& dir, Fn&& fn) {
-	WIN32_FIND_DATAW findData;
-	const std::wstring pattern = dir + L"\\*";
-	HANDLE hFind = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &findData,
-									FindExSearchLimitToDirectories, nullptr, FIND_FIRST_EX_LARGE_FETCH);
-	if (hFind == INVALID_HANDLE_VALUE) return;
-	do {
-		if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-		if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) continue;
-		fn(dir + L"\\" + findData.cFileName);
-	} while (FindNextFileW(hFind, &findData));
-	FindClose(hFind);
-}
-
 // Find all JetBrains IDEs and their recentProjects.xml files
 inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 	std::vector<JetBrainsIDE> ides;
@@ -156,6 +280,8 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 	// 直接遍历两层目录，比通过 Everything SDK 搜索整个 Roaming 快得多，且不依赖 Everything 运行
 	struct Candidate {
 		JetBrainsIDE ide;
+		std::wstring vendor;
+		std::wstring dirName;
 		std::vector<unsigned long> version;
 	};
 	// Map to store unique IDE installations by product name
@@ -164,25 +290,14 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 	ForEachSubDirectory(roamingPath, [&](const std::wstring& vendorDir) {
 		ForEachSubDirectory(vendorDir, [&](const std::wstring& productDir) {
 			const std::wstring xmlPath = productDir + LR"(\options\recentProjects.xml)";
-			const DWORD attrs = GetFileAttributesW(xmlPath.c_str());
-			if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-				return;
-			}
+			if (!IsExistingFile(xmlPath)) return;
 
-			// 去掉目录名末尾的数字和点，CLion2025.1 -> CLion
+			// 去掉目录名末尾的数字和点，CLion2025.1 -> CLion, {2025, 1}
 			const std::wstring dirName = productDir.substr(productDir.find_last_of(L'\\') + 1);
-			const size_t end = dirName.find_last_not_of(L"0123456789.");
-			const std::wstring name = dirName.substr(0, end == std::wstring::npos ? 0 : end + 1);
-			if (name.empty()) return;
-
-			// 解析版本号 2025.1 -> {2025, 1}
+			std::wstring name;
 			std::vector<unsigned long> version;
-			for (size_t pos = name.size(); pos < dirName.size();) {
-				size_t dot = dirName.find(L'.', pos);
-				if (dot == std::wstring::npos) dot = dirName.size();
-				if (dot > pos) version.push_back(std::wcstoul(dirName.c_str() + pos, nullptr, 10));
-				pos = dot + 1;
-			}
+			ParseIdeDirName(dirName, name, version);
+			if (name.empty()) return;
 
 			// 同一 IDE 存在多个版本时，取版本号最高的那个（旧版本的 xml 格式可能不同）
 			auto it = ideMap.find(name);
@@ -191,16 +306,20 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 			Candidate& candidate = ideMap[name];
 			candidate.ide.name = name;
 			candidate.ide.recentProjectsXmlPath = xmlPath;
-			// Try to find IDE executable (simplified - could be enhanced)
-			candidate.ide.exePath = L""; // Will be left empty, icon will be default
+			candidate.vendor = vendorDir.substr(vendorDir.find_last_of(L'\\') + 1);
+			candidate.dirName = dirName;
 			candidate.version = std::move(version);
 		});
 	});
 
-	// Convert map to vector
+	// Convert map to vector, 并获取每个 IDE 的启动程序及其系统图标索引
+	const std::wstring localAppData = GetKnownFolder(FOLDERID_LocalAppData);
 	ides.reserve(ideMap.size());
 	for (auto& pair : ideMap) {
-		ides.push_back(std::move(pair.second.ide));
+		Candidate& candidate = pair.second;
+		candidate.ide.exePath = ResolveIdeExecutable(localAppData, candidate.vendor, candidate.dirName, candidate.ide.name);
+		candidate.ide.iconIndex = GetSysImageIndex(candidate.ide.exePath);
+		ides.push_back(std::move(candidate.ide));
 	}
 
 	return ides;
