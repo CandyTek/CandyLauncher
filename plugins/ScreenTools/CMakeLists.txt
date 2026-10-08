@@ -1,18 +1,8 @@
 ﻿cmake_minimum_required(VERSION 3.16)
 project(ScreenToolsPlugin LANGUAGES CXX)
 
-include(FetchContent)
-FetchContent_Declare(zxing_cpp
-	GIT_REPOSITORY https://github.com/zxing-cpp/zxing-cpp.git
-	GIT_TAG d6068bcebeb8fd9f0d35a99b00d202be86a14dbe
-	GIT_SHALLOW FALSE)
-FetchContent_GetProperties(zxing_cpp)
-if(NOT zxing_cpp_POPULATED)
-	FetchContent_MakeAvailable(zxing_cpp)
-endif()
-
 # ZXING_READERS builds every format. This plugin needs only the QR decoder.
-set(ZXING_SRC ${zxing_cpp_SOURCE_DIR}/core/src)
+set(ZXING_SRC ${CMAKE_SOURCE_DIR}/3rdparty/zxing-cpp/core/src)
 add_library(screen_tools_zxing_qr STATIC
 	${ZXING_SRC}/Barcode.cpp
 	${ZXING_SRC}/BarcodeFormat.cpp

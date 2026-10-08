@@ -11,7 +11,7 @@ set(PLUGIN_SOURCES
 		latex.hpp
 		../../util/BaseTools.hpp
 		../../model/SettingItem.hpp
-		exprtk/exprtk.hpp
+		${CMAKE_SOURCE_DIR}/3rdparty/ExprTk/exprtk.hpp
 		../Plugin.hpp
 		ExprtkWrapper.hpp
 		CalcPluginData.hpp
@@ -21,3 +21,4 @@ add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 
 # 引用公共 CMake 模块
 include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/ExprTk)

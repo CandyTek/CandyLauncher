@@ -7,7 +7,7 @@
 #include "ExprtkWrapper.hpp"
 #include "latex.hpp"
 #include "util/BaseTools.hpp"
-#include "exprtk/exprtk.hpp"
+#include "exprtk.hpp"
 #include <algorithm>
 #include <numeric>
 #include <regex>
@@ -123,19 +123,12 @@ public:
 		if (!m_host) return;
 
 		allPluginActions.clear();
-		CalcAction action1;
-		action1.id = 1;
-		action1.title = L"计算结果";
-		action1.subTitle = L"";
-		action1.iconFilePathIndex = GetSysImageIndex(action1.getIconFilePath());
-		allPluginActions.push_back(std::make_shared<CalcAction>(action1));
-
-		CalcAction action2;
-		action2.id = 2;
-		action2.title = L"化简";
-		action2.subTitle = L"";
-		action2.iconFilePathIndex = GetSysImageIndex(action2.getIconFilePath());
-		allPluginActions.push_back(std::make_shared<CalcAction>(action1));
+		CalcAction action0;
+		action0.id = 0;
+		action0.title = L"计算结果";
+		action0.subTitle = L"";
+		action0.iconFilePathIndex = GetSysImageIndex(action0.getIconFilePath());
+		allPluginActions.push_back(std::make_shared<CalcAction>(action0));
 	}
 
 	void Shutdown() override {
@@ -228,15 +221,15 @@ public:
 	// todo: 实现全局和 前缀
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
-			if (isDetectReplace && input.size() > (startStr.size() + 2) && MyEndsWith2(input, L"=")) {
+			if (isDetectReplace && input.size() > (startStr.size() + 2) && EndsWith(input, L"=")) {
 				swprintf(editTextBuf, 64, L"%.15g", EvaluateExpression(input.substr(0, input.size() - 1)));
 				m_host->ChangeEditTextText(startStr + editTextBuf);
+				return {};
 			} else {
-				swprintf(editTextBuf, 64, L"结果: %.15g", EvaluateExpression(input));
+				swprintf(editTextBuf, 64, L"%.15g", EvaluateExpression(input));
 				std::dynamic_pointer_cast<CalcAction>(allPluginActions[0])->subTitle = editTextBuf;
+				return {allPluginActions[0]};
 			}
-
-			return allPluginActions;
 		} else if (StartsWith(input, L"latex ")) {
 			std::dynamic_pointer_cast<CalcAction>(allPluginActions[0])->subTitle = EvaluateLatex(input);
 			return allPluginActions;

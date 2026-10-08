@@ -22,6 +22,8 @@ CandyLauncher is a lightweight Windows shortcut launcher written in C++, imitati
 
 ## Build method
 
+> Clone this project and then execute `git submodule update --init`
+
 ### Visual Studio 2022
 
 - Installation components: Desktop development using C++ (including Windows SDK, MSVC toolset, CMake integration)

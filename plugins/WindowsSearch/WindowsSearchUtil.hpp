@@ -506,7 +506,7 @@ public:
 
 			// 如果失败，记录详细错误信息
 			if (FAILED(hr)) {
-				wchar_t errorMsg[512];
+				// wchar_t errorMsg[512];
 				const wchar_t* errorDesc = L"Unknown error";
 
 				switch (hr) {

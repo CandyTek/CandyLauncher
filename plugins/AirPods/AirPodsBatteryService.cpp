@@ -22,18 +22,18 @@ namespace {
 
 	std::wstring ModelName(const uint16_t modelId) {
 		switch (modelId) {
-		case 0x2002: return L"AirPods (1st generation)";
-		case 0x200F: return L"AirPods (2nd generation)";
-		case 0x2013: return L"AirPods (3rd generation)";
+		case 0x2002: return L"AirPods 1";
+		case 0x200F: return L"AirPods 2";
+		case 0x2013: return L"AirPods 3";
 		case 0x2019: return L"AirPods 4";
-		case 0x201B: return L"AirPods 4 (ANC)";
+		case 0x201B: return L"AirPods 4 ANC";
 		case 0x200E: return L"AirPods Pro";
-		case 0x2014: return L"AirPods Pro (2nd generation)";
-		case 0x2024: return L"AirPods Pro 2 (USB-C)";
+		case 0x2014: return L"AirPods Pro 2";
+		case 0x2024: return L"AirPods Pro 2 (C)";
 		case 0x2027: return L"AirPods Pro 3";
 		case 0x200A: return L"AirPods Max";
 		case 0x2012: return L"Beats Fit Pro";
-		default: return L"Apple headphones";
+		default: return L"Headphones";
 		}
 	}
 

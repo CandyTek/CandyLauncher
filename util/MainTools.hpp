@@ -352,7 +352,7 @@ static void MyMoveWindow(HWND hWnd) {
 // 	return filteredActions[selected];
 // }
 
-static const std::shared_ptr<BaseAction>& GetListViewSelectedAction(
+static std::shared_ptr<BaseAction>& GetListViewSelectedAction(
 	HWND hListView, std::vector<std::shared_ptr<BaseAction>>& filteredActions) {
 	const int selected = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
 	if (selected == -1 || selected < 0 || static_cast<size_t>(selected) >= filteredActions.size()) {

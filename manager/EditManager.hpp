@@ -206,7 +206,7 @@ private:
 				}
 				if (!filteredActions.empty()) {
 					// 必须取列表中当前选中项，否则快捷键操作的目标会和界面选中项不一致
-					const std::shared_ptr<BaseAction>& selectedAction = GetListViewSelectedAction(
+					std::shared_ptr<BaseAction>& selectedAction = GetListViewSelectedAction(
 						g_listViewHwnd, filteredActions);
 					int pluginResult = selectedAction
 											? g_pluginManager->DispatchSendHotKey(selectedAction, vk, currentModifiers, wParam)
@@ -260,7 +260,7 @@ private:
 				}
 				if (!filteredActions.empty()) {
 					// 必须取列表中当前选中项，否则快捷键操作的目标会和界面选中项不一致
-					if (const std::shared_ptr<BaseAction>& selectedAction = GetListViewSelectedAction(
+					if (std::shared_ptr<BaseAction>& selectedAction = GetListViewSelectedAction(
 						g_listViewHwnd, filteredActions)) {
 						return g_pluginManager->DispatchSendHotKey(selectedAction, vk, currentModifiers, wParam);
 					}

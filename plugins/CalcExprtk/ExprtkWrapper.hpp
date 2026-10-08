@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "exprtk/exprtk.hpp"
+#include "exprtk.hpp"
 
 // #define int long long
 // #define double long double

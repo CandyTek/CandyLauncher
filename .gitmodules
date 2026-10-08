@@ -4,9 +4,6 @@
 [submodule "3rdparty/ExprTk"]
 	path = 3rdparty/ExprTk
 	url = https://github.com/ArashPartow/exprtk.git
-[submodule "plugins/CalcExprtk/exprtk"]
-	path = plugins/CalcExprtk/exprtk
-	url = https://github.com/ArashPartow/exprtk
 [submodule "3rdparty/cpp-pinyin"]
 	path = 3rdparty/cpp-pinyin
 	url = https://github.com/CandyTek/cpp-pinyin
@@ -28,3 +25,15 @@
 [submodule "3rdparty/cmark-gfm"]
 	path = 3rdparty/cmark-gfm
 	url = https://github.com/github/cmark-gfm.git
+[submodule "3rdparty/win-iconv"]
+	path = 3rdparty/win-iconv
+	url = https://github.com/win-iconv/win-iconv.git
+	shallow = true
+[submodule "3rdparty/zbar-windows"]
+	path = 3rdparty/zbar-windows
+	url = https://github.com/iredt/zbar-windows.git
+	shallow = true
+[submodule "3rdparty/zxing-cpp"]
+	path = 3rdparty/zxing-cpp
+	url = https://github.com/zxing-cpp/zxing-cpp.git
+	shallow = true

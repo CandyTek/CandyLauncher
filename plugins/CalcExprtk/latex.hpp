@@ -13,7 +13,7 @@
 // 包含 ExprTk 头文件
 #include <mutex>
 
-#include "exprtk/exprtk.hpp"
+#include "exprtk.hpp"
 
 #define M_PI		3.14159265358979323846
 #define M_E		2.7182818284590452354

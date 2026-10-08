@@ -1,26 +1,11 @@
 ﻿cmake_minimum_required(VERSION 3.16)
 project(ScreenToolsPlugin2 LANGUAGES C CXX)
 
-include(FetchContent)
-FetchContent_Declare(zbar_source
-	GIT_REPOSITORY https://github.com/iredt/zbar-windows.git
-	GIT_TAG d2272a4bf35a7051cda7b4e68a9f35efb5fe63db)
-FetchContent_Declare(win_iconv_source
-	GIT_REPOSITORY https://github.com/win-iconv/win-iconv.git
-	GIT_TAG 70a279dcfe6318bbe63e019e33b3230b55c19762)
-FetchContent_GetProperties(zbar_source)
-if(NOT zbar_source_POPULATED)
-	FetchContent_Populate(zbar_source)
-endif()
-FetchContent_GetProperties(win_iconv_source)
-if(NOT win_iconv_source_POPULATED)
-	FetchContent_Populate(win_iconv_source)
-endif()
+set(WIN_ICONV_DIR ${CMAKE_SOURCE_DIR}/3rdparty/win-iconv)
+add_library(screen_tools_iconv STATIC ${WIN_ICONV_DIR}/win_iconv.c)
+target_include_directories(screen_tools_iconv PUBLIC ${WIN_ICONV_DIR})
 
-add_library(screen_tools_iconv STATIC ${win_iconv_source_SOURCE_DIR}/win_iconv.c)
-target_include_directories(screen_tools_iconv PUBLIC ${win_iconv_source_SOURCE_DIR})
-
-set(ZBAR_DIR ${zbar_source_SOURCE_DIR})
+set(ZBAR_DIR ${CMAKE_SOURCE_DIR}/3rdparty/zbar-windows)
 file(READ ${ZBAR_DIR}/config-internal/config-win.h ZBAR_WINDOWS_CONFIG)
 string(REPLACE "#define HAVE_UNISTD_H 1" "#undef HAVE_UNISTD_H" ZBAR_WINDOWS_CONFIG "${ZBAR_WINDOWS_CONFIG}")
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/config-win.h "${ZBAR_WINDOWS_CONFIG}")
