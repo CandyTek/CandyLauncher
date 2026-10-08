@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <memory>
+#include "util/BitmapUtil.hpp"
 #include "BookmarkPluginData.hpp"
 
 class BookmarkAction final : public BaseAction {
@@ -9,11 +11,10 @@ class BookmarkAction final : public BaseAction {
 	std::wstring url;
 
 	
-	// 图标，只要是文件就可以
-	std::wstring iconFilePath;
+	// 同一浏览器的所有条目共享图标
+	std::shared_ptr<LazySysImageIndex> icon;
 	std::wstring title;
 	std::wstring subTitle;
-	int iconFilePathIndex = -1;
 
 	std::wstring& getTitle() override
 	{
@@ -27,12 +28,13 @@ class BookmarkAction final : public BaseAction {
 
 	std::wstring& getIconFilePath() override
 	{
-		return iconFilePath;
+		static std::wstring empty;
+		return icon ? icon->path : empty;
 	}
 
 	int getIconFilePathIndex() override
 	{
-		return iconFilePathIndex;
+		return icon ? icon->get() : -1;
 	}
 
 	HBITMAP getIconBitmap() override

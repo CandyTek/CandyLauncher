@@ -400,6 +400,22 @@ static int GetSysImageIndex(const std::wstring& filePath) {
 	return extractedIndex;
 }
 
+// 多个 Action 共享同一图标时使用：首次取索引时才解析（通常在列表图标线程中），避免拖慢索引刷新
+struct LazySysImageIndex {
+	explicit LazySysImageIndex(std::wstring path) : path(std::move(path)) {}
+
+	int get() {
+		std::call_once(once, [this] { index = GetSysImageIndex(path); });
+		return index;
+	}
+
+	std::wstring path;
+
+private:
+	std::once_flag once;
+	int index = -1;
+};
+
 inline void RefreshIconCache(const std::wstring& filePath) {
 	// 通知系统刷新该文件路径的图标
 	SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATH, filePath.c_str(), NULL);

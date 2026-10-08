@@ -10,10 +10,12 @@
 #include <algorithm>
 #include <iostream>
 #include <sqlite3.h>
+#include <future>
 
 #include "util/BitmapUtil.hpp"
 #include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
+#include "util/ParallelUtil.hpp"
 
 
 // 返回第一个找到的 .ico 文件路径（非递归）
@@ -83,7 +85,13 @@ static std::wstring ConvertWebkitTimestamp(int64_t webkit_timestamp) {
 	return buffer;
 }
 
+struct RawHistoryRow {
+	std::string url;
+	std::string title;
+};
+
 // 从 Chromium 类浏览器（Chrome/Edge）的 History SQLite 数据库读取历史记录
+// 先在单线程内取出原始行（SQLite 游标不能并行），再并行转换字符串与生成匹配文本
 static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 	const std::string& historyDbPath,
 	const std::wstring& browserIconPath,
@@ -98,160 +106,88 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 			return result;
 		}
 
-		// 由于浏览器可能正在使用数据库，我们需要复制一份到临时位置
-		// std::string tempDbPath = historyDbPath + ".tmp";
-		// try {
-		// 	fs::copy_file(historyDbPath, tempDbPath, fs::copy_options::overwrite_existing);
-		// } catch (const std::exception& e) {
-		// 	Loge(L"BrowserHistory", L"Failed to copy history database: ", e.what());
-		// 	return result;
-		// }
-
+		const auto t0 = std::chrono::steady_clock::now();
+		// immutable=1：不加锁、不检查 WAL，可直接读取浏览器正在使用的数据库
 		sqlite3* db = nullptr;
-		// int rc = sqlite3_open(tempDbPath.c_str(), &db);
-		// int rc = sqlite3_open_v2(historyDbPath.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_SHAREDCACHE, nullptr);
-		std::string dbUri = "file:" + historyDbPath + "?immutable=1";
-
-		int rc = sqlite3_open_v2(
-			dbUri.c_str(),
-			&db,
-			SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_SHAREDCACHE,
-			nullptr
-		);
-
+		const std::string dbUri = "file:" + historyDbPath + "?immutable=1";
+		int rc = sqlite3_open_v2(dbUri.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nullptr);
 		if (rc != SQLITE_OK) {
 			Loge(L"BrowserHistory", L"Failed to open history database: ", sqlite3_errmsg(db));
 			if (db) sqlite3_close(db);
-			// 删除临时文件
-			// try {
-			// fs::remove(tempDbPath);
-			// } catch (...) {}
 			return result;
 		}
 		sqlite3_exec(db, "PRAGMA query_only = ON;", nullptr, nullptr, nullptr);
+		// 使用内存映射读取，减少全表扫描时的 read 系统调用与页拷贝
+		sqlite3_exec(db, "PRAGMA mmap_size = 268435456;", nullptr, nullptr, nullptr);
 
-		// 查询历史记录，按访问次数排序（参考 Chromium.cs 实现）
 		// urls 表结构：id, url, title, visit_count, typed_count, last_visit_time, hidden
-		std::string sql = "SELECT url, title, visit_count, last_visit_time FROM urls "
+		// 子查询只对 id 排序，再按主键取 url/title，避免排序器搬运所有行的长字符串（约快一倍）
+		// CROSS JOIN 固定以子查询为外层循环，结果保持 last_visit_time 降序
+		const std::string sql = "SELECT u.url, u.title FROM ("
+			"SELECT id FROM urls "
 			"WHERE hidden = 0 AND url NOT LIKE 'chrome://%' AND url NOT LIKE 'edge://%' "
-			"ORDER BY last_visit_time DESC" + (maxResults > 0 ? " LIMIT " + std::to_string(maxResults) : "") + ";";
-		// std::string sql = "SELECT url, title FROM urls "
-		// 	"ORDER BY visit_count DESC LIMIT " + std::to_string(maxResults) + ";";
+			"ORDER BY last_visit_time DESC" + (maxResults > 0 ? " LIMIT " + std::to_string(maxResults) : "") +
+			") s CROSS JOIN urls u ON u.id = s.id;";
 
 		sqlite3_stmt* stmt = nullptr;
 		rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-
 		if (rc != SQLITE_OK) {
 			Loge(L"BrowserHistory", L"Failed to prepare SQL statement: ", sqlite3_errmsg(db));
 			sqlite3_close(db);
-			// try {
-			// 	fs::remove(tempDbPath);
-			// } catch (...) {}
 			return result;
 		}
 
-		int iconFilePathIndex = GetSysImageIndex(browserIconPath);
-
+		std::vector<RawHistoryRow> rows;
+		rows.reserve(maxResults > 0 ? static_cast<size_t>(maxResults) : 4096);
 		while (sqlite3_step(stmt) == SQLITE_ROW) {
-			auto action = std::make_shared<BrowserHistoryAction>();
+			const auto* urlText = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+			if (!urlText) continue; // 跳过空 URL
+			const int urlLen = sqlite3_column_bytes(stmt, 0);
+			const auto* titleText = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+			const int titleLen = titleText ? sqlite3_column_bytes(stmt, 1) : 0;
+			rows.push_back({std::string(urlText, urlLen), titleText ? std::string(titleText, titleLen) : std::string()});
+		}
+		sqlite3_finalize(stmt);
+		sqlite3_close(db);
+		const auto t1 = std::chrono::steady_clock::now();
 
-			try {
-				// 读取 URL
-				const unsigned char* url_text = sqlite3_column_text(stmt, 0);
-				if (!url_text) {
-					continue; // 跳过空 URL
-				}
-				std::string url = reinterpret_cast<const char*>(url_text);
+		const auto icon = std::make_shared<LazySysImageIndex>(browserIconPath);
 
-				// 先尝试严格模式转换
-				int size_needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, url.data(), static_cast<int>(url.size()), nullptr, 0);
-				if (size_needed > 0) {
-					std::wstring wurl(size_needed, 0);
-					MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, url.data(), static_cast<int>(url.size()), &wurl[0], size_needed);
-					action->url = wurl;
-				} else {
-					// 严格模式失败，尝试宽容模式
-					size_needed = MultiByteToWideChar(CP_UTF8, 0, url.data(), static_cast<int>(url.size()), nullptr, 0);
-					if (size_needed > 0) {
-						std::wstring wurl(size_needed, 0);
-						MultiByteToWideChar(CP_UTF8, 0, url.data(), static_cast<int>(url.size()), &wurl[0], size_needed);
-						action->url = wurl;
-					} else {
-						// 完全失败，跳过这条记录
-						continue;
-					}
-				}
-
-				// 读取标题
-				const unsigned char* title_text = sqlite3_column_text(stmt, 1);
-				std::string title = title_text ? reinterpret_cast<const char*>(title_text) : "";
-
-				if (!title.empty()) {
-					// 先尝试严格模式
-					size_needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title.data(), static_cast<int>(title.size()), nullptr,
-													0);
-					if (size_needed > 0) {
-						std::wstring wtitle(size_needed, 0);
-						MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title.data(), static_cast<int>(title.size()), &wtitle[0],
-											size_needed);
-						action->title = wtitle;
-					} else {
-						// 严格模式失败，尝试宽容模式
-						size_needed = MultiByteToWideChar(CP_UTF8, 0, title.data(), static_cast<int>(title.size()), nullptr, 0);
-						if (size_needed > 0) {
-							std::wstring wtitle(size_needed, 0);
-							MultiByteToWideChar(CP_UTF8, 0, title.data(), static_cast<int>(title.size()), &wtitle[0], size_needed);
-							action->title = wtitle;
-						} else {
-							// 标题转换失败，使用 URL
-							action->title = action->url;
-						}
-					}
-				}
-
+		// 每个元素按下标写入，保持按访问时间排序；转换失败的记录留空后再剔除
+		result.resize(rows.size());
+		ParallelForRange(rows.size(), 64, [&](const size_t begin, const size_t end) {
+			for (size_t i = begin; i < end; ++i) {
+				const auto& row = rows[i];
+				auto action = std::make_shared<BrowserHistoryAction>();
+				// 非法 UTF-8 序列会被替换为 U+FFFD
+				Utf8ToWideFast(row.url, action->url);
+				if (action->url.empty()) continue;
+				Utf8ToWideFast(row.title, action->title);
 				// 如果标题为空，使用 URL
 				if (action->title.empty()) {
 					action->title = action->url;
 				}
-
-				// 设置副标题为 URL
 				action->subTitle = action->url;
-			} catch (const std::exception& e) {
-				// 转换出错，跳过这条记录
-				Logw(L"BrowserHistory", L"Conversion error, skip this record: ", e.what());
-				continue;
-			}
-
-			// 设置图标
-			action->iconFilePath = browserIconPath;
-			action->iconFilePathIndex = iconFilePathIndex;
-
-			// 设置匹配文本（包装在 try-catch 中以防止 UTF-16 错误）
-			try {
-				if (isMatchTextUrl) {
-					action->matchText = m_host->GetTheProcessedMatchingText(action->title) + action->url;
-				} else {
-					action->matchText = m_host->GetTheProcessedMatchingText(action->title);
+				action->icon = icon;
+				try {
+					if (isMatchTextUrl) {
+						action->matchText = m_host->GetTheProcessedMatchingText(action->title) + action->url;
+					} else {
+						action->matchText = m_host->GetTheProcessedMatchingText(action->title);
+					}
+				} catch (...) {
+					// 如果处理失败，使用原始标题
+					action->matchText = action->title;
 				}
-			} catch (...) {
-				// 如果处理失败，使用原始标题
-				action->matchText = action->title;
+				result[i] = std::move(action);
 			}
+		});
+		result.erase(std::remove(result.begin(), result.end(), nullptr), result.end());
 
-			result.push_back(action);
-		}
-
-		sqlite3_finalize(stmt);
-		sqlite3_close(db);
-
-		// 删除临时文件
-		// try {
-		// 	fs::remove(tempDbPath);
-		// } catch (const std::exception& e) {
-		// // 忽略删除临时文件的错误
-		// 	Loge(L"BrowserHistory", L"Failed to remove temp database: ", e.what());
-		// }
-		Logi(L"BrowserHistory", L"Loaded ", result.size(), L" history items");
+		const auto t2 = std::chrono::steady_clock::now();
+		using ms = std::chrono::milliseconds;
+		Logi(L"BrowserHistory", L"[perf] ", historyDbPath, L" query=", std::chrono::duration_cast<ms>(t1 - t0).count(),
+			L"ms build=", std::chrono::duration_cast<ms>(t2 - t1).count(), L"ms count=", result.size());
 	} catch (const std::exception& e) {
 		Loge(L"BrowserHistory", L"Exception in GetChromiumHistoryFromDB: ", e.what());
 	}
@@ -343,41 +279,46 @@ static std::vector<std::shared_ptr<BaseAction>> GetHistoryFromCustomPath(
 	return result;
 }
 
-// 获取所有配置的浏览器历史记录
+// 获取所有配置的浏览器历史记录，各浏览器并发读取，结果按配置顺序合并
 static std::vector<std::shared_ptr<BaseAction>> GetAllBrowserHistory() {
 	std::vector<std::shared_ptr<BaseAction>> result;
 
 	// 从配置读取浏览器列表和最大结果数
-	int maxResults = static_cast<int>(m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.max_results").intValue);
-	std::vector<std::string> browserList = m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.browser_list").stringArr;
+	const int maxResults = static_cast<int>(m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.max_results").intValue);
+	const std::vector<std::string> browserList = m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.browser_list").stringArr;
 
+	std::vector<std::future<std::vector<std::shared_ptr<BaseAction>>>> futures;
+	futures.reserve(browserList.size());
 	for (const std::string& browser : browserList) {
 		std::string trimmedBrowser = MyTrim(browser);
+		if (trimmedBrowser.empty()) continue;
 
-		if (trimmedBrowser == "chrome") {
-			auto history = GetChromeHistory(maxResults);
-			result.insert(result.end(),
-						std::make_move_iterator(history.begin()),
-						std::make_move_iterator(history.end()));
-		} else if (trimmedBrowser == "edge") {
-			auto history = GetEdgeHistory(maxResults);
-			result.insert(result.end(),
-						std::make_move_iterator(history.begin()),
-						std::make_move_iterator(history.end()));
-		} else if (trimmedBrowser.empty()) {
-			continue;
-		} else {
-			// 自定义路径
-			char expandedPath[MAX_PATH];
-			ExpandEnvironmentStringsA(trimmedBrowser.c_str(), expandedPath, MAX_PATH);
-
-			if (GetFileAttributesA(expandedPath) != INVALID_FILE_ATTRIBUTES) {
-				auto history = GetHistoryFromCustomPath(expandedPath, maxResults);
-				result.insert(result.end(),
-							std::make_move_iterator(history.begin()),
-							std::make_move_iterator(history.end()));
+		futures.push_back(std::async(std::launch::async, [trimmedBrowser, maxResults]() -> std::vector<std::shared_ptr<BaseAction>> {
+			try {
+				if (trimmedBrowser == "chrome") {
+					return GetChromeHistory(maxResults);
+				}
+				if (trimmedBrowser == "edge") {
+					return GetEdgeHistory(maxResults);
+				}
+				// 自定义路径
+				char expandedPath[MAX_PATH];
+				ExpandEnvironmentStringsA(trimmedBrowser.c_str(), expandedPath, MAX_PATH);
+				if (GetFileAttributesA(expandedPath) == INVALID_FILE_ATTRIBUTES) {
+					return {};
+				}
+				return GetHistoryFromCustomPath(expandedPath, maxResults);
+			} catch (...) {
+				return {};
 			}
-		}
+		}));
+	}
+
+	for (auto& fut : futures) {
+		auto history = fut.get();
+		result.insert(result.end(),
+					std::make_move_iterator(history.begin()),
+					std::make_move_iterator(history.end()));
 	}
 
 	return result;

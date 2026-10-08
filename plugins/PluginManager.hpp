@@ -378,9 +378,11 @@ public:
 		for (auto& pair : m_plugins) {
 			if (pair.second.loaded && pair.second.plugin) {
 				Logi(TAG, L"Loading actions from plugin: ", pair.second.name);
-				const auto refreshStart = GetTickCount64();
+				const auto refreshStart = std::chrono::steady_clock::now();
 				pair.second.plugin->RefreshAllActions();
-				pair.second.refreshTimeMs = GetTickCount64() - refreshStart;
+				pair.second.refreshTimeMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+					std::chrono::steady_clock::now() - refreshStart).count());
+				Logi(TAG, L"Refresh done: ", pair.second.name, L", ", pair.second.refreshTimeMs, L" ms");
 				// ConsolePrintln(TAG, L"After loading, total actions: " + std::to_wstring(m_allActions.size()));
 			}
 		}

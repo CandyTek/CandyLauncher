@@ -16,65 +16,9 @@
 
 #include "util/BitmapUtil.hpp"
 #include "util/StringUtil.hpp"
-#include <omp.h>
+#include "util/ParallelUtil.hpp"
 
 using nlohmann::json;
-
-// 递归收集节点中的书签
-static void CollectBookmarksFromNode(const json& node,
-									std::vector<std::shared_ptr<BaseAction>>& out,
-									const std::wstring& browserIconPath,
-									const int iconFilePathIndex) {
-	// Chrome/Edge 节点类型：folder / url
-	if (!node.is_object()) return;
-
-	auto typeIt = node.find("type");
-	if (typeIt != node.end() && typeIt->is_string()) {
-		const std::string type = *typeIt;
-		if (type == "url") {
-			// 直接取 name / url
-			const auto nameIt = node.find("name");
-			const auto urlIt = node.find("url");
-			if (nameIt != node.end() && urlIt != node.end() &&
-				nameIt->is_string() && urlIt->is_string()) {
-				auto temp = std::make_shared<BookmarkAction>();
-				std::wstring name = utf8_to_wide(nameIt.value().get<std::string>());
-				std::wstring url = utf8_to_wide(urlIt.value().get<std::string>());
-				temp->title = name;
-				temp->subTitle = url;
-				temp->url = url;
-				temp->iconFilePath = browserIconPath;
-				temp->iconFilePathIndex = iconFilePathIndex;
-				// temp->matchText = (name) + url;
-				if (isMatchTextUrl) {
-					temp->matchText = m_host->GetTheProcessedMatchingText(name) + url;
-				} else {
-					temp->matchText = m_host->GetTheProcessedMatchingText(name);
-				}
-				out.push_back(temp);
-			}
-			return;
-		}
-		if (type == "folder") {
-			// 递归 children
-			const auto childrenIt = node.find("children");
-			if (childrenIt != node.end() && childrenIt->is_array()) {
-				for (const auto& child : *childrenIt) {
-					CollectBookmarksFromNode(child, out, browserIconPath, iconFilePathIndex);
-				}
-			}
-			return;
-		}
-	}
-
-	// 某些入口（比如 roots.bookmark_bar）本身可能没有 type 字段，但包含 children
-	const auto childrenIt = node.find("children");
-	if (childrenIt != node.end() && childrenIt->is_array()) {
-		for (const auto& child : *childrenIt) {
-			CollectBookmarksFromNode(child, out, browserIconPath, iconFilePathIndex);
-		}
-	}
-}
 
 // 1. 轻量结构体：仅引用 JSON 字符串，零堆内存分配
 struct RawBookmarkRef {
@@ -121,80 +65,42 @@ static void FlattenBookmarkNodes(const json& node, std::vector<RawBookmarkRef>& 
 	}
 }
 
-static void CollectBookmarksFromNode2(
-    const json& rootNode,
-    std::vector<std::shared_ptr<BaseAction>>& out,
-    const std::wstring& browserIconPath,
-    const int iconFilePathIndex)
-{
-    std::vector<RawBookmarkRef> rawList;
-	rawList.reserve(8192);
-	FlattenBookmarkNodes(rootNode, rawList);
+// 并行构建 Action：每个元素按下标写入，保持书签原有顺序
+static void BuildBookmarkActions(
+	const std::vector<RawBookmarkRef>& rawList,
+	std::vector<std::shared_ptr<BaseAction>>& out,
+	const std::shared_ptr<LazySysImageIndex>& icon) {
+	const size_t base = out.size();
+	out.resize(base + rawList.size());
 
-    const size_t total = rawList.size();
-    if (total == 0) return;
-	
-	out.reserve(out.size() + total);
+	ParallelForRange(rawList.size(), 64, [&](const size_t begin, const size_t end) {
+		for (size_t i = begin; i < end; ++i) {
+			const auto& item = rawList[i];
+			auto act = std::make_shared<BookmarkAction>();
+			Utf8ToWideFast(item.name, act->title);
+			Utf8ToWideFast(item.url, act->url);
+			act->subTitle = act->url;
+			act->icon = icon;
+			try {
+				act->matchText = isMatchTextUrl
+					? m_host->GetTheProcessedMatchingText(act->title) + act->url
+					: m_host->GetTheProcessedMatchingText(act->title);
+			} catch (...) {
+				act->matchText = act->title;
+			}
+			out[base + i] = std::move(act);
+		}
+	});
+}
 
-    if (total < 1000) {
-        out.reserve(out.size() + total);
-        for (const auto& item : rawList) {
-            auto act = std::make_shared<BookmarkAction>();
-            Utf8ToWideFast(item.name, act->title);
-            Utf8ToWideFast(item.url, act->url);
-            act->subTitle = act->url;
-            act->iconFilePath = browserIconPath;
-            act->iconFilePathIndex = iconFilePathIndex;
-            act->matchText = isMatchTextUrl
-                ? m_host->GetTheProcessedMatchingText(act->title) + act->url
-                : m_host->GetTheProcessedMatchingText(act->title);
-            out.push_back(std::move(act));
-        }
-        return;
-    }
-
-    // 采用静态 chunk 划分，每个线程持有局部 vector，减少分配器并发碰撞
-    const int numThreads = omp_get_max_threads();
-    std::vector<std::vector<std::shared_ptr<BaseAction>>> threadOutputs(numThreads);
-
-    #pragma omp parallel
-    {
-        const int tid = omp_get_thread_num();
-        const size_t chunkSize = (total + numThreads - 1) / numThreads;
-        const size_t begin = (std::min)(tid * chunkSize, total);
-        const size_t end = (std::min)(begin + chunkSize, total);
-
-        auto& localOut = threadOutputs[tid];
-        localOut.reserve(end - begin);
-
-        for (size_t i = begin; i < end; ++i) {
-            const auto& item = rawList[i];
-            auto act = std::make_shared<BookmarkAction>();
-            
-            Utf8ToWideFast(item.name, act->title);
-            Utf8ToWideFast(item.url, act->url);
-            act->subTitle = act->url;
-            act->iconFilePath = browserIconPath;
-            act->iconFilePathIndex = iconFilePathIndex;
-
-            // ⚠️ 如果 GetTheProcessedMatchingText 内部有拼音表/锁，需确保其完全 const/无状态
-            if (isMatchTextUrl) {
-                act->matchText = m_host->GetTheProcessedMatchingText(act->title) + act->url;
-            } else {
-                act->matchText = m_host->GetTheProcessedMatchingText(act->title);
-            }
-
-            localOut.push_back(std::move(act));
-        }
-    }
-
-    // 主线程只做轻量的指针数组拼接（万级指针拼接耗时 < 1ms）
-    out.reserve(out.size() + total);
-    for (auto& localOut : threadOutputs) {
-        out.insert(out.end(), 
-                   std::make_move_iterator(localOut.begin()), 
-                   std::make_move_iterator(localOut.end()));
-    }
+static bool ReadWholeFile(const std::filesystem::path& path, std::string& out) {
+	std::ifstream ifs(path, std::ios::binary | std::ios::ate);
+	if (!ifs) return false;
+	const std::streamoff size = ifs.tellg();
+	if (size <= 0) return false;
+	out.resize(static_cast<size_t>(size));
+	ifs.seekg(0);
+	return static_cast<bool>(ifs.read(out.data(), size));
 }
 
 // 返回第一个找到的 .ico 文件路径（非递归）
@@ -234,18 +140,19 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 		} else {
 			p = p2;
 		}
-		std::string iconPath = p.parent_path().string();
-		std::wstring browserIconPath = utf8_to_wide(findFirstIcoFile(iconPath));
+		std::wstring browserIconPath = utf8_to_wide(findFirstIcoFile(p.parent_path().string()));
 		if (browserIconPath.empty()) {
 			browserIconPath = LR"(C:\Program Files\Internet Explorer\iexplore.exe)";
 		}
-		const int iconFilePathIndex = GetSysImageIndex(browserIconPath);
+		const auto icon = std::make_shared<LazySysImageIndex>(std::move(browserIconPath));
 
-		std::ifstream ifs(p, std::ios::binary);
-		if (!ifs) return {};
-
-		json j;
-		ifs >> j;
+		const auto t0 = std::chrono::steady_clock::now();
+		std::string content;
+		if (!ReadWholeFile(p, content)) return {};
+		// 从连续内存解析，比 istream 逐字符读取快得多
+		const json j = json::parse(content.data(), content.data() + content.size(), nullptr, false);
+		if (j.is_discarded()) return {};
+		const auto t1 = std::chrono::steady_clock::now();
 
 		// Chrome 的根一般是 j["roots"]，里面有 bookmark_bar / other / synced 等
 		const auto rootsIt = j.find("roots");
@@ -253,17 +160,24 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 			return {};
 		}
 
+		std::vector<RawBookmarkRef> rawList;
+		rawList.reserve(4096);
 		// 书签栏
 		if (auto bb = rootsIt->find("bookmark_bar"); bb != rootsIt->end()) {
-			CollectBookmarksFromNode2(*bb, result, browserIconPath, iconFilePathIndex);
+			FlattenBookmarkNodes(*bb, rawList);
 		}
 		// 其他书签
 		if (auto other = rootsIt->find("other"); other != rootsIt->end()) {
-			CollectBookmarksFromNode2(*other, result, browserIconPath, iconFilePathIndex);
+			FlattenBookmarkNodes(*other, rawList);
 		}
+		BuildBookmarkActions(rawList, result, icon);
+		const auto t2 = std::chrono::steady_clock::now();
+		using ms = std::chrono::milliseconds;
+		Logi(L"BookmarkUtil", L"[perf] ", p.wstring(), L" parse=", std::chrono::duration_cast<ms>(t1 - t0).count(),
+			L"ms build=", std::chrono::duration_cast<ms>(t2 - t1).count(), L"ms count=", result.size());
 		// 如需包含“移动设备同步书签”，可开启：
 		// if (auto synced = rootsIt->find("synced"); synced != rootsIt->end()) {
-		//     CollectBookmarksFromNode(*synced, result);
+		//     FlattenBookmarkNodes(*synced, rawList);
 		// }
 	} catch (...) {
 		// 解析/IO 出错就返回目前收集到的（或空）
