@@ -88,3 +88,11 @@ add_executable(ScreenToolsZxingQrTest ScreenToolsZxingQrTest.cpp
 target_link_libraries(ScreenToolsZxingQrTest PRIVATE screen_tools_zxing_qr gdiplus)
 add_test(NAME ScreenToolsZxingQrTest COMMAND ScreenToolsZxingQrTest
 	${CMAKE_SOURCE_DIR}/plugins/ScreenTools2/test.png)
+
+add_executable(CalcEngineTest CalcEngineTest.cpp ../plugins/CalcExprtk/CalcEngine.hpp)
+set_target_properties(CalcEngineTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+target_include_directories(CalcEngineTest PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/3rdparty/ExprTk)
+if (MSVC)
+	target_compile_options(CalcEngineTest PRIVATE /utf-8 /bigobj)
+endif ()
+add_test(NAME CalcEngineTest COMMAND CalcEngineTest)

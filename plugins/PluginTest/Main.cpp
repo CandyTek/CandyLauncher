@@ -139,6 +139,13 @@ public:
 	{
 		return true;
 	}
+
+	bool SetPluginSettingValue(uint16_t callerPluginId, const std::string& key, const nlohmann::json& value) override {
+		const auto it = settingsMap.find(key);
+		if (it == settingsMap.end()) return false;
+		it->second.setValue(value);
+		return true;
+	}
 	
 };
 

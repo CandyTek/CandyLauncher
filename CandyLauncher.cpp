@@ -29,6 +29,7 @@
 #include <Richedit.h>
 
 #include "util/MyToastUtil.hpp"
+#include "util/EditDropTarget.hpp"
 #include "manager/ProcessManager.hpp"
 #include "util/UpdateManager.hpp"
 #include "view/CustomComboBox.hpp"
@@ -263,11 +264,31 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow) {
 	}
 }
 
+static void UninstallMouseHook();
+
+// 拖放到搜索框后，取消窗口失焦时的延迟隐藏
+static void OnEditDropReceived() {
+	KillTimer(g_mainHwnd, TIMER_DELAY_HIDE_WINDOW);
+	lastDragAndDropTime = GetTickCount64();
+	UninstallMouseHook();
+	SetForegroundWindow(g_mainHwnd);
+}
+
 static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd) {
 	// 编辑框（搜索框）
 	g_editHwnd = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | ES_AUTOHSCROLL,
 								10, 10, 580, 35, hWnd, reinterpret_cast<HMENU>(1), hInstance, nullptr);
 	EditManager::EnableSmartEdit(g_editHwnd);
+	// EDIT 只支持 WM_DROPFILES，这里注册 OLE 拖放目标以接受文本（文件保持原有的参数行为）
+	RegisterEditDropTarget(g_editHwnd,
+							[](const std::wstring& text, const POINT clientPt) {
+								OnEditDropReceived();
+								InsertTextIntoEditAtPoint(g_editHwnd, text, clientPt);
+							},
+							[](const std::vector<std::wstring>& files) {
+								OnEditDropReceived();
+								ChangeEditTextArg(files.front());
+							});
 	SendMessageW(g_editHwnd, EM_SETCUEBANNER, TRUE,
 				reinterpret_cast<LPARAM>(utf8_to_wide(
 					g_settings_map["pref_search_box_placeholder"].stringValue).c_str()));
@@ -742,6 +763,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				g_BgImage = nullptr;
 			}
 			UnregisterMainPanelToggleHotkey(hWnd);
+			RevokeDragDrop(g_editHwnd);
 			UninstallMouseHook();
 			SaveWindowRectToRegistry(hWnd);
 			ListView_DeleteAllItems(g_listViewHwnd);

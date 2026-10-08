@@ -10,7 +10,7 @@ for /f "usebackq tokens=*" %%i in (`call "%ProgramFiles(x86)%\Microsoft Visual S
 call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -no_logo
 
 @REM ScreenToolsQrTest
-cmake --build cmake-build-debug-ninja-vs --target PluginTest SplitWordsTest AutomationActionModelTest ScreenToolsZxingQrTest UrlUtilTest --config Debug
+cmake --build cmake-build-debug-ninja-vs --target PluginTest SplitWordsTest AutomationActionModelTest ScreenToolsZxingQrTest UrlUtilTest CalcEngineTest --config Debug
 if errorlevel 1 exit /b %errorlevel%
 ctest -C Debug --test-dir cmake-build-debug-ninja-vs --output-on-failure
 exit /b %errorlevel%

@@ -71,6 +71,11 @@ public:
 	virtual void PluginTaskDone() = 0;
 	virtual std::wstring& GetCurrectArgText() =0;
 	virtual bool MyShowWindow(int nCmdShow,bool isForeground) = 0;
+
+	// 修改并保存设置项的值，插件只能修改以自己包名开头的设置项（如 com.candytek.calc.xxx）
+	// value 的类型需与设置项类型一致：string/list 用字符串，bool 用布尔，long 用整数，double 用浮点数
+	// 修改成功后会写入 user_settings.json 并同步到 GetSettingsMap()，不会回调 OnUserSettingsLoadDone
+	virtual bool SetPluginSettingValue(uint16_t callerPluginId, const std::string& key, const nlohmann::json& value) = 0;
 };
 
 class IPlugin {

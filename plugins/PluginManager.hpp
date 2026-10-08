@@ -852,6 +852,35 @@ public:
 		return true;
 	}
 
+	bool SetPluginSettingValue(uint16_t callerPluginId, const std::string& key, const nlohmann::json& value) override {
+		const auto pluginIt = m_plugins.find(callerPluginId);
+		if (pluginIt == m_plugins.end() || key.empty()) {
+			return false;
+		}
+		// 插件只能修改自己的设置项
+		const std::string keyPrefix = wide_to_utf8(pluginIt->second.pkgName) + ".";
+		if (key.rfind(keyPrefix, 0) != 0) {
+			Loge(TAG, L"SetPluginSettingValue reject key: ", utf8_to_wide(key));
+			return false;
+		}
+		const auto settingIt = g_settings_map.find(key);
+		if (settingIt == g_settings_map.end()) {
+			Loge(TAG, L"SetPluginSettingValue key not found: ", utf8_to_wide(key));
+			return false;
+		}
+		try {
+			settingIt->second.setValue(value);
+		} catch (const std::exception& e) {
+			Loge(TAG, L"SetPluginSettingValue value type error: ", e.what());
+			return false;
+		}
+
+		SetSettingValueInList(g_settings_ui_last_save, key, value);
+		SetSettingValueInList(g_settings_ui, key, value);
+		SaveUserConfigValue(key, value);
+		return true;
+	}
+
 private:
 	bool CanUseRestrictedPluginBrowserApi(uint16_t callerPluginId) const {
 		const auto it = m_plugins.find(callerPluginId);
@@ -907,19 +936,41 @@ private:
 		if (pkgName.empty()) {
 			return;
 		}
+		SaveUserConfigValue(wide_to_utf8(pkgName), enabled);
+	}
 
+	// 将单个设置值合并写入 user_settings.json
+	static void SaveUserConfigValue(const std::string& key, const nlohmann::json& value) {
 		nlohmann::json mergedConfig = LoadUserPluginConfig();
 		if (!mergedConfig.is_object()) {
 			mergedConfig = nlohmann::json::object();
 		}
-		mergedConfig[wide_to_utf8(pkgName)] = enabled;
+		mergedConfig[key] = value;
 
 		std::ofstream out(std::filesystem::path(USER_SETTINGS_PATH), std::ios::binary);
 		if (!out) {
-			Loge(TAG, L"SavePluginEnabledState open file failed: ", USER_SETTINGS_PATH);
+			Loge(TAG, L"SaveUserConfigValue open file failed: ", USER_SETTINGS_PATH);
 			return;
 		}
 		out << mergedConfig.dump(4) << std::endl;
+	}
+
+	// 递归更新设置列表中指定 key 的值，保证设置窗口重新打开时显示新值
+	static bool SetSettingValueInList(std::vector<SettingItem>& settings, const std::string& key, const nlohmann::json& value) {
+		for (auto& setting : settings) {
+			if (setting.key == key) {
+				try {
+					setting.setValue(value);
+				} catch (...) {
+				}
+				return true;
+			}
+			if ((setting.type == "expand" || setting.type == "expandswitch") &&
+				SetSettingValueInList(setting.children, key, value)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static bool IsPluginEnabledByConfig(const std::wstring& pkgName, const nlohmann::json& userConfig) {

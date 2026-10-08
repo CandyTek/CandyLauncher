@@ -96,16 +96,7 @@ public:
 
 	void OnMainWindowShow(const bool isShow) override {
 		mainWindowVisible = isShow;
-		if (isShow) {
-			// auto* host = g_airPodsHost;
-			// const bool hasKeyword =
-			// 	host && TrimAndLower(host->GetEditTextText()) == L"airpods";
-			// keywordActive = hasKeyword;
-			// if (hasKeyword) {
-			// 	Activate();
-			// 	PushResultsIfActive();
-			// }
-		} else {
+		if (!isShow) {
 			keywordActive = false;
 			Deactivate();
 		}
