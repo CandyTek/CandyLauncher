@@ -6,8 +6,6 @@
 #include <chrono>
 #include <cwctype>
 #include <memory>
-#include <mutex>
-#include <thread>
 
 #include "AirPodsAction.hpp"
 #include "AirPodsBatteryService.hpp"
@@ -89,24 +87,27 @@ public:
 
 	void Shutdown() override {
 		mainWindowVisible = false;
-		keywordActive = false;
 		Deactivate();
+		if (notifyHwnd) {
+			DestroyWindow(notifyHwnd);
+			notifyHwnd = nullptr;
+		}
 		g_airPodsHost = nullptr;
 	}
 
 	void OnMainWindowShow(const bool isShow) override {
 		mainWindowVisible = isShow;
-		if (!isShow) {
-			keywordActive = false;
-			Deactivate();
-		}
+		if (!isShow) Deactivate();
 	}
-	
 
+	// Called on the UI thread for every input change, so it also tells us when the
+	// keyword is gone and Bluetooth should be released.
 	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(
 		const std::wstring& input) override {
-		if (TrimAndLower(input) != L"airpods") return {};
-		keywordActive = true;
+		if (TrimAndLower(input) != L"airpods") {
+			Deactivate();
+			return {};
+		}
 		Activate();
 		return BuildResults();
 	}
@@ -120,13 +121,21 @@ public:
 	}
 
 private:
+	static constexpr UINT WM_AIRPODS_STATE_CHANGED = WM_APP + 0x1A9;
+	static constexpr UINT_PTR StaleRefreshTimerId = 1;
+	static constexpr UINT StaleRefreshIntervalMs = 1000;
+
 	std::vector<std::shared_ptr<BaseAction>> BuildResults() {
 		const auto state = service.GetState();
 		auto action = std::make_shared<AirPodsAction>();
 		action->matchText = L"airpods";
 		action->iconFilePath = BluetoothIconPath();
 
-		if (!state.connected) {
+		if (!state.connected && !state.ready && state.error.empty()) {
+			action->title = L"Looking for Apple headphones…";
+			action->subTitle = L"Checking connected Bluetooth devices";
+			action->iconIndex = icon_disconnect;
+		} else if (!state.connected) {
 			action->title = L"No connected Apple headphones";
 			action->subTitle = state.error.empty()
 				? L"Connect your AirPods or supported Beats headphones via Bluetooth"
@@ -171,57 +180,70 @@ private:
 
 	void PushResultsIfActive() {
 		auto* host = g_airPodsHost;
-		if (!host || !mainWindowVisible || !keywordActive) return;
+		if (!host || !active || !mainWindowVisible) return;
 		if (TrimAndLower(host->GetEditTextText()) != L"airpods") return;
 
 		auto results = BuildResults();
 		host->ShowResultsDerectly(results);
 	}
-	
+
+	static LRESULT CALLBACK NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+		auto* self = reinterpret_cast<AirPodsPlugin*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+		if (self && (msg == WM_AIRPODS_STATE_CHANGED ||
+			(msg == WM_TIMER && wParam == StaleRefreshTimerId))) {
+			self->updatePending = false;
+			self->PushResultsIfActive();
+			return 0;
+		}
+		return DefWindowProcW(hwnd, msg, wParam, lParam);
+	}
+
+	// Message-only window owned by the UI thread: Bluetooth callbacks post to it so the
+	// result list is only ever touched on the UI thread.
+	bool EnsureNotifyWindow() {
+		if (notifyHwnd) return true;
+		const HINSTANCE instance = GetModuleHandleW(nullptr);
+		static constexpr wchar_t className[] = L"CandyLauncherAirPodsNotify";
+		WNDCLASSEXW wc{sizeof(wc)};
+		wc.lpfnWndProc = NotifyWndProc;
+		wc.hInstance = instance;
+		wc.lpszClassName = className;
+		RegisterClassExW(&wc);
+		notifyHwnd = CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0,
+									HWND_MESSAGE, nullptr, instance, nullptr);
+		if (!notifyHwnd) return false;
+		SetWindowLongPtrW(notifyHwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+		return true;
+	}
+
 	void Activate() {
-		std::lock_guard<std::mutex> lock(activationMutex);
-		if (active || !mainWindowVisible || !keywordActive) return;
+		if (active || !mainWindowVisible) return;
+		if (!EnsureNotifyWindow()) return;
 
-		service.Start();
-
-		stopRefresh = false;
-
-		refreshThread = std::thread([this] {
-			while (!stopRefresh.load()) {
-				if (mainWindowVisible.load() && keywordActive.load()) PushResultsIfActive();
-				
-				std::unique_lock<std::mutex> lock(cvMutex);
-				cv.wait_for(lock,std::chrono::milliseconds(500),[this] { return stopRefresh.load(); });}
+		const HWND hwnd = notifyHwnd;
+		service.SetOnChanged([this, hwnd] {
+			// Coalesce bursts of Bluetooth events into a single repaint.
+			if (!updatePending.exchange(true)) PostMessageW(hwnd, WM_AIRPODS_STATE_CHANGED, 0, 0);
 		});
+		service.Start();
+		// Only needed so battery values disappear once they go stale.
+		SetTimer(notifyHwnd, StaleRefreshTimerId, StaleRefreshIntervalMs, nullptr);
 		active = true;
 	}
 
 	void Deactivate() {
-		std::thread worker;
-		std::lock_guard<std::mutex> lock(activationMutex);
-
 		if (!active) return;
-
 		active = false;
-		stopRefresh = true;
-		cv.notify_all();
-
-		worker = std::move(refreshThread);
-		
-		if (worker.joinable())
-			worker.join();
-
+		if (notifyHwnd) KillTimer(notifyHwnd, StaleRefreshTimerId);
 		service.Stop();
+		updatePending = false;
 	}
-	
-	std::mutex cvMutex;
-	std::condition_variable cv;
+
 	AirPodsBatteryService service;
-	std::thread refreshThread;
-	std::mutex activationMutex;
+	HWND notifyHwnd = nullptr;
 	std::atomic<bool> mainWindowVisible{false};
-	std::atomic<bool> keywordActive{false};
-	std::atomic<bool> stopRefresh{false};
+	std::atomic<bool> updatePending{false};
+	// Only touched on the UI thread.
 	bool active = false;
 };
 
