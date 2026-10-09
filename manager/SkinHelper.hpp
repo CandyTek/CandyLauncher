@@ -330,6 +330,18 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	if (hEditFont) {
 		SendMessage(g_editHwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
 	}
+	// 编辑框左右内边距走原生 margin，原生的鼠标命中、滚动与自绘位置保持一致；
+	// 未配置的一侧恢复为按字体计算的默认值（避免沿用上一个皮肤的设置）
+	// editbox_padding_top 由 EditControlPainter 绘制时处理
+	SendMessage(g_editHwnd, EM_SETMARGINS, EC_USEFONTINFO, 0);
+	if (g_skinJson.contains("editbox_padding_left")) {
+		const int paddingLeft = (std::max)(0, g_skinJson.value("editbox_padding_left", 0));
+		SendMessage(g_editHwnd, EM_SETMARGINS, EC_LEFTMARGIN, MAKELPARAM(paddingLeft, 0));
+	}
+	if (g_skinJson.contains("editbox_padding_right")) {
+		const int paddingRight = (std::max)(0, g_skinJson.value("editbox_padding_right", 0));
+		SendMessage(g_editHwnd, EM_SETMARGINS, EC_RIGHTMARGIN, MAKELPARAM(0, paddingRight));
+	}
 	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER);
 	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);

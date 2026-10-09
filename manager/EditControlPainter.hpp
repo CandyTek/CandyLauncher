@@ -13,7 +13,6 @@
 inline UINT_PTR g_caretTimerId = 1001;
 inline bool g_caretOn = true; // 由定时器翻转
 inline UINT g_caretInterval = 0; // GetCaretBlinkTime() 的返回值缓存
-inline int g_renderXShift = -4; // 负数=向左偏移4像素；想向右就改成 +4
 
 static Gdiplus::Color GetColor(const char* key, const char* def) {
 	return g_skinJson != nullptr
@@ -70,6 +69,14 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	// 绘制背景
 	drawBackground(hwnd, graphics, rc);
 
+	// 内边距：左右由原生 EM_SETMARGINS 负责（见 SkinHelper），这里只取左边距用于空文本时的 hint/光标；
+	// 单行编辑框没有原生的上边距，editbox_padding_top 在绘制时整体下移实现
+	const Gdiplus::REAL paddingLeft = static_cast<Gdiplus::REAL>(LOWORD(SendMessage(hwnd, EM_GETMARGINS, 0, 0)));
+	const Gdiplus::REAL paddingTop = g_skinJson != nullptr
+		? static_cast<Gdiplus::REAL>(g_skinJson.value("editbox_padding_top", 0))
+		: 0.f;
+	const Gdiplus::REAL fontH = font.GetHeight(&graphics);
+
 	wchar_t buffer[1024];
 	const int textLength = GetWindowTextW(hwnd, buffer, static_cast<int>(std::size(buffer)));
 
@@ -109,15 +116,13 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 			for (int i = from; i < to;) {
 				const int n = (IS_HIGH_SURROGATE(buffer[i]) && i + 1 < to && IS_LOW_SURROGATE(buffer[i + 1])) ? 2 : 1;
 				if (buffer[i] != L' ' && xs[i + n] >= 0.f && xs[i] <= static_cast<Gdiplus::REAL>(rc.right)) {
-					graphics.DrawString(buffer + i, n, &font, Gdiplus::PointF(xs[i], 0.f), &format, &brush);
+					graphics.DrawString(buffer + i, n, &font, Gdiplus::PointF(xs[i], paddingTop), &format, &brush);
 				}
 				i += n;
 			}
 		};
 
 		const Gdiplus::SolidBrush fontBrush(GetColor("editbox_font_color", "#222222"));
-		const Gdiplus::REAL fontH = font.GetHeight(&graphics);
-
 		if (selStart != selEnd) {
 			const int s = static_cast<int>((std::min)((std::min)(selStart, selEnd), static_cast<DWORD>(textLength)));
 			const int e = static_cast<int>((std::min)((std::max)(selStart, selEnd), static_cast<DWORD>(textLength)));
@@ -128,7 +133,7 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 
 			// 2) 填选区背景
 			const Gdiplus::SolidBrush selectionBgBrush(GetColor("editbox_selection_bg_color", "#3399FF"));
-			const Gdiplus::RectF selBox(xs[s], 2.f, xs[e] - xs[s], fontH - 2.f);
+			const Gdiplus::RectF selBox(xs[s], paddingTop + 2.f, xs[e] - xs[s], fontH - 2.f);
 			graphics.FillRectangle(&selectionBgBrush, selBox);
 
 			// 3) 选区内文字用“选中文字色”绘制
@@ -141,7 +146,7 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 			if (GetFocus() == hwnd && g_caretOn) {
 				const Gdiplus::SolidBrush caretBrush(GetCaretColor());
 				const int caretIndex = static_cast<int>((std::min)(selStart, static_cast<DWORD>(textLength)));
-				const Gdiplus::RectF caretRect(xs[caretIndex], fontH * 0.1f, 2.f, fontH - (fontH * 0.1f));
+				const Gdiplus::RectF caretRect(xs[caretIndex], paddingTop + fontH * 0.1f, 2.f, fontH - (fontH * 0.1f));
 				graphics.FillRectangle(&caretBrush, caretRect);
 			}
 		}
@@ -150,15 +155,15 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 		if (!EDIT_HINT_TEXT.empty()) {
 			const Gdiplus::SolidBrush hintBrush(GetColor("editbox_hint_color", "#888888"));
 
-			// 设置hint文本布局，左对齐，垂直居中
-			Gdiplus::StringFormat hintFormat;
+			// hint 与输入文字起点对齐（同为左边距处，无 GDI+ 默认内边距）
+			Gdiplus::StringFormat hintFormat(Gdiplus::StringFormat::GenericTypographic());
 			hintFormat.SetAlignment(Gdiplus::StringAlignmentNear);
 
 			const Gdiplus::RectF hintRect(
-				static_cast<Gdiplus::REAL>(2+g_renderXShift /*不要减 xOffset*/),
-				0,
-				static_cast<Gdiplus::REAL>(rc.right - 4),
-				static_cast<Gdiplus::REAL>(rc.bottom)
+				paddingLeft,
+				paddingTop,
+				static_cast<Gdiplus::REAL>(rc.right) - paddingLeft,
+				static_cast<Gdiplus::REAL>(rc.bottom) - paddingTop
 			);
 
 			graphics.DrawString(EDIT_HINT_TEXT.c_str(), -1, &font, hintRect, &hintFormat, &hintBrush);
@@ -167,10 +172,8 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 
 	// 文本为空时绘制光标
 	if (textLength == 0 && GetFocus() == hwnd && g_caretOn) {
-		const Gdiplus::REAL caretH = font.GetHeight(&graphics);
 		const Gdiplus::SolidBrush caretBrush(GetCaretColor());
-		Gdiplus::RectF caretRect((2.f + g_renderXShift + (caretH * 0.15f)), (caretH * 0.1f),
-								2.f, caretH - (caretH * 0.1f));
+		const Gdiplus::RectF caretRect(paddingLeft, paddingTop + fontH * 0.1f, 2.f, fontH - (fontH * 0.1f));
 		graphics.FillRectangle(&caretBrush, caretRect);
 	}
 }

@@ -80,8 +80,75 @@ private:
 	}
 
 
+	// 影响文本/选区/滚动的可视状态，用于判断是否需要整体重绘
+	struct EditVisualState {
+		std::wstring text;
+		DWORD selStart = 0;
+		DWORD selEnd = 0;
+		LRESULT firstCharPos = 0;
+
+		bool operator==(const EditVisualState& o) const {
+			return selStart == o.selStart && selEnd == o.selEnd && firstCharPos == o.firstCharPos && text == o.text;
+		}
+	};
+
+	static EditVisualState CaptureVisualState(HWND hwnd) {
+		EditVisualState state;
+		const int length = GetWindowTextLengthW(hwnd);
+		state.text.resize(length + 1);
+		state.text.resize(GetWindowTextW(hwnd, state.text.data(), length + 1));
+		SendMessageW(hwnd, EM_GETSEL, reinterpret_cast<WPARAM>(&state.selStart), reinterpret_cast<LPARAM>(&state.selEnd));
+		state.firstCharPos = SendMessageW(hwnd, EM_POSFROMCHAR, 0, 0);
+		return state;
+	}
+
+	// 可能改变文本、选区或滚动位置的消息
+	static bool MayChangeVisualState(const UINT msg) {
+		switch (msg) {
+		case WM_CHAR:
+		case WM_KEYDOWN:
+		case WM_KEYUP:
+		case WM_IME_CHAR:
+		case WM_IME_COMPOSITION:
+		case WM_IME_ENDCOMPOSITION:
+		case WM_LBUTTONDOWN:
+		case WM_LBUTTONUP:
+		case WM_LBUTTONDBLCLK:
+		case WM_MOUSEMOVE:
+		case WM_SETTEXT:
+		case WM_PASTE:
+		case WM_CUT:
+		case WM_CLEAR:
+		case WM_UNDO:
+		case EM_UNDO:
+		case EM_REPLACESEL:
+		case EM_SETSEL:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	// 子类过程函数
+	// 原生编辑框改变文本后只会局部失效（IME 上屏全角字符时尤其如此），
+	// BeginPaint 被裁剪到该区域，上一帧画在旧位置的自绘光标擦不掉，看起来像光标跳到了前一个字符。
+	// 因此在状态发生变化后整体重绘，并让光标立即显示、重新开始闪烁计时
 	static LRESULT CALLBACK EditProc(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam,
+									const UINT_PTR uIdSubclass, const DWORD_PTR dwRefData) {
+		if (!MayChangeVisualState(msg)) {
+			return HandleEditMessage(hwnd, msg, wParam, lParam, uIdSubclass, dwRefData);
+		}
+		const EditVisualState before = CaptureVisualState(hwnd);
+		const LRESULT result = HandleEditMessage(hwnd, msg, wParam, lParam, uIdSubclass, dwRefData);
+		if (IsWindow(hwnd) && !(CaptureVisualState(hwnd) == before)) {
+			g_caretOn = true;
+			if (GetFocus() == hwnd) ::SetTimer(hwnd, g_caretTimerId, g_caretInterval ? g_caretInterval : 530, nullptr);
+			::InvalidateRect(hwnd, nullptr, FALSE);
+		}
+		return result;
+	}
+
+	static LRESULT HandleEditMessage(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam,
 									[[maybe_unused]] UINT_PTR uIdSubclass, const DWORD_PTR dwRefData) {
 		switch (msg) {
 		case WM_CREATE:
