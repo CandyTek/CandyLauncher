@@ -289,7 +289,31 @@ enable_testing()
 add_subdirectory(tests)
 add_subdirectory(3rdparty/RapidFuzz)
 add_subdirectory(3rdparty/cpp-pinyin)
-add_subdirectory(3rdparty/sqlite-amalgamation)
+# SQLite 以共享库 sqlite3.dll 形式构建，供 BrowserHistory / CherryTree / EverNote 等插件共用，避免每个插件各自静态链接一份
+add_library(SQLite3 SHARED 3rdparty/sqlite-amalgamation/sqlite3.c)
+set_target_properties(SQLite3 PROPERTIES OUTPUT_NAME sqlite3 DEBUG_POSTFIX d)
+target_include_directories(SQLite3 PUBLIC ${CMAKE_SOURCE_DIR}/3rdparty/sqlite-amalgamation)
+target_compile_definitions(SQLite3 PRIVATE
+		"SQLITE_API=__declspec(dllexport)"
+		SQLITE_DEFAULT_MEMSTATUS=0
+		SQLITE_DQS=0
+		SQLITE_LIKE_DOESNT_MATCH_BLOBS
+		SQLITE_MAX_EXPR_DEPTH=0
+		SQLITE_OMIT_DECLTYPE
+		SQLITE_OMIT_DEPRECATED
+		SQLITE_OMIT_LOAD_EXTENSION
+		SQLITE_OMIT_PROGRESS_CALLBACK
+		SQLITE_OMIT_SHARED_CACHE
+		SQLITE_USE_ALLOCA
+)
+if (MSVC)
+	target_compile_options(SQLite3 PRIVATE /w)
+endif ()
+add_custom_command(TARGET CandyLauncher POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		$<TARGET_FILE:SQLite3>
+		$<TARGET_FILE_DIR:CandyLauncher>)
+add_dependencies(CandyLauncher SQLite3)
 add_subdirectory(3rdparty/pugixml)
 set(CMARK_TESTS OFF CACHE BOOL "" FORCE)
 set(CMARK_SHARED OFF CACHE BOOL "" FORCE)
@@ -459,3 +483,21 @@ foreach(_tgt IN LISTS _third_party_targets)
 		target_compile_options(${_tgt} PRIVATE ${_suppress_flags})
 	endif()
 endforeach()
+
+#if (MSVC)
+#	set_target_properties(CandyLauncher PROPERTIES CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+#	add_compile_options(
+#			$<$<CONFIG:Release>:/O2>
+#			$<$<CONFIG:Release>:/Ob3>
+#			$<$<CONFIG:Release>:/Oi>
+#			$<$<CONFIG:Release>:/fp:fast>
+#			$<$<CONFIG:Release>:/arch:AVX2>
+#
+#			$<$<CONFIG:Release>:/Gy>
+#			$<$<CONFIG:Release>:/Gw>
+#	)
+#	add_link_options(
+#			$<$<CONFIG:Release>:/OPT:REF>
+#			$<$<CONFIG:Release>:/OPT:ICF>
+#	)
+#endif ()

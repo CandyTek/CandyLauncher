@@ -13,6 +13,11 @@
 #include <string>
 #include <vector>
 
+// 缩减 exprtk 体积：关闭表达式特化优化（只影响求值速度，不影响功能），以及未使用的 io 函数包
+#define exprtk_disable_enhanced_features
+#define exprtk_disable_superscalar_unroll
+#define exprtk_disable_rtl_io
+#define exprtk_disable_rtl_io_file
 #include "exprtk.hpp"
 #include "util/StringUtil.hpp"
 

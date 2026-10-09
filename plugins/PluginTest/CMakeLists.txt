@@ -80,6 +80,11 @@ add_custom_command(TARGET PluginTest POST_BUILD
 	$<TARGET_FILE:pugixml-shared>
 	$<TARGET_FILE_DIR:PluginTest>
 )
+add_custom_command(TARGET PluginTest POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+	$<TARGET_FILE:SQLite3>
+	$<TARGET_FILE_DIR:PluginTest>
+)
 
 add_test(NAME PluginTest COMMAND PluginTest)
 

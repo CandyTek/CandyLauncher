@@ -33,6 +33,9 @@ include(${CMAKE_SOURCE_DIR}/plugins/PluginCommon.cmake)
 # 链接 Shlwapi 库（PathFileExistsW 等 API）
 target_link_libraries(${PROJECT_NAME} PRIVATE Shlwapi)
 
+# 索引扫描是性能热点，Release 保持 /O2
+set_target_properties(${PROJECT_NAME} PROPERTIES OPTIMIZE_FOR_SPEED ON)
+
 # 每次都初始化构建程序的用户配置
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND $<$<NOT:$<CONFIG:Release>>:${CMAKE_COMMAND}>
