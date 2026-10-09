@@ -65,5 +65,43 @@
 		"rename_sources": [],
 		"rename_targets": [],
 		"type": "control_panel"
+	},
+	{
+		"exclude_words": [],
+		"excludes": [],
+		"exts": [
+			".lnk"
+		],
+		"folder": "Desktop",
+		"index_files_only": true,
+		"is_contain_subfolder": true,
+		"name": "Desktop",
+		"rename_sources": [],
+		"rename_targets": [],
+		"type": ""
+	},
+	{
+		"exclude_words": [],
+		"excludes": [],
+		"exts": [],
+		"folder": "",
+		"index_files_only": true,
+		"is_contain_subfolder": false,
+		"name": "new",
+		"rename_sources": [],
+		"rename_targets": [],
+		"type": "windows_settings"
+	},
+	{
+		"exclude_words": [],
+		"excludes": [],
+		"exts": [],
+		"folder": "",
+		"index_files_only": true,
+		"is_contain_subfolder": false,
+		"name": "new",
+		"rename_sources": [],
+		"rename_targets": [],
+		"type": "uwp"
 	}
 ]

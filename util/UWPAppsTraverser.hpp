@@ -10,6 +10,9 @@
 #include "../model/TraverseOptions.hpp"
 #include "MainTools.hpp"
 #include <psapi.h>
+#include <atomic>
+#include <thread>
+#include <vector>
 #pragma comment(lib, "Psapi.lib")
 
 
@@ -93,6 +96,32 @@ static void TraverseUWPApps(
 }
 
 
+// 在独立 STA 线程中按解析名提取 UWP 图标；Shell 图标提取较慢，串行执行是 UWP 索引的主要耗时。
+static void LoadUwpAppIcons(const std::vector<std::wstring>& parsingNames, std::vector<HBITMAP>& bitmaps) {
+	bitmaps.assign(parsingNames.size(), nullptr);
+	if (parsingNames.empty()) return;
+	// 实测 8 线程最快；更多线程会在 Shell 内部锁上竞争而变慢。
+	const size_t threadCount = std::min<size_t>(8, parsingNames.size());
+	std::atomic<size_t> next{0};
+	auto worker = [&]() {
+		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+		for (size_t i = next++; i < parsingNames.size(); i = next++) {
+			IShellItemImageFactory* imageFactory = nullptr;
+			const std::wstring itemPath = L"shell:AppsFolder\\" + parsingNames[i];
+			if (FAILED(SHCreateItemFromParsingName(itemPath.c_str(), nullptr, IID_PPV_ARGS(&imageFactory)))) continue;
+			// SIIGBF_RESIZETOFIT 即使没有确切的尺寸，也可以确保我们获得图像；SIIGBF_ICONONLY 防止获得缩略图预览。
+			imageFactory->GetImage({48, 48}, SIIGBF_RESIZETOFIT | SIIGBF_ICONONLY, &bitmaps[i]);
+			imageFactory->Release();
+		}
+		if (SUCCEEDED(comResult)) CoUninitialize();
+	};
+	std::vector<std::thread> threads;
+	threads.reserve(threadCount - 1);
+	for (size_t i = 1; i < threadCount; ++i) threads.emplace_back(worker);
+	worker();
+	for (auto& thread : threads) thread.join();
+}
+
 /// <summary>
 /// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
 /// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
@@ -100,123 +129,68 @@ static void TraverseUWPApps(
 /// <param name="actions">The list of actions to add UWP apps to.</param>
 template <typename Callback>
 static void LoadUwpApps(Callback&& callback, const TraverseOptions& options) {
-	if (FAILED(CoInitialize(NULL))) {
+	const HRESULT comResult = CoInitialize(NULL);
+	if (FAILED(comResult)) {
 		return;
 	}
-
-	IKnownFolderManager* pKnownFolderManager = nullptr;
-	if (FAILED(
-		CoCreateInstance(CLSID_KnownFolderManager, NULL, CLSCTX_INPROC_SERVER,
-			IID_PPV_ARGS(&pKnownFolderManager)))) {
-		CoUninitialize();
-		return;
-	}
+	const ULONGLONG uwpStart = GetTickCount64();
+	size_t enumCount = 0;
+	std::vector<std::wstring> names;
+	std::vector<std::wstring> parsingNames;
 
 	IShellItem* pAppsFolderItem = nullptr;
 	if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_AppsFolder, KF_FLAG_DEFAULT, NULL, IID_PPV_ARGS(&pAppsFolderItem)))) {
-		IShellFolder* pDesktopFolder = nullptr;
-		if (SUCCEEDED(SHGetDesktopFolder(&pDesktopFolder))) {
-			LPITEMIDLIST pidl = nullptr;
-			if (SUCCEEDED(SHGetIDListFromObject(pAppsFolderItem, &pidl))) {
-				IShellFolder* pAppsFolderShellFolder = nullptr;
-				if (SUCCEEDED(pDesktopFolder->BindToObject(pidl, NULL, IID_PPV_ARGS(&pAppsFolderShellFolder)))) {
-					IEnumIDList* pEnumIDList = nullptr;
-					if (SUCCEEDED(
-						pAppsFolderShellFolder->EnumObjects(NULL, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS,
-							&pEnumIDList))) {
-						LPITEMIDLIST pidlItem = nullptr;
-						ULONG fetched = 0;
-						while (pEnumIDList->Next(1, &pidlItem, &fetched) == S_OK) {
-							IShellItem* pShellItem = nullptr;
-							if (SUCCEEDED(
-								SHCreateItemWithParent(pidl, pAppsFolderShellFolder, pidlItem,
-									IID_PPV_ARGS(&pShellItem)
-								))) {
-								// 处理每个 ShellItem
-								LPWSTR pwszParsingName = nullptr;
-								if (FAILED(
-									pShellItem->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &pwszParsingName))) {
-									pShellItem->Release();
-									continue;
-								}
-
-								// UWP应用程序通常具有“！”以他们的解析名称。
-								if (wcschr(pwszParsingName, L'!') == nullptr) {
-									CoTaskMemFree(pwszParsingName);
-									pShellItem->Release();
-									continue;
-								}
-
-								LPWSTR pwszDisplayName = nullptr;
-								if (FAILED(pShellItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pwszDisplayName))) {
-									CoTaskMemFree(pwszParsingName);
-									pShellItem->Release();
-									continue;
-								}
-								// 进行UWP列表项的筛选，排除，重命名
-								std::wstring uwpAppName = pwszDisplayName;
-								if (shouldExclude(options, uwpAppName)) {
-									CoTaskMemFree(pwszParsingName);
-									pShellItem->Release();
-									continue;
-								}
-								if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end()) {
-									uwpAppName = it->second;
-								}
-
-								HBITMAP hBitmap = nullptr;
-								IShellItemImageFactory* pImageFactory = nullptr;
-								// 大小可以调整。 256x256是一个很好的高质量尺寸。
-								// LISTITEM_ICON_SIZE
-								SIZE size = {48, 48};
-								if (SUCCEEDED(pShellItem->QueryInterface(IID_PPV_ARGS(&pImageFactory)))) {
-									// SIIGBF_RESIZETOFIT 即使没有确切的尺寸，也可以确保我们获得图像。
-									// SIIGBF_ICONONLY 防止获得文档的缩略图预览。
-									pImageFactory->GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_ICONONLY, &hBitmap);
-									pImageFactory->Release();
-								}
-
-								// 构造命令字符串以启动UWP应用程序
-								std::wstring uwpCommand = L"shell:AppsFolder\\";
-								uwpCommand += pwszParsingName;
-
-								std::wstring uwpCommandS = L"";
-								uwpCommandS += pwszParsingName;
-
-								// 为UWP应用程序创建一个新的RunCommandaction。
-								if (hBitmap != nullptr) {
-									// TODO: 使用HBITMAP并管理其生命周期
-									callback(
-										uwpAppName, // 逻辑名（被 rename 过）
-										uwpCommand,
-										uwpCommandS,
-										hBitmap
-									);
-								} else {
-									// 无法加载图标的后备
-									callback(
-										uwpAppName, // 逻辑名（被 rename 过）
-										uwpCommand,
-										uwpCommandS,
-										nullptr
-									);
-								}
-
-								CoTaskMemFree(pwszDisplayName);
-								CoTaskMemFree(pwszParsingName);
-								pShellItem->Release();
+		IShellFolder* pAppsFolder = nullptr;
+		if (SUCCEEDED(pAppsFolderItem->BindToHandler(nullptr, BHID_SFObject, IID_PPV_ARGS(&pAppsFolder)))) {
+			IEnumIDList* pEnumIDList = nullptr;
+			if (pAppsFolder->EnumObjects(NULL, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS, &pEnumIDList) == S_OK) {
+				PITEMID_CHILD pidlItem = nullptr;
+				while (pEnumIDList->Next(1, &pidlItem, nullptr) == S_OK) {
+					++enumCount;
+					// 直接从文件夹读取名称，避免为每个非 UWP 条目创建 ShellItem。
+					STRRET parsingRet{}, displayRet{};
+					LPWSTR pwszParsingName = nullptr;
+					LPWSTR pwszDisplayName = nullptr;
+					if (SUCCEEDED(pAppsFolder->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &parsingRet)) &&
+						SUCCEEDED(StrRetToStrW(&parsingRet, pidlItem, &pwszParsingName)) &&
+						// UWP应用程序通常具有“！”以他们的解析名称。
+						wcschr(pwszParsingName, L'!') != nullptr &&
+						SUCCEEDED(pAppsFolder->GetDisplayNameOf(pidlItem, SHGDN_NORMAL, &displayRet)) &&
+						SUCCEEDED(StrRetToStrW(&displayRet, pidlItem, &pwszDisplayName))) {
+						// 进行UWP列表项的筛选，排除，重命名
+						std::wstring uwpAppName = pwszDisplayName;
+						if (!shouldExclude(options, uwpAppName)) {
+							if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end()) {
+								uwpAppName = it->second;
 							}
-							CoTaskMemFree(pidlItem);
+							names.push_back(std::move(uwpAppName));
+							parsingNames.emplace_back(pwszParsingName);
 						}
-						pEnumIDList->Release();
 					}
-					pAppsFolderShellFolder->Release();
+					CoTaskMemFree(pwszDisplayName);
+					CoTaskMemFree(pwszParsingName);
+					CoTaskMemFree(pidlItem);
 				}
-				CoTaskMemFree(pidl);
+				pEnumIDList->Release();
 			}
-			pDesktopFolder->Release();
+			pAppsFolder->Release();
 		}
 		pAppsFolderItem->Release();
 	}
+	const ULONGLONG enumDone = GetTickCount64();
+
+	std::vector<HBITMAP> bitmaps;
+	LoadUwpAppIcons(parsingNames, bitmaps);
+	for (size_t i = 0; i < names.size(); ++i) {
+		// 构造命令字符串以启动UWP应用程序
+		callback(
+			names[i], // 逻辑名（被 rename 过）
+			L"shell:AppsFolder\\" + parsingNames[i],
+			parsingNames[i],
+			bitmaps[i]
+		);
+	}
+	Logi(L"UWP", L"total=", GetTickCount64() - uwpStart, L"ms enum=", enumCount, L"/", enumDone - uwpStart,
+		L"ms icons=", names.size(), L"/", GetTickCount64() - enumDone, L"ms");
 	CoUninitialize();
 }

@@ -163,8 +163,8 @@ public:
 			search_query << L"file: ";
 		}
 		if (options.recursive) {
-			// 如果是递归搜索，则使用原始的路径搜索
-			search_query << L"\"" << folderPath << L"\" ";
+			// 带结尾反斜杠的路径只匹配子孙项，Everything 查询明显快于不带反斜杠的形式
+			search_query << L"\"" << rootPrefix << L"\" ";
 		} else {
 			// 如果不递归，使用 parent: 函数更精确、更高效
 			search_query << L"parent:\"" << folderPath << L"\" ";

@@ -26,6 +26,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./scripts/run_candylauncher.cmd | grep -i 'pluginname'
 ```
 
+```bash
+./scripts/build_and_run.cmd
+```
+
 > IMPORTANT: Dont use ``Reading shell output`` commond, the output obtained by this command is often stale
 
 ### Unit Testing

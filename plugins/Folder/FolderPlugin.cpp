@@ -473,10 +473,11 @@ public:
 		std::vector<std::shared_ptr<FileAction>>& newActions) {
 		namespace fs = std::filesystem;
 		std::error_code error;
-		if (!fs::is_directory(path, error)) {
-			if (error) throw fs::filesystem_error("Cannot inspect indexed directory", fs::path(path), error);
-			return;
-		}
+		const fs::file_status status = fs::status(path, error);
+		// 配置的目录不存在时视为空目录，与 Everything 索引路径的行为一致。
+		if (status.type() == fs::file_type::not_found) return;
+		if (error) throw fs::filesystem_error("Cannot inspect indexed directory", fs::path(path), error);
+		if (!fs::is_directory(status)) return;
 		const auto modified = fs::last_write_time(path, error);
 		if (error) throw fs::filesystem_error("Cannot read directory date", fs::path(path), error);
 		const std::wstring key = CachePathKey(path);
@@ -615,6 +616,26 @@ public:
 					break;
 				}
 			}
+			// 控制面板/系统设置通过 Shell 枚举，耗时较长，同样与文件索引并发执行。
+			std::vector<std::pair<size_t, std::future<std::vector<std::shared_ptr<FileAction>>>>> settingsFutures;
+			if (rebuild) {
+				for (size_t i = 0; i < sources.size(); ++i) {
+					if (!sources[i].isSystemSettings) continue;
+					const TraverseOptions options = sources[i].options;
+					settingsFutures.emplace_back(i, std::async(std::launch::async, [options]() {
+						const ULONGLONG start = GetTickCount64();
+						std::vector<std::shared_ptr<FileAction>> actions;
+						for (const auto& item : GetSystemSettingsItems(options)) {
+							auto action = std::make_shared<FileAction>(item.name, item.target);
+							action->iconFilePathIndex = item.iconIndex;
+							actions.push_back(std::move(action));
+						}
+						Logi(L"FolderPlugin", L"index source=", options.type, L" ms=", GetTickCount64() - start,
+							L" count=", actions.size());
+						return actions;
+					}));
+				}
+			}
 			std::vector<std::shared_ptr<FileAction>> newActions;
 			const ULONGLONG sourceStart = GetTickCount64();
 			for (auto& source : sources) {
@@ -623,14 +644,6 @@ public:
 					continue;
 				}
 				if (source.isSystemSettings) {
-					if (rebuild) {
-						for (const auto& item : GetSystemSettingsItems(source.options)) {
-							auto action = std::make_shared<FileAction>(item.name, item.target);
-							action->iconFilePathIndex = item.iconIndex;
-							newActions.push_back(action);
-							source.actions.push_back(std::move(action));
-						}
-					}
 					continue;
 				}
 				if (everythingEnabled && !source.roots.empty() && source.options.type != L"path") {
@@ -693,6 +706,10 @@ public:
 				source.actions = std::move(actions);
 				Logi(L"FolderPlugin", L"index source=filesystem root=", source.roots.empty() ? L"" : source.roots.front(),
 					L" ms=", GetTickCount64() - oneSourceStart, L" count=", source.actions.size());
+			}
+			for (auto& [index, future] : settingsFutures) {
+				sources[index].actions = future.get();
+				newActions.insert(newActions.end(), sources[index].actions.begin(), sources[index].actions.end());
 			}
 			const ULONGLONG sourceDone = GetTickCount64();
 			// 系统图标按需提取，避免启动时对全部快捷方式执行 Shell 查询。
