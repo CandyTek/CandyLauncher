@@ -51,38 +51,46 @@ static ULONGLONG lastDragAndDropTime;
 static UINT g_WM_TASKBARCREATED = 0;
 static bool g_isMainWindowPinned = false;
 
-static bool UpdateBooleanSettingItem(std::vector<SettingItem>& items, const std::string& key,
-	bool value, size_t& controlId, uint8_t* subPageIndex = nullptr) {
+static bool UpdateSettingItem(std::vector<SettingItem>& items, const std::string& key,
+	const nlohmann::json& value, size_t& controlId, SettingItem** found = nullptr) {
 	for (auto& item : items) {
 		++controlId;
 		if (item.key == key) {
-			item.setValue(nlohmann::json(value));
-			if (subPageIndex) *subPageIndex = item.subPageIndex;
+			item.setValue(value);
+			if (found) *found = &item;
 			return true;
 		}
 		if ((item.type == "expand" || item.type == "expandswitch") &&
-			UpdateBooleanSettingItem(item.children, key, value, controlId, subPageIndex)) {
+			UpdateSettingItem(item.children, key, value, controlId, found)) {
 			return true;
 		}
 	}
 	return false;
 }
 
-static void SetMainWindowBooleanSetting(const char* key, bool value) {
+// 从主窗口菜单修改设置项：保存到用户配置，并同步到已打开的设置界面
+static void SetMainWindowSetting(const char* key, const nlohmann::json& value) {
 	nlohmann::json newConfig;
 	newConfig[key] = value;
 	saveConfigToFile(USER_SETTINGS_PATH, newConfig);
-	g_settings_map[key].setValue(nlohmann::json(value));
+	g_settings_map[key].setValue(value);
 
 	size_t controlId = 2999;
-	UpdateBooleanSettingItem(g_settings_ui_last_save, key, value, controlId);
+	UpdateSettingItem(g_settings_ui_last_save, key, value, controlId);
 	if (g_settingsHwnd && IsWindow(g_settingsHwnd)) {
 		controlId = 2999;
-		uint8_t subPageIndex = 0;
-		if (UpdateBooleanSettingItem(g_settings_ui, key, value, controlId, &subPageIndex)) {
-			if (HWND tab = FindTabHwndByIndex(subPageIndex)) {
+		SettingItem* item = nullptr;
+		if (UpdateSettingItem(g_settings_ui, key, value, controlId, &item) && item) {
+			if (HWND tab = FindTabHwndByIndex(item->subPageIndex)) {
 				if (HWND control = GetDlgItem(tab, static_cast<int>(controlId))) {
-					SetSwitchState(control, value);
+					if (item->type == "list") {
+						const auto it = std::find(item->entryValues.begin(), item->entryValues.end(), item->stringValue);
+						if (it != item->entryValues.end()) {
+							SendMessageW(control, CB_SETCURSEL, std::distance(item->entryValues.begin(), it), 0);
+						}
+					} else {
+						SetSwitchState(control, item->boolValue);
+					}
 				}
 			}
 		}
@@ -308,7 +316,7 @@ static void InitMainWindowControls(HINSTANCE hInstance, HWND hWnd) {
 	SetTimer(hWnd, 1001, 1500, [](HWND hwnd, UINT, UINT_PTR id, DWORD) {
 		KillTimer(hwnd, id);
 		if (g_editHwnd && IsWindow(g_editHwnd)) {
-			SetWindowText(g_editHwnd, L"a");
+			// SetWindowText(g_editHwnd, L"a");
 		}
 	});
 #endif
@@ -406,15 +414,21 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 					}
 				} else if (wmId == TRAY_MENU_ID_ALWAYS_ON_TOP) {
 					const bool value = !g_settings_map["pref_window_always_on_top"].boolValue;
-					SetMainWindowBooleanSetting("pref_window_always_on_top", value);
+					SetMainWindowSetting("pref_window_always_on_top", value);
 					SetWindowPos(hWnd, value ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
 						SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 				} else if (wmId == TRAY_MENU_ID_LOCK_WINDOW_POSITION) {
 					pref_lock_window_popup_position = !pref_lock_window_popup_position;
-					SetMainWindowBooleanSetting("pref_lock_window_popup_position", pref_lock_window_popup_position);
+					SetMainWindowSetting("pref_lock_window_popup_position", pref_lock_window_popup_position);
 				} else if (wmId == TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM) {
 					pref_close_after_open_item = !pref_close_after_open_item;
-					SetMainWindowBooleanSetting("pref_close_after_open_item", pref_close_after_open_item);
+					SetMainWindowSetting("pref_close_after_open_item", pref_close_after_open_item);
+				} else if (wmId >= TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE && wmId < TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_END) {
+					const auto& entryValues = g_settings_map["pref_close_on_dismiss_focus"].entryValues;
+					const size_t index = static_cast<size_t>(wmId - TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE);
+					if (index < entryValues.size()) {
+						SetMainWindowSetting("pref_close_on_dismiss_focus", entryValues[index]);
+					}
 				} else {
 					TrayMenuClick(wmId);
 				}
@@ -787,12 +801,23 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 	case WM_RBUTTONUP:
 	case WM_NCRBUTTONUP:
 		{
-			const MainWindowMenuOptions options{
-				g_isMainWindowPinned,
-				g_settings_map["pref_window_always_on_top"].boolValue,
-				pref_lock_window_popup_position,
-				pref_close_after_open_item
-			};
+			const SettingItem& dismissFocus = g_settings_map["pref_close_on_dismiss_focus"];
+			MainWindowMenuOptions options{};
+			options.pinned = g_isMainWindowPinned;
+			// 只有失去焦点时会隐藏窗口的模式下，“本次钉住”才有意义
+			options.showPinOption = dismissFocus.stringValue == "close_immediate"
+				|| dismissFocus.stringValue == "allow_drag_file";
+			options.alwaysOnTop = g_settings_map["pref_window_always_on_top"].boolValue;
+			options.lockWindowPosition = pref_lock_window_popup_position;
+			options.closeAfterOpenItem = pref_close_after_open_item;
+			options.closeOnDismissFocusTitle = utf8_to_wide(dismissFocus.title);
+			options.closeOnDismissFocusIndex = -1;
+			for (size_t i = 0; i < dismissFocus.entries.size() && i < dismissFocus.entryValues.size(); ++i) {
+				options.closeOnDismissFocusEntries.push_back(utf8_to_wide(dismissFocus.entries[i]));
+				if (dismissFocus.entryValues[i] == dismissFocus.stringValue) {
+					options.closeOnDismissFocusIndex = static_cast<int>(i);
+				}
+			}
 			TrayMenuShow(hWnd, &options);
 			return 0;
 		}

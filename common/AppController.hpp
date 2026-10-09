@@ -167,9 +167,14 @@ static void TrayMenuClick(const int position) {
 			SwitchToTab("about");
 		}
 		break;
-	case TRAY_MENU_ID_SHOW_WINDOW: // 打开主窗口
+	case TRAY_MENU_ID_SHOW_WINDOW: // 打开/关闭主窗口
 		{
-			PostMessageW(g_mainHwnd,WM_HOTKEY,HOTKEY_ID_TOGGLE_MAIN_PANEL, 0);
+			if (IsWindowVisible(g_mainHwnd)) {
+				HideWindow();
+			} else {
+				ShowMainWindowSimple();
+				g_pluginManager->OnMainWindowShowNotifi(true);
+			}
 		}
 		break;
 	case TRAY_MENU_ID_OPEN_FOLDER: // 打开程序目录

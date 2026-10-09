@@ -3,6 +3,8 @@
 #include <WinUser.h>
 #include <commctrl.h>
 #include <memory>
+#include <string>
+#include <vector>
 // 不能少
 #include <shellapi.h>
 
@@ -31,14 +33,21 @@ constexpr int TRAY_MENU_ID_PIN_THIS_TIME = 10014;
 constexpr int TRAY_MENU_ID_ALWAYS_ON_TOP = 10015;
 constexpr int TRAY_MENU_ID_LOCK_WINDOW_POSITION = 10016;
 constexpr int TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM = 10017;
+// “失去焦点时”子菜单选项，按 entryValues 下标偏移
+constexpr int TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE = 10020;
+constexpr int TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_END = 10030;
 
-constexpr int TRAY_MENU_ID_BASE_END = 10018;
+constexpr int TRAY_MENU_ID_BASE_END = 10030;
 
 struct MainWindowMenuOptions {
 	bool pinned;
+	bool showPinOption;
 	bool alwaysOnTop;
 	bool lockWindowPosition;
 	bool closeAfterOpenItem;
+	std::wstring closeOnDismissFocusTitle;
+	std::vector<std::wstring> closeOnDismissFocusEntries;
+	int closeOnDismissFocusIndex;
 };
 
 static HMENU g_hTrayMenu = nullptr;
@@ -133,15 +142,46 @@ static void TrayMenuShow(HWND hWnd, const MainWindowMenuOptions* options = nullp
 	POINT pt;
 	GetCursorPos(&pt); // 获取鼠标位置
 	SetForegroundWindow(hWnd); // 让菜单不会点击后立即消失
+
+	// 第一项根据主窗口当前可见状态切换文字
+	std::wstring showText = (g_mainHwnd && IsWindowVisible(g_mainHwnd)) ? L"关闭主窗口(&C)" : L"打开主窗口(&C)";
+	MENUITEMINFOW mii{};
+	mii.cbSize = sizeof(mii);
+	mii.fMask = MIIM_STRING;
+	mii.dwTypeData = showText.data();
+	SetMenuItemInfoW(g_hTrayMenu, TRAY_MENU_ID_SHOW_WINDOW, FALSE, &mii);
+
+	HMENU hDismissSub = nullptr;
 	if (options) {
-		InsertMenuW(g_hTrayMenu, 1, MF_BYPOSITION | MF_STRING | (options->pinned ? MF_CHECKED : MF_UNCHECKED),
-			TRAY_MENU_ID_PIN_THIS_TIME, L"本次钉住");
-		InsertMenuW(g_hTrayMenu, 2, MF_BYPOSITION | MF_STRING | (options->alwaysOnTop ? MF_CHECKED : MF_UNCHECKED),
+		UINT pos = 1;
+		if (options->showPinOption) {
+			InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->pinned ? MF_CHECKED : MF_UNCHECKED),
+				TRAY_MENU_ID_PIN_THIS_TIME, L"本次钉住");
+		}
+		InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->alwaysOnTop ? MF_CHECKED : MF_UNCHECKED),
 			TRAY_MENU_ID_ALWAYS_ON_TOP, L"主窗口置于顶层");
-		InsertMenuW(g_hTrayMenu, 3, MF_BYPOSITION | MF_STRING | (options->lockWindowPosition ? MF_CHECKED : MF_UNCHECKED),
+		InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->lockWindowPosition ? MF_CHECKED : MF_UNCHECKED),
 			TRAY_MENU_ID_LOCK_WINDOW_POSITION, L"锁定窗口位置");
-		InsertMenuW(g_hTrayMenu, 4, MF_BYPOSITION | MF_STRING | (options->closeAfterOpenItem ? MF_CHECKED : MF_UNCHECKED),
+		InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->closeAfterOpenItem ? MF_CHECKED : MF_UNCHECKED),
 			TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM, L"打开项目后关闭窗口");
+
+		const int entryCount = static_cast<int>(options->closeOnDismissFocusEntries.size());
+		if (entryCount > 0) {
+			hDismissSub = CreatePopupMenu();
+			for (int i = 0; i < entryCount && TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE + i < TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_END; ++i) {
+				AppendMenuW(hDismissSub, MF_STRING, TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE + i,
+					options->closeOnDismissFocusEntries[i].c_str());
+			}
+			if (options->closeOnDismissFocusIndex >= 0) {
+				CheckMenuRadioItem(hDismissSub,
+					TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE,
+					TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE + entryCount - 1,
+					TRAY_MENU_ID_CLOSE_ON_DISMISS_FOCUS_BASE + options->closeOnDismissFocusIndex,
+					MF_BYCOMMAND);
+			}
+			InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | MF_POPUP,
+				reinterpret_cast<UINT_PTR>(hDismissSub), options->closeOnDismissFocusTitle.c_str());
+		}
 	}
 	TrackPopupMenu(g_hTrayMenu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
 					pt.x, pt.y, 0, hWnd, nullptr);
@@ -150,6 +190,17 @@ static void TrayMenuShow(HWND hWnd, const MainWindowMenuOptions* options = nullp
 		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_ALWAYS_ON_TOP, MF_BYCOMMAND);
 		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_LOCK_WINDOW_POSITION, MF_BYCOMMAND);
 		DeleteMenu(g_hTrayMenu, TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM, MF_BYCOMMAND);
+		if (hDismissSub) {
+			// 先移除再销毁，避免 g_hTrayMenu 中残留悬空的子菜单句柄
+			const int count = GetMenuItemCount(g_hTrayMenu);
+			for (int i = 0; i < count; ++i) {
+				if (GetSubMenu(g_hTrayMenu, i) == hDismissSub) {
+					RemoveMenu(g_hTrayMenu, i, MF_BYPOSITION);
+					break;
+				}
+			}
+			DestroyMenu(hDismissSub);
+		}
 	}
 }
 
