@@ -20,6 +20,14 @@ static Gdiplus::Color GetColor(const char* key, const char* def) {
 				: HexToGdiplusColor(def);
 }
 
+// 光标颜色：皮肤未单独指定时跟随输入文字颜色
+static Gdiplus::Color GetCaretColor() {
+	if (g_skinJson != nullptr && g_skinJson.contains("editbox_caret_color")) {
+		return GetColor("editbox_caret_color", "#222222");
+	}
+	return GetColor("editbox_font_color", "#222222");
+}
+
 static void drawBackground(HWND hwnd, Gdiplus::Graphics& graphics, RECT rc) {
 	if (g_skinJson != nullptr) {
 		paintMainWindowBackgroundUnderChild(hwnd, graphics, rc);
@@ -160,7 +168,7 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 			// 绘制光标（复用选区的测量逻辑）
 			if (GetFocus() == hwnd && g_caretOn) {
 				const Gdiplus::REAL caretH = font.GetHeight(&graphics);
-				const Gdiplus::SolidBrush caretBrush(GetColor("editbox_caret_color", "#000000"));
+				const Gdiplus::SolidBrush caretBrush(GetCaretColor());
 
 				if (selStart > 0 && selStart <= (DWORD)textLength) {
 					// 光标在文本中间或末尾：使用与选区相同的 MeasureCharacterRanges 逻辑
@@ -207,7 +215,7 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	// 文本为空时绘制光标
 	if (textLength == 0 && GetFocus() == hwnd && g_caretOn) {
 		const Gdiplus::REAL caretH = font.GetHeight(&graphics);
-		const Gdiplus::SolidBrush caretBrush(GetColor("editbox_caret_color", "#000000"));
+		const Gdiplus::SolidBrush caretBrush(GetCaretColor());
 		Gdiplus::RectF caretRect((2.f + g_renderXShift + (caretH * 0.15f)), (caretH * 0.1f),
 								2.f, caretH - (caretH * 0.1f));
 		graphics.FillRectangle(&caretBrush, caretRect);

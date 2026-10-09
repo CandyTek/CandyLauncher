@@ -100,6 +100,7 @@ public:
 	}
 
 	
+	
 	void OnUserSettingsLoadDone() override {
 		// auto it = settings_map.find("pref_pinyin_mode");
 		// if (it != settings_map.end()) {
