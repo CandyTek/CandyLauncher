@@ -18,11 +18,13 @@ public:
 	// 初始化 - 设置子类过程
 	static BOOL Attach(HWND hwndEdit, DWORD_PTR dwRefData) {
 		//return SetWindowSubclass(hwndEdit, EditProc, 1, 0,(DWORD_PTR) dwRefData);
+		InstallCaretHook(hwndEdit);
 		return SetWindowSubclass(hwndEdit, EditProc, 1, dwRefData);
 	}
 
 	// 取消子类过程（可选）
 	static void Detach(HWND hwndEdit) {
+		UninstallCaretHook();
 		RemoveWindowSubclass(hwndEdit, EditProc, 1);
 	}
 
@@ -79,6 +81,76 @@ private:
 		}
 	}
 
+
+	// 光标由 EditControlPainter 自绘，但系统光标不能用 HideCaret 隐藏：
+	// TSF 输入法通过系统光标跟踪编辑框选区，光标处于隐藏状态时它缓存的选区不会更新，
+	// 上屏全角字符后会异步发送旧的 EM_SETSEL，把光标拉回到前面的字符。
+	// 因此保持系统光标可见，只把它换成全黑位图——系统按 XOR 绘制光标，黑色像素不会改变画面。
+	// 原生编辑框会在多种时机（获得焦点、改字体、输入法等）重建光标，
+	// 所以用 WinEvent 钩子监听光标创建，每次都立刻替换成隐形光标
+	inline static HWINEVENTHOOK s_caretHook = nullptr;
+	inline static HWND s_caretHookEdit = nullptr;
+	inline static bool s_replacingCaret = false;
+
+	static void InstallCaretHook(HWND hwndEdit) {
+		if (s_caretHook) return;
+		s_caretHookEdit = hwndEdit;
+		// INCONTEXT 且只监听本线程：回调在 CreateCaret 内部同步执行，原生光标还没显示就被替换
+		s_caretHook = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE, GetModuleHandleW(nullptr),
+									CaretCreateEventProc, GetCurrentProcessId(), GetWindowThreadProcessId(hwndEdit, nullptr),
+									WINEVENT_INCONTEXT);
+		if (!s_caretHook) Loge(L"EditManager", L"SetWinEventHook failed: ", GetLastError());
+		if (GetFocus() == hwndEdit) UseInvisibleSystemCaret(hwndEdit);
+	}
+
+	static void UninstallCaretHook() {
+		if (s_caretHook) UnhookWinEvent(s_caretHook);
+		s_caretHook = nullptr;
+		s_caretHookEdit = nullptr;
+	}
+
+	static void CALLBACK CaretCreateEventProc(HWINEVENTHOOK, DWORD, HWND hwnd, LONG idObject, LONG, DWORD, DWORD) {
+		if (idObject != OBJID_CARET || hwnd != s_caretHookEdit || s_replacingCaret) return;
+				UseInvisibleSystemCaret(hwnd);
+	}
+
+	static void UseInvisibleSystemCaret(HWND hwnd) {
+		static HBITMAP caretBitmap = nullptr;
+		static int caretHeight = 0;
+
+		int height = 0;
+		if (const HDC hdc = GetDC(hwnd)) {
+			const HGDIOBJ oldFont = SelectObject(hdc, reinterpret_cast<HFONT>(SendMessageW(hwnd, WM_GETFONT, 0, 0)));
+			TEXTMETRICW tm{};
+			if (GetTextMetricsW(hdc, &tm)) height = tm.tmHeight;
+			SelectObject(hdc, oldFont);
+			ReleaseDC(hwnd, hdc);
+		}
+		if (height <= 0) height = 16;
+
+		POINT pt{};
+		GetCaretPos(&pt);
+		// 沿用被替换光标的显示状态：刚创建的原生光标是隐藏的，由编辑框随后自己 ShowCaret，
+		// 这里多调用 ShowCaret 会打乱编辑框 HideCaret/ShowCaret 的配对计数
+		GUITHREADINFO gti{sizeof(gti)};
+		const bool wasVisible = GetGUIThreadInfo(GetWindowThreadProcessId(hwnd, nullptr), &gti) &&
+			gti.hwndCaret == hwnd && (gti.flags & GUI_CARETBLINKING);
+		// 新位图生效后旧光标即被销毁，此时才能释放旧位图
+		HBITMAP oldBitmap = nullptr;
+		if (!caretBitmap || caretHeight != height) {
+			oldBitmap = caretBitmap;
+			const std::vector<WORD> blackBits(static_cast<size_t>(height), 0); // 单色位图每行按 WORD 对齐
+			caretBitmap = CreateBitmap(1, height, 1, 1, blackBits.data());
+			caretHeight = height;
+		}
+		s_replacingCaret = true;
+		if (caretBitmap && CreateCaret(hwnd, caretBitmap, 0, 0)) {
+			SetCaretPos(pt.x, pt.y);
+			if (wasVisible) ShowCaret(hwnd);
+		}
+		s_replacingCaret = false;
+		if (oldBitmap) DeleteObject(oldBitmap);
+	}
 
 	// 影响文本/选区/滚动的可视状态，用于判断是否需要整体重绘
 	struct EditVisualState {
@@ -173,7 +245,6 @@ private:
 				HDC hdc = BeginPaint(hwnd, &ps);
 				PaintEdit(hwnd, hdc);
 				EndPaint(hwnd, &ps);
-				HideCaret(hwnd);
 				return 0; // 拦截默认绘制
 			}
 
@@ -368,7 +439,9 @@ private:
 			}
 		case WM_NOTIFY_HEDIT_REFRESH_SKIN: return 1;
 		case WM_ERASEBKGND: return 1; // 阻止默认背景擦除
-		case WM_NCDESTROY: RemoveWindowSubclass(hwnd, EditProc, uIdSubclass);
+		case WM_NCDESTROY:
+			if (hwnd == s_caretHookEdit) UninstallCaretHook();
+			RemoveWindowSubclass(hwnd, EditProc, uIdSubclass);
 			break;
 		case WM_DESTROY:
 			{
