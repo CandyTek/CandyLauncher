@@ -220,6 +220,52 @@ private:
 		return result;
 	}
 
+	// 原生编辑框修改文本/选区时不走 WM_PAINT，而是直接 GetDC 在原始位置（不含 editbox_padding_top）画文字、擦背景，
+	// 画完才发 EN_CHANGE。自绘的 WM_PAINT 优先级最低，要等 EN_CHANGE 触发的搜索结束后才执行，
+	// 中间这几帧就会看到原生绘制的残影（移动光标不重画文字，所以不受影响）。
+	// 不能用 WM_SETREDRAW 屏蔽原生绘制：那样原生编辑框不会横向自动滚动，也不会更新系统光标位置；
+	// 也不能在 EN_CHANGE 里同步重绘：此时原生编辑框还没完成横向滚动。
+	// 因此在原生处理期间用 LockWindowUpdate 锁住编辑框：锁定期间 GetDC 拿到的是空可见区域，原生绘制全部被丢弃，
+	// 而编辑框内部状态（滚动、光标位置）照常更新；解锁后由 EditProc 整体失效重绘。
+	// 鼠标消息不加锁：拖动选中文字可能进入 OLE 拖放的模态循环，长时间占用全局唯一的锁
+	inline static bool s_nativeDrawLocked = false;
+
+	static bool ShouldBlockNativeDrawing(const UINT msg) {
+		switch (msg) {
+		case WM_CHAR:
+		case WM_KEYDOWN:
+		case WM_IME_CHAR:
+		case WM_IME_COMPOSITION:
+		case WM_IME_ENDCOMPOSITION:
+		case WM_SETTEXT:
+		case WM_PASTE:
+		case WM_CUT:
+		case WM_CLEAR:
+		case WM_UNDO:
+		case EM_UNDO:
+		case EM_REPLACESEL:
+		case EM_SETSEL:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	static LRESULT DefSubclassProcWithoutNativeDrawing(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam) {
+		// 嵌套调用（如 EN_CHANGE 处理中 SetWindowText）沿用外层的锁
+		if (s_nativeDrawLocked || !ShouldBlockNativeDrawing(msg)) {
+			return DefSubclassProc(hwnd, msg, wParam, lParam);
+		}
+		// 锁是系统全局唯一的，被其他窗口占用时退化为原有行为
+		s_nativeDrawLocked = ::LockWindowUpdate(hwnd) != FALSE;
+		const LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
+		if (s_nativeDrawLocked) {
+			::LockWindowUpdate(nullptr);
+			s_nativeDrawLocked = false;
+		}
+		return result;
+	}
+
 	static LRESULT HandleEditMessage(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam,
 									[[maybe_unused]] UINT_PTR uIdSubclass, const DWORD_PTR dwRefData) {
 		switch (msg) {
@@ -451,6 +497,6 @@ private:
 		default: break;
 		}
 		// ctrl+o 会发出beep声，解决不了，很多原生程序的编辑框也会这样子
-		return DefSubclassProc(hwnd, msg, wParam, lParam);
+		return DefSubclassProcWithoutNativeDrawing(hwnd, msg, wParam, lParam);
 	}
 };
