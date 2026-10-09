@@ -13,7 +13,7 @@
 #include <numeric>
 #include <algorithm>
 #include <stdexcept>
-#include <memory>
+#include <cmath>
 
 #pragma comment(lib, "gdiplus.lib")
 
@@ -133,8 +133,19 @@ static std::vector<int> AllocateProportional(const std::vector<int>& src, int ta
 	return out;
 }
 
+// 固定段（不可伸展部分）的总长度
+static int SumFixedLength(const std::vector<Segment>& segs) {
+	int sum = 0;
+	for (const auto& seg : segs) {
+		if (!seg.stretch) sum += seg.e - seg.s;
+	}
+	return sum;
+}
+
 // 依据“伸展/固定”列，把目标长度按规则分配到各列（或行）
-static std::vector<int> LayoutTargetLengths(const std::vector<Segment>& segs, int targetLen) {
+// fixedScale：固定段的缩放比例（<=1）。目标尺寸小于固定段时，横纵两个方向使用同一比例缩小，
+// 避免圆角等固定区域被单向压扁成椭圆
+static std::vector<int> LayoutTargetLengths(const std::vector<Segment>& segs, int targetLen, double fixedScale) {
 	// 拆两类
 	std::vector<int> fixedIdx, stretchIdx, fixedSrc, stretchSrc;
 	for (size_t i = 0; i < segs.size(); ++i) {
@@ -147,22 +158,16 @@ static std::vector<int> LayoutTargetLengths(const std::vector<Segment>& segs, in
 			fixedSrc.push_back(len);
 		}
 	}
-	int sumFixed = std::accumulate(fixedSrc.begin(), fixedSrc.end(), 0);
-	int sumStretch = std::accumulate(stretchSrc.begin(), stretchSrc.end(), 0);
+	const int sumFixed = std::accumulate(fixedSrc.begin(), fixedSrc.end(), 0);
+	int fixedTotal = std::min(targetLen, (int)std::lround(sumFixed * fixedScale));
+	// 没有伸展段时，固定段需要填满目标长度
+	if (stretchIdx.empty()) fixedTotal = targetLen;
 
 	std::vector<int> out(segs.size(), 0);
-	if (targetLen >= sumFixed) {
-		int allocStretch = targetLen - sumFixed;
-		auto stretchDst = AllocateProportional(stretchSrc, allocStretch);
-		// 固定段保持原始长度
-		for (size_t i = 0; i < fixedIdx.size(); ++i) out[fixedIdx[i]] = fixedSrc[i];
-		for (size_t i = 0; i < stretchIdx.size(); ++i) out[stretchIdx[i]] = stretchDst[i];
-	} else {
-		// 目标太小：按比例压缩“固定段”，伸展段置 0（常见行为）
-		auto fixedDst = AllocateProportional(fixedSrc, targetLen);
-		for (size_t i = 0; i < fixedIdx.size(); ++i) out[fixedIdx[i]] = fixedDst[i];
-		for (size_t i = 0; i < stretchIdx.size(); ++i) out[stretchIdx[i]] = 0;
-	}
+	const auto fixedDst = AllocateProportional(fixedSrc, fixedTotal);
+	const auto stretchDst = AllocateProportional(stretchSrc, targetLen - fixedTotal);
+	for (size_t i = 0; i < fixedIdx.size(); ++i) out[fixedIdx[i]] = fixedDst[i];
+	for (size_t i = 0; i < stretchIdx.size(); ++i) out[stretchIdx[i]] = stretchDst[i];
 	return out;
 }
 
@@ -250,66 +255,67 @@ static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, 
 	// 内容 padding
 	ParseContentPadding(src.get(), cw, ch, outContentPadding);
 
+	// 固定段统一缩放比例：任一方向放不下固定段时，两个方向按同一比例缩小
+	double fixedScale = 1.0;
+	const int sumFixedX = SumFixedLength(xSegs);
+	const int sumFixedY = SumFixedLength(ySegs);
+	if (sumFixedX > targetW) fixedScale = std::min(fixedScale, (double)targetW / sumFixedX);
+	if (sumFixedY > targetH) fixedScale = std::min(fixedScale, (double)targetH / sumFixedY);
+	if (outContentPadding && fixedScale < 1.0) {
+		outContentPadding->left = (LONG)std::lround(outContentPadding->left * fixedScale);
+		outContentPadding->top = (LONG)std::lround(outContentPadding->top * fixedScale);
+		outContentPadding->right = (LONG)std::lround(outContentPadding->right * fixedScale);
+		outContentPadding->bottom = (LONG)std::lround(outContentPadding->bottom * fixedScale);
+	}
+
+	// 先把内容区（去掉 1px 引导线）复制出来，避免插值时采样到黑色引导线
+	Bitmap content(cw, ch, PixelFormat32bppARGB);
+	{
+		Graphics cg(&content);
+		cg.SetCompositingMode(CompositingModeSourceCopy);
+		cg.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		cg.SetPixelOffsetMode(PixelOffsetModeHalf);
+		cg.DrawImage(src.get(), Rect(0, 0, cw, ch), 1, 1, cw, ch, UnitPixel);
+	}
+
 	// 目标位图
 	auto* dst = new Bitmap(targetW, targetH, PixelFormat32bppARGB);
 	Graphics g(dst);
-	g.SetCompositingMode(CompositingModeSourceOver);
+	g.SetCompositingMode(CompositingModeSourceCopy);
 	g.SetCompositingQuality(CompositingQualityHighQuality);
-	g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
 	g.SetPixelOffsetMode(PixelOffsetModeHalf);
 	g.SetSmoothingMode(SmoothingModeHighQuality);
 
+	// 边缘镜像，防止切片边缘插值时混入透明/相邻像素产生接缝
+	ImageAttributes attrs;
+	attrs.SetWrapMode(WrapModeTileFlipXY);
+
 	// 计算每列/每行在目标图的像素长度
-	auto xLens = LayoutTargetLengths(xSegs, targetW);
-	auto yLens = LayoutTargetLengths(ySegs, targetH);
+	auto xLens = LayoutTargetLengths(xSegs, targetW, fixedScale);
+	auto yLens = LayoutTargetLengths(ySegs, targetH, fixedScale);
 
 	// 逐格拼绘
 	int dy = 0;
 	for (size_t r = 0; r < ySegs.size(); ++r) {
-		int srcY = 1 + ySegs[r].s;
-		int srcH = ySegs[r].e - ySegs[r].s;
-		int dstH = yLens[r];
-		if (dstH <= 0 || srcH <= 0) {
-			/* 跳过空块 */
-			continue;
-		}
+		const int srcY = ySegs[r].s;
+		const int srcH = ySegs[r].e - ySegs[r].s;
+		const int dstH = yLens[r];
+		if (dstH <= 0 || srcH <= 0) continue;
 
 		int dx = 0;
 		for (size_t c = 0; c < xSegs.size(); ++c) {
-			int srcX = 1 + xSegs[c].s;
-			int srcW = xSegs[c].e - xSegs[c].s;
-			int dstW = xLens[c];
+			const int srcX = xSegs[c].s;
+			const int srcW = xSegs[c].e - xSegs[c].s;
+			const int dstW = xLens[c];
 			if (dstW <= 0 || srcW <= 0) {
 				dx += dstW;
 				continue;
 			}
-
-			// 确保不绘制边界像素 - 排除最外层的引导线
-			int adjustedSrcX = srcX;
-			int adjustedSrcY = srcY;
-			int adjustedSrcW = srcW;
-			int adjustedSrcH = srcH;
-
-			// 如果是边缘区域，需要向内收缩1像素以避免绘制引导线
-			if (c == 0 && xSegs[c].s == 0) {
-				adjustedSrcX++;
-				adjustedSrcW--;
-			} // 左边缘
-			if (c == xSegs.size() - 1 && xSegs[c].e == cw) {
-				adjustedSrcW--;
-			} // 右边缘
-			if (r == 0 && ySegs[r].s == 0) {
-				adjustedSrcY++;
-				adjustedSrcH--;
-			} // 上边缘
-			if (r == ySegs.size() - 1 && ySegs[r].e == ch) {
-				adjustedSrcH--;
-			} // 下边缘
-
-			if (adjustedSrcW > 0 && adjustedSrcH > 0) {
-				Rect d(dx, dy, dstW, dstH);
-				g.DrawImage(src.get(), d, adjustedSrcX, adjustedSrcY, adjustedSrcW, adjustedSrcH, UnitPixel);
-			}
+			// 尺寸不变的格子原样复制，保证圆角像素精确
+			g.SetInterpolationMode(dstW == srcW && dstH == srcH
+										? InterpolationModeNearestNeighbor
+										: InterpolationModeHighQualityBicubic);
+			g.DrawImage(&content, Rect(dx, dy, dstW, dstH), srcX, srcY, srcW, srcH, UnitPixel, &attrs);
 			dx += dstW;
 		}
 		dy += dstH;
