@@ -75,6 +75,7 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = 
 	hTabButtons.clear();
 	tabContainers.clear();
 	hCtrlsByTab.clear();
+	tabCtrlsCreated.clear();
 	currentSubPageIndex = 0;
 
 	// 初始化绘图资源
@@ -160,7 +161,8 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 		for (const auto& item : settings) {
 			currentCtrlSubId++;
 			// ConsolePrintln(item.key);
-			if (item.subPageIndex != tabIdx) {
+			// 不属于本tab或位于折叠项内的设置项不创建控件，只消耗ID，保存时使用SettingItem中的值
+			if (item.subPageIndex != tabIdx || !isExpand) {
 				if (item.type == "expand" || item.type == "expandswitch") {
 					createSettingControls(item.children, indentLevel + 1, currentY, isExpand && item.isExpanded);
 				}
@@ -182,10 +184,7 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 										nullptr);
 				SendMessageW(hLabel, WM_SETFONT, (WPARAM)hFontDefault, TRUE);
 				ctrls.push_back(hLabel);
-				if (isExpand) currentY += labelHeight;
-				if (!isExpand) {
-					SetWindowPos(hLabel, nullptr, 0, -80, 0, 0, SWP_NOZORDER);
-				}
+				currentY += labelHeight;
 				continue;
 			} else if (item.type == "expand") {
 				// 折叠按钮设置项
@@ -198,12 +197,9 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				// 设置折叠状态
 				SetExpandButtonState(hLabel, item.isExpanded);
 				ctrls.push_back(hLabel);
-				if (isExpand) currentY += labelHeight + 6;
+				currentY += labelHeight + 6;
 				// 递归创建子控件
-				createSettingControls(item.children, indentLevel + 1, currentY, isExpand && item.isExpanded);
-				if (!isExpand) {
-					SetWindowPos(hLabel, nullptr, 0, -80, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
-				}
+				createSettingControls(item.children, indentLevel + 1, currentY, item.isExpanded);
 				continue;
 			} else if (item.type == "expandswitch") {
 				// 折叠+开关组合按钮设置项
@@ -216,12 +212,9 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				SetExpandButtonState(hLabel, item.isExpanded);
 				SetExpandSwitchState(hLabel, item.boolValue);
 				ctrls.push_back(hLabel);
-				if (isExpand) currentY += labelHeight + 6;
+				currentY += labelHeight + 6;
 				// 递归创建子控件
-				createSettingControls(item.children, indentLevel + 1, currentY, isExpand && item.isExpanded);
-				if (!isExpand) {
-					SetWindowPos(hLabel, nullptr, 0, -80, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
-				}
+				createSettingControls(item.children, indentLevel + 1, currentY, item.isExpanded);
 				continue;
 			}
 
@@ -233,10 +226,6 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 									indentX, currentY, labelWidth, labelHeight, hParent, nullptr, nullptr,
 									nullptr);
 			SendMessageW(hLabel, WM_SETFONT, (WPARAM)hFontDefault, TRUE);
-
-			if (!isExpand) {
-				SetWindowPos(hLabel, nullptr, 0, -80, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
-			}
 			ctrls.push_back(hLabel);
 
 
@@ -260,7 +249,7 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 									contorlX, currentY, 200, 50, hParent, (HMENU)currentCtrlSubId, nullptr,
 									nullptr);
 				setCustomEdit(hCtrl);
-				if (isExpand) currentY += 30;
+				currentY += 30;
 			} else if (item.type == "list") {
 				hCtrl = CreateEnhancedComboBox(hParent, currentCtrlSubId, contorlX, currentY, 200, 300, (HMENU)currentCtrlSubId);
 				// 1. 獲取 ComboBox 的詳細資訊，主要是為了得到下拉列表的句柄 (hwndList)
@@ -274,6 +263,8 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				const auto& entryValues = item.entryValues;
 				int selIndex = 0;
 
+				// 填充期间禁止重绘，否则每次 CB_ADDSTRING 都有明显耗时
+				SendMessageW(hCtrl, WM_SETREDRAW, FALSE, 0);
 				for (size_t j = 0; j < entries.size(); ++j) {
 					std::wstring entryW = utf8_to_wide(entries[j]);
 					SendMessageW(hCtrl, CB_ADDSTRING, 0, (LPARAM)entryW.c_str());
@@ -281,6 +272,7 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 					if (entryValues[j] == item.stringValue) selIndex = static_cast<int>(j);
 				}
 				SendMessageW(hCtrl, CB_SETCURSEL, selIndex, 0);
+				SendMessageW(hCtrl, WM_SETREDRAW, TRUE, 0);
 			} else if (item.type == "long") {
 				hCtrl = CreateWindowW(L"EDIT",
 									std::to_wstring(item.intValue).c_str(),
@@ -310,11 +302,8 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 
 			if (hCtrl) {
 				ctrls.push_back(hCtrl);
-				if (!isExpand) {
-					SetWindowPos(hCtrl, nullptr, 0, -80, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
-				}
 			}
-			if (isExpand) currentY += MyMax(35, labelHeight);
+			currentY += MyMax(35, labelHeight);
 		}
 	};
 	createSettingControls(g_settings_ui, 0, y, true);
@@ -323,6 +312,14 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 	UpdateScrollRange(hParent, contentHeight); // 调用正确的辅助函数
 
 	hCtrlsByTab[tabIdx] = ctrls;
+	tabCtrlsCreated[tabIdx] = true;
+}
+
+// 延迟创建：tab首次显示时才创建其控件
+static void EnsureTabControlsCreated(size_t tabIdx, HWND hwnd) {
+	if (tabIdx < tabCtrlsCreated.size() && !tabCtrlsCreated[tabIdx]) {
+		CreateSettingControlsForTab(tabIdx, hwnd);
+	}
 }
 
 // 重新创建设置界面的函数
@@ -388,23 +385,17 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 				HWND hContainer = CreateWindowExW(
 					WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
 					L"SCROLLVIEW", nullptr,
-					WS_CHILD | WS_VISIBLE | WS_VSCROLL,
+					WS_CHILD | WS_VSCROLL | (tabIdx == 0 ? WS_VISIBLE : 0),
 					tabBtnWidth + 4, 0, (SETTINGS_WINDOW_WIDTH - tabBtnWidth - 16 - 4), SETTINGS_WINDOW_HEIGHT-88, hwnd, nullptr,
 					GetModuleHandle(nullptr), nullptr);
 				tabContainers[tabIdx] = hContainer;
 			}
 
-			// 在每个容器中生成控件
+			// 只为当前tab生成控件，其他tab在首次切换时生成
 			hCtrlsByTab.clear();
 			hCtrlsByTab.resize(subPageTabs.size());
-			for (size_t tabIdx = 0; tabIdx < subPageTabs.size(); ++tabIdx) {
-				CreateSettingControlsForTab(tabIdx, hwnd);
-			}
-
-			// 只显示当前tab内容
-			for (size_t tabIdx = 0; tabIdx < tabContainers.size(); ++tabIdx)
-				ShowWindow(
-					tabContainers[tabIdx], tabIdx == 0 ? SW_SHOW : SW_HIDE);
+			tabCtrlsCreated.assign(subPageTabs.size(), false);
+			EnsureTabControlsCreated(0, hwnd);
 
 			// 设置第一个tab为选中状态
 			UpdateTabButtonSelection(hTabButtons, 0);
@@ -455,6 +446,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			int newIdx = LOWORD(wParam) - 2000;
 			if (newIdx == currentSubPageIndex) break;
 
+			EnsureTabControlsCreated(newIdx, hwnd);
 			ShowWindow(tabContainers[currentSubPageIndex], SW_HIDE);
 			ShowWindow(tabContainers[newIdx], SW_SHOW);
 			currentSubPageIndex = newIdx;
@@ -515,6 +507,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 		hTabButtons.clear();
 		tabContainers.clear();
 		hCtrlsByTab.clear();
+		tabCtrlsCreated.clear();
 		currentSubPageIndex = 0;
 		g_settingsHwnd = nullptr;
 		blankBelowTabBelow = nullptr;

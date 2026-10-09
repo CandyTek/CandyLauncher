@@ -30,6 +30,8 @@ inline std::wstring originalSkinPath;
 
 // tab下所有控件句柄，用来实现页面滚动功能，整体移动该页控件
 inline std::vector<std::vector<HWND>> hCtrlsByTab;
+// tab的控件是否已创建，tab在首次显示时才创建控件
+inline std::vector<bool> tabCtrlsCreated;
 
 // 用来查找程序目录下的所有皮肤文件
 static std::vector<std::wstring> FindSkinFiles() {
@@ -271,6 +273,9 @@ static void saveSettingControlValues(nlohmann::json& newConfig2, const bool isJu
 					bool value = GetExpandSwitchState(hCtrl);
 					newConfig[item.key] = value;
 					item.setValue(nlohmann::json(value));
+				} else {
+					// 控件未创建（tab未打开过或位于折叠项内），使用内存中的值
+					newConfig[item.key] = item.getValue();
 				}
 
 				// 递归保存子项
@@ -293,7 +298,8 @@ static void saveSettingControlValues(nlohmann::json& newConfig2, const bool isJu
 			}
 
 			if (!hCtrl) {
-				Logw(L"SettingsManager", L"找不到这个key: ", item.title);
+				// 控件未创建（tab未打开过或位于折叠项内），使用内存中的值
+				newConfig[item.key] = item.getValue();
 				continue;
 			}
 

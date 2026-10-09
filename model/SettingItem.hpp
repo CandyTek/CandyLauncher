@@ -53,6 +53,16 @@ struct SettingItem {
 		}
 	}
 
+	// 返回当前值的json形式，非值类型（text/button/expand）返回null
+	nlohmann::json getValue() const {
+		if (type == "string" || type == "hotkeystring" || type == "list") return stringValue;
+		if (type == "long") return intValue;
+		if (type == "bool" || type == "expandswitch") return boolValue;
+		if (type == "double") return doubleValue;
+		if (type == "stringArr") return stringArr;
+		return nullptr;
+	}
+
 	// private:
 	// nlohmann::json value;
 };
