@@ -42,15 +42,16 @@ const std::unordered_set<std::wstring> systemProcesses = {
 };
 
 
-static UINT ShowMyContextMenu(HWND hWnd, const std::wstring& path, POINT screenPt) {
+// canEditIndex: 该项能否映射回 config_folder_plugin.json 中的某个配置，决定排除/重命名是否可用
+static UINT ShowMyContextMenu(HWND hWnd, const std::wstring& path, POINT screenPt, bool canEditIndex = true) {
 	Logi(L"FolderMenu", L"enter path=", path, L", x=", screenPt.x, L", y=", screenPt.y);
 	HMENU hMenu = CreatePopupMenu();
 	if (!hMenu) {
 		Loge(L"FolderMenu", L"CreatePopupMenu failed err=", GetLastError());
 		return 0;
 	}
-	AppendMenuW(hMenu, MF_STRING, IDM_REMOVE_ITEM, L"排除该索引(未完善)");
-	AppendMenuW(hMenu, MF_STRING, IDM_CONTEXT_MENU_RENAME_ITEM, L"重映射命名该索引(未完善)");
+	AppendMenuW(hMenu, MF_STRING | (canEditIndex ? 0 : MF_GRAYED), IDM_REMOVE_ITEM, L"排除该索引");
+	AppendMenuW(hMenu, MF_STRING | (canEditIndex ? 0 : MF_GRAYED), IDM_CONTEXT_MENU_RENAME_ITEM, L"重命名该索引");
 	AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
 	AppendMenuW(hMenu, MF_STRING, IDM_RUN_AS_ADMIN, L"以管理员身份运行");
 	AppendMenuW(hMenu, MF_STRING, IDM_OPEN_IN_CONSOLE, L"在控制台打开该项");

@@ -109,7 +109,10 @@ public:
 
 	void Shutdown() override {
 		if (m_host) {
-			allPluginActions.clear();
+			try {
+				allPluginActions.clear();
+			} catch (...) {
+			}
 		}
 		m_host = nullptr;
 	}

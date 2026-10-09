@@ -80,12 +80,15 @@ static void RegisterRenameDialogClass() {
 	registered = true;
 }
 
-static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std::wstring &newName) {
+static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std::wstring &newName,
+							 const wchar_t *caption = L"重命名文件") {
 	RegisterRenameDialogClass();
 	newName.clear();
 
 	RECT pr{};
-	GetWindowRect(parent, &pr);
+	if (!parent || !GetWindowRect(parent, &pr)) {
+		SystemParametersInfoW(SPI_GETWORKAREA, 0, &pr, 0);
+	}
 	int x = pr.left + (pr.right - pr.left - 300) / 2;
 	int y = pr.top + (pr.bottom - pr.top - 150) / 2;
 
@@ -94,7 +97,7 @@ static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std:
 
 	HWND hDlg = CreateWindowExW(
 			WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
-			L"RenameDialogClass", L"重命名文件",
+			L"RenameDialogClass", caption,
 			WS_POPUP | WS_CAPTION | WS_SYSMENU,
 			x, y, 300, 150, parent, nullptr, GetModuleHandle(nullptr), &data);
 
@@ -108,7 +111,7 @@ static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std:
 	}
 
 	ShowWindow(hDlg, SW_SHOW);
-	EnableWindow(parent, FALSE);
+	if (parent) EnableWindow(parent, FALSE);
 
 	// Enter/ESC 加速键（非对话框不会自动触发）
 	ACCEL acc[2] = {
@@ -126,8 +129,10 @@ static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std:
 	}
 	if (hAcc) DestroyAcceleratorTable(hAcc);
 
-	EnableWindow(parent, TRUE);
-	SetForegroundWindow(parent);
+	if (parent) {
+		EnableWindow(parent, TRUE);
+		SetForegroundWindow(parent);
+	}
 
 	return (data.outcome == IDOK && !newName.empty());
 }

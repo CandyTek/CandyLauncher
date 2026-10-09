@@ -156,6 +156,13 @@ public:
 		return title;
 	}
 
+	// 索引重命名后同步更新显示名与匹配文本
+	void SetTitle(const std::wstring& newTitle) {
+		title = newTitle;
+		matchText = g_host->GetTheProcessedMatchingText(newTitle);
+		if (targetFilePath.empty()) subTitle = newTitle + L" " + arguments;
+	}
+
 	std::wstring& getSubTitle() override {
 		return subTitle;
 	}

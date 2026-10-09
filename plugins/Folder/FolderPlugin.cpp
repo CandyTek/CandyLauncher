@@ -182,7 +182,17 @@ private:
 		bool explicitUwp = false;
 		bool indexRoot = false;
 		std::shared_ptr<FileAction> rootAction;
+		// 在 config_folder_plugin.json 数组中的下标；默认补充的 UWP/PATH 源为 -1
+		int configIndex = -1;
 	};
+	// 右键排除/重命名时，用于把索引项映射回配置中的排除名称或重命名源
+	struct IndexEditTarget {
+		size_t sourceIndex = 0;
+		std::wstring excludeKey;
+		std::wstring renameKey;
+	};
+	enum class IndexEditKind { Exclude, Rename };
+	std::mutex cacheMutex;
 	std::vector<CachedSource> cachedSources;
 	std::string cachedConfig;
 	std::wstring cachedPath;
@@ -526,8 +536,190 @@ public:
 		for (const auto& child : children) RefreshDirectory(source, child, next, newActions);
 	}
 
+	static std::vector<std::shared_ptr<BaseAction>> MergeVisibleActions(const std::vector<CachedSource>& sources,
+		bool allowDuplicates) {
+		std::vector<std::shared_ptr<BaseAction>> result;
+		std::unordered_set<std::wstring> titles;
+		auto addSource = [&](const CachedSource& source) {
+			for (const auto& action : source.actions) {
+				if (allowDuplicates || titles.insert(NormalizeActionTitleForDedup(action->getTitle())).second)
+					result.push_back(action);
+			}
+		};
+		// 原实现先插入显式 UWP，再插入文件，最后插入默认 UWP/PATH。
+		for (const auto& source : sources)
+			if (source.explicitUwp) addSource(source);
+		for (const auto& source : sources)
+			if (!source.isUwp) addSource(source);
+		for (const auto& source : sources)
+			if (source.isUwp && !source.explicitUwp) addSource(source);
+		return result;
+	}
+
+	// UWP/系统设置按显示名排除和重命名，标题可能已被重命名，需反查原名
+	static std::wstring OriginalDisplayName(const TraverseOptions& options, const std::wstring& title) {
+		for (const auto& [source, target] : options.renameMap)
+			if (target == title && source != title) return source;
+		return title;
+	}
+
+	// 与各遍历器保持一致：文件按完整文件名排除，按不含扩展名的文件名重命名
+	static std::wstring IndexKeyOf(const CachedSource& source, FileAction& action, IndexEditKind kind) {
+		if (source.isUwp || source.isSystemSettings) return OriginalDisplayName(source.options, action.getTitle());
+		const std::filesystem::path path(action.GetTargetPath());
+		return kind == IndexEditKind::Exclude ? path.filename().wstring() : path.stem().wstring();
+	}
+
+	// 调用方需持有 cacheMutex
+	bool FindIndexEditTarget(const std::shared_ptr<FileAction>& action, IndexEditTarget& target) {
+		if (!cacheReady || !action) return false;
+		for (size_t i = 0; i < cachedSources.size(); ++i) {
+			const auto& source = cachedSources[i];
+			// "索引路径本身" 生成的根目录项不受排除/重命名规则影响
+			if (source.rootAction == action) return false;
+			if (std::find(source.actions.begin(), source.actions.end(), action) == source.actions.end()) continue;
+			target.sourceIndex = i;
+			target.excludeKey = IndexKeyOf(source, *action, IndexEditKind::Exclude);
+			target.renameKey = IndexKeyOf(source, *action, IndexEditKind::Rename);
+			return !target.excludeKey.empty() && !target.renameKey.empty();
+		}
+		return false;
+	}
+
+	bool CanEditIndex(const std::shared_ptr<FileAction>& action) {
+		std::lock_guard<std::mutex> lock(cacheMutex);
+		IndexEditTarget target;
+		return FindIndexEditTarget(action, target);
+	}
+
+	std::wstring GetIndexRenameKey(const std::shared_ptr<FileAction>& action) {
+		std::lock_guard<std::mutex> lock(cacheMutex);
+		IndexEditTarget target;
+		return FindIndexEditTarget(action, target) ? target.renameKey : L"";
+	}
+
+	// 默认补充的 UWP/PATH 源在配置中没有对应项，首次编辑时追加一项使其成为显式配置
+	static nlohmann::json CreateConfigItemForDefaultSource(const CachedSource& source) {
+		return {
+			{"name", source.isUwp ? "UWP 应用" : "%PATH% 环境变量"},
+			{"type", source.isUwp ? "uwp" : "path"},
+			{"folder", ""},
+			{"is_contain_subfolder", false},
+			{"index_files_only", true},
+			{"exclude_words", WideVectorToUtf8Vector(source.options.excludeWords)},
+			{"excludes", WideVectorToUtf8Vector(source.options.excludeNames)},
+			{"rename_sources", WideVectorToUtf8Vector(source.options.renameSources)},
+			{"rename_targets", WideVectorToUtf8Vector(source.options.renameTargets)},
+			{"exts", WideVectorToUtf8Vector(source.options.extensions)}
+		};
+	}
+
+	static nlohmann::json& EnsureJsonArray(nlohmann::json& item, const char* key) {
+		if (!item.contains(key) || !item[key].is_array()) item[key] = nlohmann::json::array();
+		return item[key];
+	}
+
+	// 只有 rename_sources 与 rename_targets 成对的部分生效；新名称与原名相同时删除该映射
+	static void SetRenameMapping(nlohmann::json& item, const std::string& source, const std::string& target) {
+		auto& sources = EnsureJsonArray(item, "rename_sources");
+		auto& targets = EnsureJsonArray(item, "rename_targets");
+		const size_t count = std::min(sources.size(), targets.size());
+		bool found = false;
+		for (size_t i = count; i-- > 0;) {
+			if (!sources[i].is_string() || sources[i].get<std::string>() != source) continue;
+			found = true;
+			if (source == target) {
+				sources.erase(sources.begin() + static_cast<std::ptrdiff_t>(i));
+				targets.erase(targets.begin() + static_cast<std::ptrdiff_t>(i));
+			} else {
+				targets[i] = target;
+			}
+		}
+		if (found || source == target) return;
+		sources.insert(sources.begin() + static_cast<std::ptrdiff_t>(count), source);
+		targets.insert(targets.begin() + static_cast<std::ptrdiff_t>(count), target);
+	}
+
+	// 写入配置并就地更新缓存，避免整表重建索引；下次刷新时缓存与配置一致，仍走增量路径
+	bool ApplyIndexEdit(const std::shared_ptr<FileAction>& action, IndexEditKind kind, const std::wstring& newTitle,
+		std::wstring& error) {
+		std::lock_guard<std::mutex> lock(cacheMutex);
+		IndexEditTarget target;
+		if (!FindIndexEditTarget(action, target)) {
+			error = L"该项不属于任何索引配置";
+			return false;
+		}
+		const std::string current = ReadUtf8File(RUNNER_CONFIG_PATH2);
+		if (current != cachedConfig) {
+			error = L"配置文件已在外部被修改，请等待索引刷新后重试";
+			return false;
+		}
+		CachedSource& source = cachedSources[target.sourceIndex];
+		nlohmann::json config;
+		try {
+			config = current.empty() ? nlohmann::json::array() : nlohmann::json::parse(current);
+		} catch (const std::exception& e) {
+			error = L"配置文件解析失败: " + utf8_to_wide(e.what());
+			return false;
+		}
+		if (!config.is_array()) {
+			error = L"配置文件格式错误";
+			return false;
+		}
+		int configIndex = source.configIndex;
+		if (configIndex < 0) {
+			config.push_back(CreateConfigItemForDefaultSource(source));
+			configIndex = static_cast<int>(config.size()) - 1;
+		}
+		if (configIndex >= static_cast<int>(config.size()) || !config[configIndex].is_object()) {
+			error = L"找不到对应的索引配置";
+			return false;
+		}
+		auto& item = config[configIndex];
+		const std::wstring& key = kind == IndexEditKind::Exclude ? target.excludeKey : target.renameKey;
+		if (kind == IndexEditKind::Exclude) {
+			auto& excludes = EnsureJsonArray(item, "excludes");
+			const std::string utf8Key = wide_to_utf8(key);
+			if (std::find(excludes.begin(), excludes.end(), utf8Key) == excludes.end()) excludes.push_back(utf8Key);
+		} else {
+			SetRenameMapping(item, wide_to_utf8(key), wide_to_utf8(newTitle));
+		}
+		// 规则更新前先按旧规则找出受影响的项（同名文件、同名 UWP 等会一起变化）
+		std::unordered_set<FileAction*> affected;
+		for (const auto& candidate : source.actions)
+			if (candidate != source.rootAction && IndexKeyOf(source, *candidate, kind) == key) affected.insert(candidate.get());
+		if (!WriteRunnerConfigJson(config)) {
+			error = L"写入配置文件失败";
+			return false;
+		}
+		const TraverseOptions updated = getTraverseOptions(item);
+		source.options.excludeNames = updated.excludeNames;
+		source.options.renameSources = updated.renameSources;
+		source.options.renameTargets = updated.renameTargets;
+		source.options.renameMap = updated.renameMap;
+		source.configIndex = configIndex;
+		if (source.isUwp) source.explicitUwp = true;
+		cachedConfig = ReadUtf8File(RUNNER_CONFIG_PATH2);
+		if (kind == IndexEditKind::Exclude) {
+			auto removeAffected = [&](std::vector<std::shared_ptr<FileAction>>& actions) {
+				actions.erase(std::remove_if(actions.begin(), actions.end(),
+					[&](const std::shared_ptr<FileAction>& candidate) { return affected.count(candidate.get()) != 0; }),
+					actions.end());
+			};
+			removeAffected(source.actions);
+			for (auto& [path, snapshot] : source.directories) removeAffected(snapshot.actions);
+		} else {
+			for (auto* candidate : affected) candidate->SetTitle(newTitle);
+		}
+		allPluginActions = MergeVisibleActions(cachedSources, cachedAllowDuplicates);
+		Logi(L"FolderPlugin", kind == IndexEditKind::Exclude ? L"index excluded key=" : L"index renamed key=", key,
+			L" title=", newTitle, L" config=", configIndex, L" affected=", affected.size());
+		return true;
+	}
+
 	void RefreshAllActions() override {
 		if (!g_host) return;
+		std::lock_guard<std::mutex> lock(cacheMutex);
 		const ULONGLONG refreshStart = GetTickCount64();
 		const auto& settings = g_host->GetSettingsMap();
 		const bool allowDuplicates = settings.at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
@@ -548,8 +740,10 @@ public:
 			const ULONGLONG configDone = GetTickCount64();
 			std::vector<CachedSource> sources;
 			bool explicitUwp = false, explicitPath = false;
-			for (auto options : configs) {
+			for (size_t configIndex = 0; configIndex < configs.size(); ++configIndex) {
+				auto options = configs[configIndex];
 				CachedSource source;
+				source.configIndex = static_cast<int>(configIndex);
 				if (options.type == L"folder" || options.type.empty()) {
 					options.folder = GetCurrentFolderPath(options);
 					source.options = options;
@@ -727,22 +921,7 @@ public:
 				}
 			}
 			const ULONGLONG uwpDone = GetTickCount64();
-			std::vector<std::shared_ptr<BaseAction>> result;
-			std::unordered_set<std::wstring> titles;
-			auto addSource = [&](const CachedSource& source) {
-				for (const auto& action : source.actions) {
-					if (allowDuplicates || titles.insert(NormalizeActionTitleForDedup(action->getTitle())).second)
-						result.push_back(action);
-				}
-			};
-			// 原实现先插入显式 UWP，再插入文件，最后插入默认 UWP/PATH。
-			for (const auto& source : sources)
-				if (source.explicitUwp) addSource(source);
-			for (size_t i = 0; i < sources.size(); ++i)
-				if (!sources[i].isUwp) addSource(sources[i]);
-			if (!explicitUwp && uwpEnabled)
-				for (const auto& source : sources) if (source.isUwp) addSource(source);
-			allPluginActions = std::move(result);
+			allPluginActions = MergeVisibleActions(sources, allowDuplicates);
 			const ULONGLONG mergeDone = GetTickCount64();
 			Logi(L"FolderPlugin", L"index timing config=", configDone - refreshStart,
 				L"ms sources=", sourceDone - sourceStart, L"ms icon setup=", iconsDone - sourceDone,
@@ -1021,6 +1200,42 @@ public:
 		return true;
 	}
 
+	// 重新按当前输入筛选，让主列表立即反映排除/重命名结果
+	static void RefreshVisibleList(const std::wstring& inputText) {
+		g_host->ChangeEditTextText(inputText);
+	}
+
+	void ExcludeIndexItem(const std::shared_ptr<FileAction>& action, HWND parentHwnd) {
+		std::wstring error;
+		if (!ApplyIndexEdit(action, IndexEditKind::Exclude, L"", error)) {
+			Loge(L"FolderPlugin", L"exclude index failed: ", error);
+			MessageBoxW(parentHwnd, error.c_str(), L"排除该索引", MB_OK | MB_ICONWARNING);
+			return;
+		}
+		RefreshVisibleList(std::wstring(g_host->GetEditTextText()));
+	}
+
+	void RenameIndexItem(const std::shared_ptr<FileAction>& action, HWND parentHwnd) {
+		const std::wstring renameKey = GetIndexRenameKey(action);
+		if (renameKey.empty()) return;
+		// 对话框获得焦点时主窗口可能随失焦隐藏并清空输入，先保存输入，结束后恢复
+		const std::wstring inputText = g_host->GetEditTextText();
+		std::wstring newTitle;
+		const std::wstring caption = L"重命名该索引 (原名: " + renameKey + L")";
+		const bool confirmed = ShowRenameDialog(parentHwnd, action->getTitle(), newTitle, caption.c_str());
+		g_host->MyShowWindow(SW_SHOW, true);
+		if (!confirmed || newTitle == action->getTitle()) {
+			RefreshVisibleList(inputText);
+			return;
+		}
+		std::wstring error;
+		if (!ApplyIndexEdit(action, IndexEditKind::Rename, newTitle, error)) {
+			Loge(L"FolderPlugin", L"rename index failed: ", error);
+			MessageBoxW(parentHwnd, error.c_str(), L"重命名该索引", MB_OK | MB_ICONWARNING);
+		}
+		RefreshVisibleList(inputText);
+	}
+
 	bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
 		Logi(L"FolderPlugin", L"OnItemShiftRightClick entered");
 		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
@@ -1029,9 +1244,13 @@ public:
 			return false;
 		}
 		Logi(L"FolderPlugin", L"ShowMyContextMenu path=", fileAction->GetTargetPath());
-		const UINT cmd = ShowMyContextMenu(parentHwnd, fileAction->GetTargetPath(), screenPt);
+		const UINT cmd = ShowMyContextMenu(parentHwnd, fileAction->GetTargetPath(), screenPt, CanEditIndex(fileAction));
 		Logi(L"FolderPlugin", L"ShowMyContextMenu cmd=", cmd);
 		switch (cmd) {
+		case IDM_REMOVE_ITEM: ExcludeIndexItem(fileAction, parentHwnd);
+			break;
+		case IDM_CONTEXT_MENU_RENAME_ITEM: RenameIndexItem(fileAction, parentHwnd);
+			break;
 		case IDM_RUN_AS_ADMIN: fileAction->InvokeWithTarget(nullptr, true);
 			break;
 		case IDM_OPEN_IN_CONSOLE: OpenConsoleHere(SaveGetShortcutTargetAndReturn(fileAction->GetTargetPath()));

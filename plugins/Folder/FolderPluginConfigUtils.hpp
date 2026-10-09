@@ -15,6 +15,25 @@
 #include <memory>
 #include <fstream>
 
+// 先写临时文件再替换，避免写入中途失败损坏用户配置
+static bool WriteRunnerConfigJson(const nlohmann::json& config) {
+	const std::wstring temporary = RUNNER_CONFIG_PATH2 + L".tmp";
+	std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+	if (!output) return false;
+	output.write("\xEF\xBB\xBF", 3);
+	output << config.dump(1, '\t');
+	output.close();
+	if (!output) {
+		DeleteFileW(temporary.c_str());
+		return false;
+	}
+	if (!MoveFileExW(temporary.c_str(), RUNNER_CONFIG_PATH2.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+		DeleteFileW(temporary.c_str());
+		return false;
+	}
+	return true;
+}
+
 // Existing user configurations predate the automation folder. Add only this
 // source, preserving every other user-defined index entry.
 static bool EnsureAutomationActionIndex() {
@@ -42,21 +61,7 @@ static bool EnsureAutomationActionIndex() {
 			{"name", "自动化动作组"}, {"rename_sources", nlohmann::json::array()},
 			{"rename_targets", nlohmann::json::array()}, {"type", "folder"}
 		});
-		const std::wstring temporary = RUNNER_CONFIG_PATH2 + L".automation.tmp";
-		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-		if (!output) return false;
-		output.write("\xEF\xBB\xBF", 3);
-		output << config.dump(1, '\t');
-		output.close();
-		if (!output) {
-			DeleteFileW(temporary.c_str());
-			return false;
-		}
-		if (!MoveFileExW(temporary.c_str(), RUNNER_CONFIG_PATH2.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-			DeleteFileW(temporary.c_str());
-			return false;
-		}
-		return true;
+		return WriteRunnerConfigJson(config);
 	} catch (const std::exception&) {
 		return false;
 	}
