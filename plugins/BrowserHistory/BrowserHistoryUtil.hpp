@@ -88,6 +88,7 @@ static std::wstring ConvertWebkitTimestamp(int64_t webkit_timestamp) {
 struct RawHistoryRow {
 	std::string url;
 	std::string title;
+	int64_t lastVisitTime = 0;
 };
 
 // 从 Chromium 类浏览器（Chrome/Edge）的 History SQLite 数据库读取历史记录
@@ -123,7 +124,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 		// urls 表结构：id, url, title, visit_count, typed_count, last_visit_time, hidden
 		// 子查询只对 id 排序，再按主键取 url/title，避免排序器搬运所有行的长字符串（约快一倍）
 		// CROSS JOIN 固定以子查询为外层循环，结果保持 last_visit_time 降序
-		const std::string sql = "SELECT u.url, u.title FROM ("
+		const std::string sql = "SELECT u.url, u.title, u.last_visit_time FROM ("
 			"SELECT id FROM urls "
 			"WHERE hidden = 0 AND url NOT LIKE 'chrome://%' AND url NOT LIKE 'edge://%' "
 			"ORDER BY last_visit_time DESC" + (maxResults > 0 ? " LIMIT " + std::to_string(maxResults) : "") +
@@ -145,7 +146,8 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 			const int urlLen = sqlite3_column_bytes(stmt, 0);
 			const auto* titleText = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
 			const int titleLen = titleText ? sqlite3_column_bytes(stmt, 1) : 0;
-			rows.push_back({std::string(urlText, urlLen), titleText ? std::string(titleText, titleLen) : std::string()});
+			rows.push_back({std::string(urlText, urlLen), titleText ? std::string(titleText, titleLen) : std::string(),
+							sqlite3_column_int64(stmt, 2)});
 		}
 		sqlite3_finalize(stmt);
 		sqlite3_close(db);
@@ -167,7 +169,15 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 				if (action->title.empty()) {
 					action->title = action->url;
 				}
-				action->subTitle = action->url;
+				// 副标题：访问时间 + URL
+				if (row.lastVisitTime > 0) {
+					action->visitTime = ConvertWebkitTimestamp(row.lastVisitTime);
+				}
+				if (action->visitTime.empty()) {
+					action->subTitle = action->url;
+				} else {
+					action->subTitle = action->visitTime + L"  " + action->url;
+				}
 				action->icon = icon;
 				try {
 					if (isMatchTextUrl) {
