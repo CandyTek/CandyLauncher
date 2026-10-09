@@ -691,6 +691,16 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 					// 没有拖动，直接隐藏
 					HideWindow();
 				}
+			} else if (wParam == TIMER_RELOAD_SKIN_FILE) {
+				KillTimer(hWnd, TIMER_RELOAD_SKIN_FILE);
+				if (refreshSkin(g_currectSkinFilePath)) {
+					g_skinFileReloadRetries = 0;
+				} else if (++g_skinFileReloadRetries < SKIN_FILE_RELOAD_MAX_RETRIES) {
+					// 文件可能仍在写入中（空内容或被占用），稍后重试
+					SetTimer(hWnd, TIMER_RELOAD_SKIN_FILE, SKIN_FILE_RELOAD_DELAY_MS, nullptr);
+				} else {
+					g_skinFileReloadRetries = 0;
+				}
 			}
 		}
 		break;
@@ -726,7 +736,13 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		break;
 	case WM_REFRESH_SKIN:
 		{
-			refreshSkin(g_currectSkinFilePath);
+			if (wParam == 1) {
+				// 来自皮肤文件监听：重置计时器，等文件写入稳定后再加载
+				g_skinFileReloadRetries = 0;
+				SetTimer(hWnd, TIMER_RELOAD_SKIN_FILE, SKIN_FILE_RELOAD_DELAY_MS, nullptr);
+			} else {
+				refreshSkin(g_currectSkinFilePath);
+			}
 			return 0;
 		}
 	case WM_CLOSE:

@@ -20,6 +20,10 @@ inline std::atomic g_shouldStop{false}; // 停止标志
 // Shared variables for skin settings
 inline std::vector<std::wstring> g_skinFilePaths;
 inline size_t g_prefSkinIndex;
+// 皮肤文件变动后重新加载的重试次数（编辑器保存时文件可能短暂为空或被占用）
+inline int g_skinFileReloadRetries = 0;
+constexpr int SKIN_FILE_RELOAD_DELAY_MS = 300;
+constexpr int SKIN_FILE_RELOAD_MAX_RETRIES = 5;
 
 static void clearBackgroundCachedBitmaps() {
 	delete g_BgCachedBitmap;
@@ -215,7 +219,8 @@ static void UpdateListViewScrollbarStyle()
 }
 
 
-static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) {
+// 返回 false 表示皮肤文件读取或解析失败，此时保留原有皮肤
+static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) {
 	skinPath = getCurrectSkinPath(skinPath);
 	// 黑夜模式功能
 	std::string mode = g_settings_map["pref_night_mode"].stringValue;
@@ -230,7 +235,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	std::ifstream in((skinPath.data()));
 	if (!in) {
 		Loge(L"SkinHelper", L"文件不存在: ", skinPath);
-		return;
+		return false;
 	}
 
 	// 读取整个文件内容（UTF-8 编码）
@@ -249,7 +254,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 		g_skinJson["skin_folder"] = std::filesystem::absolute(fullPath.parent_path()).u8string();
 	} catch (const nlohmann::json::parse_error& e) {
 		Loge(L"SkinHelper", L"JSON 解析错误: ", e.what());
-		return;
+		return false;
 	}
 	// --- 1. 更新主窗口 ---
 	MAIN_WINDOW_WIDTH = g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH);
@@ -391,6 +396,7 @@ static void refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 		ShowWindow(g_mainHwnd, SW_FORCEMINIMIZE);
 		SetTimer(g_mainHwnd, TIMER_SHOW_WINDOW, 50, nullptr);
 	}
+	return true;
 }
 
 static void RefreshSkinFile() {
@@ -421,7 +427,6 @@ static void RefreshSkinFile() {
 
 // 监听皮肤文件
 static void watchSkinFile() {
-	static ULONGLONG lastRefreshTimeTick = 0;
 	// 获取皮肤所在目录
 	std::wstring directory(EXE_FOLDER_PATH + LR"(\skins)");
 
@@ -487,12 +492,10 @@ static void watchSkinFile() {
 
 				// 检查变更的文件是否是当前皮肤文件
 				if (_wcsicmp(changedFile.c_str(), currentSkinFileName.c_str()) == 0) {
-					// 时间防抖
-					if (const ULONGLONG now = GetTickCount64(); now - lastRefreshTimeTick > 400) {
-						lastRefreshTimeTick = now;
-						Logi(L"SkinHelper", L"Skin file modification detected: ", changedFile);
-						PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
-					}
+					// 编辑器保存时通常先清空文件再写入，会连续触发多次通知；
+					// 交给主线程做尾部防抖，等写入完成后再加载
+					Logi(L"SkinHelper", L"Skin file modification detected: ", changedFile);
+					PostMessage(g_mainHwnd, WM_REFRESH_SKIN, 1, 0);
 				}
 				Logi(L"SkinHelper", L"Action=", pNotify->Action, L", File=", changedFile);
 
