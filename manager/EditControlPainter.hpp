@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <string>
+#include <vector>
 #include <Shlwapi.h>
 
 #include <gdiplus.h>
@@ -69,127 +70,79 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	// 绘制背景
 	drawBackground(hwnd, graphics, rc);
 
-	// 如果文本末尾有空格的话，MeasureCharacterRanges 计算会有问题，使用这种办法来解决
-	TCHAR buffer2[1024];
-	const int textLength = GetWindowText(hwnd, buffer2, std::size(buffer2));
-	TCHAR buffer[1024];
-	_tcscpy_s(buffer, std::size(buffer), buffer2);
-	const int len = lstrlen(buffer);  // 获取字符串长度（不含 '\0'）
-	// 替换空格为 'a'
-	for (int i = len - 1; i >= 0; --i)
-	{
-		if (buffer[i] == _T(' '))
-			buffer[i] = _T('i');
-		else {
-			break;
-		}
-	}
+	wchar_t buffer[1024];
+	const int textLength = GetWindowTextW(hwnd, buffer, static_cast<int>(std::size(buffer)));
 
-
-	// 计算绘制位置（考虑滚动位置）
-	// 获取第一个字符（索引0）的位置，它会告诉我们当前的滚动偏移
-	const LRESULT firstCharPos = SendMessage(hwnd, EM_POSFROMCHAR, 0, 0);
-	// 注意：坐标可能是负数（当文本滚动时），需要作为有符号整数处理
-	const short xOffsetSigned = (short)LOWORD(firstCharPos);
-	const int layoutX = xOffsetSigned + g_renderXShift;
-	
 	// 获取选区信息
 	DWORD selStart, selEnd;
 	SendMessage(hwnd, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
 
-	// 获取编辑框的格式化矩形（实际文本绘制区域）
-	RECT formatRect;
-	SendMessage(hwnd, EM_GETRECT, 0, (LPARAM)&formatRect);
-
-	// 先测量文本的实际宽度
-	Gdiplus::StringFormat tempFormat;
-	tempFormat.SetTrimming(Gdiplus::StringTrimmingNone);
-	// 使用与绘制时相同的标志，确保测量准确
-	tempFormat.SetFormatFlags(Gdiplus::StringFormatFlagsLineLimit |
-		Gdiplus::StringFormatFlagsNoClip |
-		Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
-	Gdiplus::RectF textBounds;
-	graphics.MeasureString(buffer, textLength, &font, Gdiplus::PointF(0, 0), &tempFormat, &textBounds);
-
-	// 使用实际文本宽度，并添加额外的边距确保完全显示
-	const int layoutWidth = static_cast<int>(textBounds.Width) + 20; // 添加20像素边距
-
-	// 设置文本布局
-	Gdiplus::StringFormat format;
-	format.SetTrimming(Gdiplus::StringTrimmingNone);
-	// 添加 NoClip 和 NoFitBlackBox 标志来移除 GDI+ 的内部边距
-	format.SetFormatFlags(Gdiplus::StringFormatFlagsLineLimit |
-		Gdiplus::StringFormatFlagsNoClip |
-		Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
-
 	if (textLength > 0) {
-		// 有文本时绘制正常文本和选区
+		// 每个字符的 x 坐标直接取自原生编辑框（EM_POSFROMCHAR，已包含滚动偏移和边距），
+		// 保证绘制位置与原生的鼠标命中、滚动、光标计算完全一致。
+		// 若把整串交给 GDI+ 排版，其字宽与 GDI 不同，文本越长偏差越大
+		std::vector<Gdiplus::REAL> xs(textLength + 1);
+		for (int i = 0; i < textLength; ++i) {
+			const LRESULT pos = SendMessage(hwnd, EM_POSFROMCHAR, i, 0);
+			xs[i] = static_cast<Gdiplus::REAL>(static_cast<short>(LOWORD(pos)));
+		}
+		// EM_POSFROMCHAR 对末尾位置返回 -1，用 GDI 测量最后一个字符的宽度补上
+		{
+			int lastStart = textLength - 1;
+			if (lastStart > 0 && IS_LOW_SURROGATE(buffer[lastStart]) && IS_HIGH_SURROGATE(buffer[lastStart - 1])) --lastStart;
+			const HDC measureDc = GetDC(hwnd);
+			const HGDIOBJ oldFont = SelectObject(measureDc, hFont);
+			SIZE sz{};
+			GetTextExtentPoint32W(measureDc, buffer + lastStart, textLength - lastStart, &sz);
+			SelectObject(measureDc, oldFont);
+			ReleaseDC(hwnd, measureDc);
+			xs[textLength] = xs[lastStart] + static_cast<Gdiplus::REAL>(sz.cx);
+		}
+
+		// Typographic 格式不带 GDI+ 默认的左右内边距，字形原点即为给定坐标
+		Gdiplus::StringFormat format(Gdiplus::StringFormat::GenericTypographic());
+		format.SetFormatFlags(format.GetFormatFlags() | Gdiplus::StringFormatFlagsNoClip |
+			Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+
+		// 逐字符绘制到原生坐标上，只绘制可见范围
+		const auto drawChars = [&](const Gdiplus::Brush& brush, const int from, const int to) {
+			for (int i = from; i < to;) {
+				const int n = (IS_HIGH_SURROGATE(buffer[i]) && i + 1 < to && IS_LOW_SURROGATE(buffer[i + 1])) ? 2 : 1;
+				if (buffer[i] != L' ' && xs[i + n] >= 0.f && xs[i] <= static_cast<Gdiplus::REAL>(rc.right)) {
+					graphics.DrawString(buffer + i, n, &font, Gdiplus::PointF(xs[i], 0.f), &format, &brush);
+				}
+				i += n;
+			}
+		};
+
 		const Gdiplus::SolidBrush fontBrush(GetColor("editbox_font_color", "#222222"));
+		const Gdiplus::REAL fontH = font.GetHeight(&graphics);
 
 		if (selStart != selEnd) {
-			// 有选区的情况：使用 xOffsetSigned 来调整文本位置，使用格式化矩形的宽度
-			const Gdiplus::RectF layout((Gdiplus::REAL)layoutX, 0,
-										static_cast<Gdiplus::REAL>(layoutWidth),
-										static_cast<Gdiplus::REAL>(rc.bottom));
+			const int s = static_cast<int>((std::min)((std::min)(selStart, selEnd), static_cast<DWORD>(textLength)));
+			const int e = static_cast<int>((std::min)((std::max)(selStart, selEnd), static_cast<DWORD>(textLength)));
 
-			// 1) 先把整段文字按普通颜色画一次（非选中状态）
-			const std::wstring text(buffer2);
-			graphics.DrawString(buffer2, -1, &font, layout, &format, &fontBrush);
+			// 1) 非选中部分按普通颜色绘制
+			drawChars(fontBrush, 0, s);
+			drawChars(fontBrush, e, textLength);
 
-			// 2) 用 CharacterRanges 测到“选中区”在同一 layout 下的真实边界
-			const Gdiplus::CharacterRange range((INT)selStart, (INT)(selEnd - selStart));
-			format.SetMeasurableCharacterRanges(1, &range);
-			Gdiplus::Region region;
-			graphics.MeasureCharacterRanges(buffer, -1, &font, layout, &format, 1, &region);
-
-			Gdiplus::RectF selBox;
-			region.GetBounds(&selBox, &graphics);
-			// 选区边缘会有残留影像，要调整一下才行
-			selBox.X += 1;
-			selBox.Y += 2;
-			selBox.Height -= 2;
-			// 3) 填选区背景
+			// 2) 填选区背景
 			const Gdiplus::SolidBrush selectionBgBrush(GetColor("editbox_selection_bg_color", "#3399FF"));
+			const Gdiplus::RectF selBox(xs[s], 2.f, xs[e] - xs[s], fontH - 2.f);
 			graphics.FillRectangle(&selectionBgBrush, selBox);
 
-			// 4) 只在选区内重绘文字为“选中文字色”
+			// 3) 选区内文字用“选中文字色”绘制
 			const Gdiplus::SolidBrush selectionFontBrush(GetColor("editbox_selection_font_color", "#FFFFFF"));
-
-			graphics.SetClip(&region, Gdiplus::CombineModeReplace);
-			graphics.DrawString(text.c_str(), (INT)text.length(), &font, layout, &format, &selectionFontBrush);
-			graphics.ResetClip();
+			drawChars(selectionFontBrush, s, e);
 		} else {
-			// 无选区时直接绘制文本：使用 xOffsetSigned 来调整文本位置，使用格式化矩形的宽度
-			const Gdiplus::RectF layout((Gdiplus::REAL)layoutX, 0,
-										static_cast<Gdiplus::REAL>(layoutWidth),
-										static_cast<Gdiplus::REAL>(rc.bottom));
-			graphics.DrawString(buffer2, -1, &font, layout, &format, &fontBrush);
+			drawChars(fontBrush, 0, textLength);
 
-			// 绘制光标（复用选区的测量逻辑）
+			// 绘制光标：位置同样取自原生坐标
 			if (GetFocus() == hwnd && g_caretOn) {
-				const Gdiplus::REAL caretH = font.GetHeight(&graphics);
 				const Gdiplus::SolidBrush caretBrush(GetCaretColor());
-
-				if (selStart > 0 && selStart <= (DWORD)textLength) {
-					// 光标在文本中间或末尾：使用与选区相同的 MeasureCharacterRanges 逻辑
-					// 测量 selStart 前一个字符的位置
-					const Gdiplus::CharacterRange cr((INT)selStart - 1, 1);
-					format.SetMeasurableCharacterRanges(1, &cr);
-					Gdiplus::Region rgn;
-					if (graphics.MeasureCharacterRanges(buffer, -1, &font, layout, &format, 1, &rgn) == Gdiplus::Ok) {
-						Gdiplus::RectF box;
-						rgn.GetBounds(&box, &graphics);
-						// 光标绘制在前一个字符的右边界
-						Gdiplus::RectF caretRect(box.X + box.Width + (selStart == (DWORD)textLength?0:caretH * 0.05f), box.Y + (caretH * 0.1f),
-												2.f, caretH - (caretH * 0.1f));
-						graphics.FillRectangle(&caretBrush, caretRect);
-					}
-				} else {
-					// 光标在开头（selStart == 0）
-					Gdiplus::RectF caretRect(layout.X + 2.f + (caretH * 0.05f), (caretH * 0.1f),
-											2.f, caretH - (caretH * 0.1f));
-					graphics.FillRectangle(&caretBrush, caretRect);
-				}
+				const int caretIndex = static_cast<int>((std::min)(selStart, static_cast<DWORD>(textLength)));
+				const Gdiplus::RectF caretRect(xs[caretIndex], fontH * 0.1f, 2.f, fontH - (fontH * 0.1f));
+				graphics.FillRectangle(&caretBrush, caretRect);
 			}
 		}
 	} else {
