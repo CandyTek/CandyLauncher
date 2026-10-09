@@ -539,11 +539,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				switch (pnmh->code) {
 				case NM_CUSTOMDRAW:
 					{
-						std::string bgColor;
 						if (g_skinJson != nullptr) {
-							bgColor = g_skinJson.value("listview_bg_color", "");
-						}
-						if (g_listViewBgImage != nullptr || !bgColor.empty()) {
 							// Forward to our manager and return the result. WM_NOTIFY is
 							// not a dialog message, so DWLP_MSGRESULT would be ignored.
 							LPNMLVCUSTOMDRAW lplvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lParam);

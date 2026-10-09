@@ -483,7 +483,10 @@ private:
 				InvalidateRect(hwnd, nullptr, FALSE);
 				break;
 			}
-		case WM_NOTIFY_HEDIT_REFRESH_SKIN: return 1;
+		case WM_NOTIFY_HEDIT_REFRESH_SKIN:
+			RefreshEditPaintStyle();
+			InvalidateEditPaintCache();
+			return 1;
 		case WM_ERASEBKGND: return 1; // 阻止默认背景擦除
 		case WM_NCDESTROY:
 			if (hwnd == s_caretHookEdit) UninstallCaretHook();

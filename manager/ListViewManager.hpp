@@ -30,6 +30,7 @@
 // Static variable definitions
 inline HIMAGELIST g_listFileImageList = nullptr;
 inline bool g_measureInputDisplayPending = false;
+inline Gdiplus::Color g_listViewBackgroundColor(255, 255, 255, 255);
 
 constexpr UINT WM_LISTVIEW_SYSTEM_ICONS_READY = WM_USER + 108;
 
@@ -254,6 +255,8 @@ static void listViewInitializeGraphicsResources() {
 
 
 	if (g_skinJson != nullptr) {
+		g_listViewBackgroundColor = HexToGdiplusColor(
+			validateHexColor(g_skinJson.value("listview_bg_color", ""), "#FFFFFF"));
 		g_itemIconSelectedX = g_skinJson.value("item_icon_selected_x", 4);
 		g_itemIconSelectedY = g_skinJson.value("item_icon_selected_y", 4);
 		g_itemIconX = g_skinJson.value("item_icon_x", 4);
@@ -559,6 +562,8 @@ static void listViewInitialize(HWND parent, HINSTANCE hInstance, const int x, co
 
 
 static void addActionDone() {
+	// 连续输入没有匹配项时，列表内容没有变化，无需每次重置图标队列并整窗重绘。
+	if (filteredActions.empty() && ListView_GetItemCount(g_listViewHwnd) == 0) return;
 	ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 	if (!filteredActions.empty()) {
 		// 清除所有项的选中状态
@@ -896,15 +901,15 @@ static LRESULT listViewOnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 		if (g_skinJson != nullptr) {
 			const Gdiplus::Rect rect(rcClient.left - 1, rcClient.top - 1, rcClient.right - rcClient.left + 1,
 									rcClient.bottom - rcClient.top + 1);
-			paintMainWindowBackgroundUnderChild(hWnd, graphics, rcClient);
+			// 纯色不透明列表背景已经覆盖主窗口，无需先合成下方背景。
+			if (g_listViewBgCachedBitmap || g_listViewBgImage || g_listViewBackgroundColor.GetA() != 255)
+				paintMainWindowBackgroundUnderChild(hWnd, graphics, rcClient);
 			if (g_listViewBgCachedBitmap) {
 				graphics.DrawCachedBitmap(g_listViewBgCachedBitmap, rcClient.left, rcClient.top);
 			} else if (g_listViewBgImage) {
 				graphics.DrawImage(g_listViewBgImage, rect);
 			} else {
-				const std::string colorString = g_skinJson.value("listview_bg_color", "");
-				const Gdiplus::Color bgColor = HexToGdiplusColor(validateHexColor(colorString, "#FFFFFF"));
-				const Gdiplus::SolidBrush bgBrush(bgColor);
+				const Gdiplus::SolidBrush bgBrush(g_listViewBackgroundColor);
 				graphics.FillRectangle(&bgBrush, rect);
 			}
 		}
@@ -1020,7 +1025,7 @@ inline void editTextInput() {
 	if (editTextBuffer.empty()) {
 		clearVisibleActionReferences();
 		if (IsWindowVisible(g_listViewHwnd)) {
-			UpdateWindow(g_listViewHwnd);
+			InvalidateRect(g_listViewHwnd, nullptr, FALSE); // 比updatewindow 快多了，完全没有多字符键入延迟问题
 		}
 		return;
 	}
@@ -1029,7 +1034,7 @@ inline void editTextInput() {
 		MethodTimerEnd(L"test_input_processing");
 	}
 	if (IsWindowVisible(g_listViewHwnd)) {
-		UpdateWindow(g_listViewHwnd);
+		InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 	}
 }
 
