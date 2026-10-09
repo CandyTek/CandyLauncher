@@ -84,8 +84,9 @@ public:
 		const std::wstring arg = g_host->GetCurrectArgText().empty() ? L"" : g_host->GetCurrectArgText();
 		std::wstring safeTarget = target == nullptr ? arg : std::wstring(target) + L" " + arg;
 		std::thread([this, target = std::move(safeTarget), isForceAdmin]() {
+			// open 使用 nullptr 走默认动词：部分类型（如 .cpl 只有 cplopen/runas）没有 "open" 动词，会返回 1155
 			HINSTANCE hInst = ShellExecuteW(
-				nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : L"open",
+				nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : nullptr,
 				targetFilePath.c_str(), target.c_str(),
 				workingDirectory.empty() ? nullptr : workingDirectory.c_str(), SW_SHOWNORMAL);
 			//char const* temp=WStringToConstChar(targetFilePath);
@@ -97,7 +98,7 @@ public:
 					if (result == SE_ERR_NOASSOC) // 1155
 					{
 						// 再尝试用 open 打开
-						HINSTANCE hInst2 = ShellExecuteW(nullptr, L"open",
+						HINSTANCE hInst2 = ShellExecuteW(nullptr, nullptr,
 														targetFilePath.c_str(), target.c_str(),
 										workingDirectory.empty() ? nullptr : workingDirectory.c_str(), SW_SHOWNORMAL);
 						result = reinterpret_cast<INT_PTR>(hInst2);
