@@ -296,8 +296,19 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				} else if (item.key == "pref_restore_settings") {
 					btnStyle = BTN_DANGER;
 				}
-				hCtrl = CreateEnhancedButton(hParent, currentCtrlSubId, utf8_to_wide(item.title),
-											contorlX, currentY, 150, 30, (HMENU)currentCtrlSubId, btnStyle);
+				// 按钮最小宽度150，文本过长时按文本宽度自适应增加
+				std::wstring btnText = utf8_to_wide(item.title);
+				int btnWidth = 150;
+				if (HDC hdc = GetDC(hwnd)) {
+					HFONT hOldFont = (HFONT)SelectObject(hdc, hFontButton);
+					SIZE textSize = {};
+					GetTextExtentPoint32W(hdc, btnText.c_str(), static_cast<int>(btnText.length()), &textSize);
+					SelectObject(hdc, hOldFont);
+					ReleaseDC(hwnd, hdc);
+					btnWidth = MyMax(btnWidth, static_cast<int>(textSize.cx) + 24); // 左右各留12px
+				}
+				hCtrl = CreateEnhancedButton(hParent, currentCtrlSubId, btnText,
+											contorlX, currentY, btnWidth, 30, (HMENU)currentCtrlSubId, btnStyle);
 			}
 
 			if (hCtrl) {
