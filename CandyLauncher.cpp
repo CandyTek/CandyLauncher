@@ -551,6 +551,9 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 						}
 					}
 					break;
+				case LVN_ITEMCHANGED:
+					listViewOnItemChanged(reinterpret_cast<const NMLISTVIEW*>(lParam));
+					break;
 				case LVN_GETDISPINFO:
 					{
 						// 这就是 ListView 在向我们请求数据

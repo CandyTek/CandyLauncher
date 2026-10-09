@@ -859,6 +859,25 @@ static void listViewDrawItem(const DRAWITEMSTRUCT* lpDrawItem) {
 	}
 }
 
+// 选中状态变化时，ListView 只会重绘列宽范围内的区域；
+// item 宽度可能大于列宽（列宽扣除了滚动条宽度），需要把整行宽度一起重绘，
+// 否则右侧滚动条区域会残留旧的选中/未选中背景
+static void listViewOnItemChanged(const NMLISTVIEW* pnmv) {
+	if (!(pnmv->uChanged & LVIF_STATE) || ((pnmv->uOldState ^ pnmv->uNewState) & LVIS_SELECTED) == 0) return;
+	HWND hWnd = pnmv->hdr.hwndFrom;
+	if (pnmv->iItem < 0) {
+		InvalidateRect(hWnd, nullptr, FALSE);
+		return;
+	}
+	RECT itemRect{};
+	if (!ListView_GetItemRect(hWnd, pnmv->iItem, &itemRect, LVIR_BOUNDS)) return;
+	RECT clientRect{};
+	GetClientRect(hWnd, &clientRect);
+	itemRect.left = clientRect.left;
+	itemRect.right = clientRect.right;
+	InvalidateRect(hWnd, &itemRect, FALSE);
+}
+
 static LRESULT listViewOnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 	// We are only interested in the stage before the whole control is painted.
 	if (lplvcd->nmcd.dwDrawStage == CDDS_PREPAINT) {
