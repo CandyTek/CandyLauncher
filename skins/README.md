@@ -28,6 +28,8 @@
 | `skin_vaporwave_pool.json` | 蒸汽波泳池，薰衣草紫与粉橙色面板。 |
 | `skin_gothic_glass.json` | 哥特彩窗，紫黑与红宝石色面板。 |
 | `skin_ukiyoe_mountain.json` | 浮世绘山景，和纸色与靛蓝面板。 |
+| `skin_shan_shui.json` | 中国水墨山水，宣纸色与青黛色面板。 |
+| `skin_lantern_festival.json` | 元宵灯会夜景，靛蓝与暖金色面板。 |
 
 `skin_test_bk.json` 和 `skin_test_bk2.json` 是测试备份文件。
 
@@ -43,3 +45,5 @@
 新增的八款少女皮肤各有独立素材目录和生成记录，背景图由内置 imagegen 工具原创生成。它们也启用 `window_shape_from_bg_alpha`，使面板和人物以外的透明区域不阻挡桌面点击。
 
 新增的十款主题皮肤同样各有独立素材目录和生成记录。其原创背景图由内置 imagegen 工具生成，并使用 PNG alpha 通道裁切窗口。它们涵盖自然、复古、建筑、科幻与传统绘画等不同风格。
+
+水墨山水与元宵灯会皮肤的原创背景图、配色及生成记录分别见 [`shan_shui/README.md`](shan_shui/README.md) 和 [`lantern_festival/README.md`](lantern_festival/README.md)。两款皮肤都使用背景 PNG 的 alpha 通道裁切窗口。

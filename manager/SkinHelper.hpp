@@ -280,7 +280,7 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	g_listItemWidth = g_skinJson.value("item_width", 580);
 	g_listItemHeight = g_skinJson.value("item_height", 35);
 	if (g_listItemWidth <= 0) {
-		g_listItemHeight = 580;
+		g_listItemWidth = 580;
 	}
 	if (g_listItemHeight <= 0) {
 		g_listItemHeight = 60;

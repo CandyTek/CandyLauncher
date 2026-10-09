@@ -707,7 +707,9 @@ static void listViewDrawItem(const DRAWITEMSTRUCT* lpDrawItem) {
 	// Gdiplus::SolidBrush bgBrush(listItemBgColor);
 	// 用 GDI+ 的 FillRectangle 填充背景
 	const int itemWidth = g_listItemWidth > 0 ? g_listItemWidth : (rc.right - rc.left);
-	const Gdiplus::Rect rect(rc.left, rc.top, itemWidth, rc.bottom - rc.top);
+	const int itemHeight = g_listItemHeight > 0 ? g_listItemHeight : (rc.right - rc.left);
+	const Gdiplus::Rect rect(rc.left, rc.top, itemWidth, itemHeight);
+	// const Gdiplus::Rect rect(rc.left, rc.top, itemWidth, rc.bottom - rc.top);
 	UINT isSelected = lpDrawItem->itemState & ODS_SELECTED;
 	if (isSelected) {
 		if (g_listItemBgImageSelected) {
