@@ -6,9 +6,9 @@
 #include <string>
 #include <memory>
 
-// Import OneNote Type Library - this generates wrapper classes
-// Using raw_interfaces_only to get access to raw COM interfaces
-#import "libid:0EA692EE-BB50-4E3C-AEF0-356D91732725" rename_namespace("OneNoteLib") raw_interfaces_only exclude("tagPOINT")
+// OneNote Type Library wrapper classes, generated at build time from OneNoteTypeLib.cpp
+// (#import with raw_interfaces_only) by GenerateTypeLib.cmake
+#include "OneNoteLib.tlh"
 
 #include "OneNoteAction.hpp"
 #include "util/LogUtil.hpp"
