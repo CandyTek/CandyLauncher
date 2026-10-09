@@ -10,23 +10,25 @@
 #include "LogUtil.hpp"
 #include "StringUtil.hpp"
 
-// 后面不带斜杠
-static std::wstring GetExecutableFolder() {
+// 1. 获取当前可执行文件的完整路径（包含文件名）
+static std::wstring GetExecutablePath() {
 	wchar_t path[MAX_PATH];
 	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
 	if (length == 0 || length == MAX_PATH) {
-		// 错误处理（可选）
+		return L"";
+	}
+	return std::wstring(path, length);
+}
+
+// 2. 获取程序所在目录（末尾不带斜杠）
+static std::wstring GetExecutableFolder() {
+	const std::wstring fullPath = GetExecutablePath();
+	if (fullPath.empty()) {
 		return L"";
 	}
 
-	// 找到最后一个反斜杠（目录分隔符）
-	const std::wstring fullPath(path);
-	const size_t pos = fullPath.find_last_of(L"\\/");
-	if (pos != std::wstring::npos) {
-		return fullPath.substr(0, pos);
-	}
-
-	return L"";
+	// 推荐方式：使用 C++17 std::filesystem 自动规范化路径
+	return std::filesystem::path(fullPath).parent_path().wstring();
 }
 
 

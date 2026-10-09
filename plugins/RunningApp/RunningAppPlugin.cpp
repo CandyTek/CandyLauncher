@@ -120,12 +120,20 @@ private:
 	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
 	bool indexEdgeTabs = false;
 
+	// 本程序自身的 exe 路径，用于排除自身窗口
+	std::wstring selfExePath;
+
 	void appendNormalWindows(std::unordered_set<std::wstring>& seenKeys)
 	{
 		::TraverseRunningWindows([&](const std::wstring &name,
 									 const std::wstring &fullPath,
 									 const std::wstring &hwnd,
 									 const std::wstring &command) {
+			// 排除本程序自身的窗口
+			if (!selfExePath.empty() && _wcsicmp(fullPath.c_str(), selfExePath.c_str()) == 0) {
+				return;
+			}
+
 			const std::wstring dedupeKey = L"hwnd:" + hwnd;
 			if (!seenKeys.insert(dedupeKey).second) {
 				return;
@@ -223,6 +231,7 @@ public:
 	bool Initialize(IPluginHost* host) override
 	{
 		m_host = host;
+		selfExePath = GetExecutablePath();
 		g_pluginIndexedRunningAppsThread = std::thread(WorkerThreadFunction);
 		return m_host != nullptr;
 	}
