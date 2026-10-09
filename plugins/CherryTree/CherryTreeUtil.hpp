@@ -140,6 +140,11 @@ inline void CreateActionsFromNodes(
 			} catch (...) {
 				action->matchText = action->title;
 			}
+			// 笔记内容不做拼音处理，直接拼接
+			if (isMatchTextContent && !action->text.empty()) {
+				action->matchText += L" ";
+				action->matchText += action->text;
+			}
 			allActions[base + i] = std::move(action);
 		}
 	});

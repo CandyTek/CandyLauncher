@@ -105,6 +105,13 @@ public:
 			"type": "string",
 			"subPage": "plugin",
 			"defValue": "E:\\GitHub\\CherrySnippet\\CherryCode"
+		},
+		{
+			"key": "com.candytek.cherrytreeplugin.matchtext_content",
+			"title": "搜索匹配笔记内容",
+			"type": "bool",
+			"subPage": "plugin",
+			"defValue": false
 		}
 	]
 }
@@ -114,6 +121,7 @@ public:
 
     void OnUserSettingsLoadDone() override {
         startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.cherrytreeplugin.start_str").stringValue);
+        isMatchTextContent = m_host->GetSettingsMap().at("com.candytek.cherrytreeplugin.matchtext_content").boolValue;
     }
 
     void Shutdown() override {
