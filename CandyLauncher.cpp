@@ -783,6 +783,12 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			// 阻止 ALT 等系统键造成的副作用
 			return 0;
 		}
+	case WM_SETCURSOR:
+		{
+			// 子控件的 WM_SETCURSOR 会先交给父窗口处理
+			if (EditManager::KeepCursorHiddenWhileTyping()) return TRUE;
+		}
+		break;
 	case WM_GETDLGCODE: return DLGC_WANTALLKEYS;
 	case WM_DESTROY:
 		{

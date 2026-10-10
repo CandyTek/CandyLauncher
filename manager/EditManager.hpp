@@ -37,7 +37,24 @@ public:
 		}
 	}
 
+	// 键入字符后原生编辑框会隐藏鼠标指针，但搜索刷新列表/重绘窗口时系统会合成鼠标移动，
+	// 随之而来的 WM_SETCURSOR 又把指针显示出来，看起来就是指针闪了一下。
+	// 主窗口在 WM_SETCURSOR 中调用：鼠标没有真正移动时保持隐藏并返回 true
+	static bool KeepCursorHiddenWhileTyping() {
+		if (!s_cursorHiddenByTyping) return false;
+		POINT pt{};
+		if (::GetCursorPos(&pt) && pt.x == s_cursorHiddenPos.x && pt.y == s_cursorHiddenPos.y) {
+			::SetCursor(nullptr);
+			return true;
+		}
+		s_cursorHiddenByTyping = false;
+		return false;
+	}
+
 private:
+	inline static bool s_cursorHiddenByTyping = false;
+	inline static POINT s_cursorHiddenPos{};
+
 	// static Gdiplus::Image* g_backgroundImage = nullptr;
 	static void ShowSelectedItemContextMenu(HWND hwnd) {
 		if (!g_listViewHwnd || !g_pluginManager) return;
@@ -211,7 +228,13 @@ private:
 			return HandleEditMessage(hwnd, msg, wParam, lParam, uIdSubclass, dwRefData);
 		}
 		const EditVisualState before = CaptureVisualState(hwnd);
+		const HCURSOR cursorBefore = ::GetCursor();
 		const LRESULT result = HandleEditMessage(hwnd, msg, wParam, lParam, uIdSubclass, dwRefData);
+		if ((msg == WM_CHAR || msg == WM_IME_CHAR) && cursorBefore && !::GetCursor()) {
+			// 原生编辑框按“打字时隐藏指针”设置用 SetCursor(NULL) 隐藏了鼠标指针（退格不会）
+			s_cursorHiddenByTyping = true;
+			::GetCursorPos(&s_cursorHiddenPos);
+		}
 		if (IsWindow(hwnd) && !(CaptureVisualState(hwnd) == before)) {
 			g_caretOn = true;
 			if (GetFocus() == hwnd) ::SetTimer(hwnd, g_caretTimerId, g_caretInterval ? g_caretInterval : 530, nullptr);
