@@ -30,6 +30,33 @@
 | `skin_ukiyoe_mountain.json` | 浮世绘山景，和纸色与靛蓝面板。 |
 | `skin_shan_shui.json` | 中国水墨山水，宣纸色与青黛色面板。 |
 | `skin_lantern_festival.json` | 元宵灯会夜景，靛蓝与暖金色面板。 |
+| `skin_outrun.json` | Outrun 霓虹公路，紫色与洋红色面板。 |
+| `skin_steampunk.json` | 蒸汽朋克齿轮机械，皮革与黄铜色面板。 |
+| `skin_green_terminal.json` | 绿字黑底终端，荧光绿 CRT 风格面板。 |
+| `skin_bit_pixel_art.json` | 8 位像素画，深蓝与像素金色面板。 |
+| `skin_frutiger_aero.json` | Frutiger Aero，水蓝与玻璃质感面板。 |
+| `skin_art_nouveau.json` | 新艺术运动花卉曲线，奶油色与鼠尾草绿面板。 |
+| `skin_bauhaus.json` | 包豪斯几何构成，象牙白与原色面板。 |
+| `skin_memphis.json` | 孟菲斯波纹与几何图案，珊瑚色与奶油色面板。 |
+| `skin_pop_art_comic.json` | 波普艺术漫画，半色调、红黄蓝色块与粗线条。 |
+| `skin_impressionist_watercolor.json` | 印象派水彩花园，浅纸色与柔和花卉色面板。 |
+| `skin_low_poly.json` | 低多边形山水，石板蓝与青绿色面板。 |
+| `skin_skeuomorphic.json` | 拟物风格木框、皮革与纸张面板。 |
+| `skin_spring.json` | 春日樱花与嫩叶，浅粉色面板。 |
+| `skin_summer.json` | 夏日海滩与柑橘，沙色与海蓝色面板。 |
+| `skin_christmas.json` | 圣诞松枝与彩灯，深松绿与金色面板。 |
+| `skin_lunar_new_year.json` | 农历新年灯笼与梅花，朱红与暖金色面板。 |
+| `skin_underwater_coral.json` | 海底珊瑚礁，深青色面板。 |
+| `skin_aurora_polar.json` | 极地极光与雪山，午夜蓝面板。 |
+| `skin_rainforest.json` | 热带雨林与瀑布，深绿色面板。 |
+| `skin_sakura_garden.json` | 樱花庭园山水，暖白色面板。 |
+| `skin_volcano.json` | 火山熔岩景观，炭灰色面板。 |
+| `skin_desert_landscape.json` | 沙丘与绿洲，暖沙色面板。 |
+| `skin_stargazer_boy.json` | 中性风格星象探索者，深靛蓝面板。 |
+| `skin_chibi_cloud_keeper.json` | Q 版云朵守护者，浅紫色面板。 |
+| `skin_cat_fox_companions.json` | 猫与狐狸伙伴，奶油色面板。 |
+| `skin_clockwork_mecha.json` | 友好的复古机甲，钢蓝色面板。 |
+| `skin_western_cartoon_adventurer.json` | 西方卡通风格的中性探险者，暖白色面板。 |
 
 `skin_test_bk.json` 和 `skin_test_bk2.json` 是测试备份文件。
 
@@ -47,3 +74,7 @@
 新增的十款主题皮肤同样各有独立素材目录和生成记录。其原创背景图由内置 imagegen 工具生成，并使用 PNG alpha 通道裁切窗口。它们涵盖自然、复古、建筑、科幻与传统绘画等不同风格。
 
 水墨山水与元宵灯会皮肤的原创背景图、配色及生成记录分别见 [`shan_shui/README.md`](shan_shui/README.md) 和 [`lantern_festival/README.md`](lantern_festival/README.md)。两款皮肤都使用背景 PNG 的 alpha 通道裁切窗口。
+
+新增的十六款风格及节日皮肤各有独立背景目录，背景图由内置 imagegen 工具原创生成。统一使用 3:2 横向构图，左侧留出搜索框与结果列表，右侧展示主题装饰；透明外缘通过 `window_shape_from_bg_alpha` 裁切。生成提示词与配色记录见 [`THEME_GENERATION.md`](THEME_GENERATION.md)。
+
+新增的十一款景观、人物与动物皮肤同样使用独立背景目录和透明 PNG。涵盖六种自然景观，以及男性或中性角色、Q 版吉祥物、猫与狐狸、机甲和非日式卡通风格。生成提示词见 [`THEME_GENERATION.md`](THEME_GENERATION.md)。

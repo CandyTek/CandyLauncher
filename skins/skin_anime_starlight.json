@@ -1,4 +1,4 @@
-﻿{
+{
 	"version": 1,
 	"window_width": 800,
 	"window_height": 520,
@@ -8,18 +8,19 @@
 
 	"editbox_width": 480,
 	"editbox_height": 38,
-	"editbox_padding_top": 2,
 	"editbox_padding_right": 6,
 
 	"editbox_x": 55,
 	"editbox_y": 105,
-	"editbox_font_size": 17,
+	"editbox_font_size": 13,
 
 	"editbox_font_family": "Microsoft YaHei UI",
 	"editbox_font_color": "#543347",
 	"editbox_bg_color": "#FFF8FB",
 	"editbox_hint_color": "#967487",
-	"editbox_bg_picture": "\\anime_starlight\\editbox_background_normal.9.png",
+	"editbox_bg_picture": "\\skin_default\\editbox_background_normal.9.png",
+	"editbox_padding_left": 6,
+	"editbox_padding_top": 6,
 
 	"listview_width": 495,
 	"listview_height": 270,
@@ -64,7 +65,7 @@
 	"item_font_color_selected_1": "#43283A",
 	"item_font_color_selected_2": "#68465A",
 	"item_bg_color": "#00FBE6EF",
-	"item_bg_color_selected": "#F3B9CE",
+	"item_bg_color_selected": "#88F3B9CE",
 	"item_bg_picture": "",
 	"item_bg_picture_selected": "",
 	"window_shape_from_bg_alpha": true,

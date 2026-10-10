@@ -1,4 +1,4 @@
-﻿{
+{
 	"version": 1,
 	"window_width": 880,
 	"window_height": 587,
@@ -8,7 +8,7 @@
 	"editbox_width": 460,
 	"editbox_height": 42,
 	"editbox_x": 55,
-	"editbox_y": 132,
+	"editbox_y": 133,
 	"editbox_font_size": 19.0,
 	"editbox_font_family": "Microsoft YaHei UI",
 	"editbox_font_color": "#FFF5F6",
@@ -17,7 +17,7 @@
 	"editbox_bg_picture": "",
 	"editbox_padding_top": 3,
 	"listview_width": 479,
-	"listview_height": 292,
+	"listview_height": 290,
 	"listview_x": 55,
 	"listview_y": 195,
 	"listview_bg_color": "#003F0E16",
@@ -54,7 +54,7 @@
 	"item_font_color_selected_1": "#FFFFFF",
 	"item_font_color_selected_2": "#F6CBAB",
 	"item_bg_color": "#003F0E16",
-	"item_bg_color_selected": "#91566B",
+	"item_bg_color_selected": "#9991566B",
 	"item_bg_picture": "",
 	"item_icon_y": 5,
 	"item_bg_picture_selected": "",

@@ -1,4 +1,4 @@
-﻿{
+{
 	"version": 1,
 	"window_width": 880,
 	"window_height": 590,
@@ -8,7 +8,7 @@
 	"editbox_width": 530,
 	"editbox_height": 40,
 	"editbox_x": 56,
-	"editbox_y": 145,
+	"editbox_y": 142,
 	"editbox_font_size": 19.0,
 	"editbox_font_family": "Microsoft YaHei UI",
 	"editbox_font_color": "#FFF7E8",
@@ -54,7 +54,7 @@
 	"item_font_color_selected_1": "#FFFFFF",
 	"item_font_color_selected_2": "#FFE0A8",
 	"item_bg_color": "#00122B4C",
-	"item_bg_color_selected": "#315B7D",
+	"item_bg_color_selected": "#99315B7D",
 	"item_bg_picture": "",
 	"item_icon_y": 5,
 	"item_bg_picture_selected": "",

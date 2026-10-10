@@ -1,4 +1,4 @@
-﻿{
+{
 	"version": 1,
 	"window_width": 880,
 	"window_height": 587,
@@ -17,7 +17,7 @@
 	"editbox_hint_color": "#777977",
 	"editbox_bg_picture": "",
 	"listview_width": 469,
-	"listview_height": 408,
+	"listview_height": 406,
 	"listview_x": 55,
 	"listview_y": 133,
 	"listview_bg_color": "#00EFEDE8",

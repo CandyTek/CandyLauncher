@@ -1,4 +1,4 @@
-﻿{
+{
 	"version": 1,
 	"window_width": 880,
 	"window_height": 587,
@@ -52,7 +52,7 @@
 	"item_font_color_selected_1": "#FFFFFF",
 	"item_font_color_selected_2": "#F5DB9B",
 	"item_bg_color": "#00263453",
-	"item_bg_color_selected": "#495C88",
+	"item_bg_color_selected": "#bb495C88",
 	"item_bg_picture": "",
 	"item_icon_y": 5,
 	"item_text_y_1": 4,

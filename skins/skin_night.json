@@ -6,16 +6,19 @@
 	"window_bg_color": "#1E1E1E",
 	"window_opacity": 255,
 
-	"editbox_width": 437,
+	"editbox_width": 470,
 	"editbox_height": 40,
-	"editbox_x": 50,
-	"editbox_y": 10,
-	"editbox_font_size": 20.0,
+	"editbox_x": 15,
+	"editbox_y": 14,
 	"editbox_font_family": "Microsoft YaHei UI",
 	"editbox_font_color": "#DDDDDD",
-	"editbox_bg_color": "#2A2A2A",
+	"editbox_bg_color": "#3A3A3A",
 	"editbox_hint_color": "#777777",
 	"editbox_bg_picture": "",
+	"editbox_padding_left": 6,
+	"editbox_padding_right": 6,
+	"editbox_font_size": 18,
+	"editbox_padding_top": 4,
 
 	"listview_bg_color": "#252525",
 	"listview_bg_picture": "",
@@ -26,14 +29,14 @@
 	"item_font_color_selected_2": "#AAAAAA",
 
 	"item_bg_color": "#252525",
-	"item_bg_color_selected": "#333355",
+	"item_bg_color_selected": "#555555",
 	"item_bg_picture": "",
 	"item_bg_picture_selected": "",
 
-	"item_text_selected_x_1": 55,
-	"item_text_selected_y_1": 4,
-	"item_text_selected_x_2": 55,
-	"item_text_selected_y_2": 30,
+	"item_text_selected_x_1": 58,
+	"item_text_selected_y_1": 6,
+	"item_text_selected_x_2": 58,
+	"item_text_selected_y_2": 26,
 
 	"item_font_family_1": "微软雅黑",
 	"item_font_family_2": "微软雅黑",
@@ -42,29 +45,29 @@
 
 	"item_font_size_1": 16,
 	"item_font_size_2": 10,
-	"item_font_size_selected_1": 18,
-	"item_font_size_selected_2": 12,
+	"item_font_size_selected_1": 16,
+	"item_font_size_selected_2": 10,
 
-	"item_width": 462,
+	"item_width": 470,
 	"item_height": 60,
-
-	"item_icon_selected_x": 6,
-	"item_icon_selected_y": 4,
+	"item_icon_selected_y": 6,
+	"item_icon_selected_x": 4,
 	"item_icon_x": 6,
-	"item_icon_y": 4,
+	"item_icon_y": 6,
 
 	"item_text_x_1": 60,
-	"item_text_y_1": 4,
+	"item_text_y_1": 6,
 	"item_text_x_2": 60,
-	"item_text_y_2": 22,
+	"item_text_y_2": 26,
 
-	"listview_width": 484,
-	"listview_height": 427,
-	"listview_x": 8,
-	"listview_y": 65,
+	"listview_width": 470,
+	"listview_height": 420,
+	"listview_x": 15,
+	"listview_y": 63,
 
 	"listview_padding_left": 20,
 	"listview_padding_right": 20,
 	"listview_padding_top": 11,
-	"listview_padding_bottom": -1
+	"listview_padding_bottom": -1,
+	"listview_hide_scrollbar": true
 }

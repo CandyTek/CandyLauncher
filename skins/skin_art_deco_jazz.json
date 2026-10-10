@@ -1,4 +1,4 @@
-﻿{
+{
 	"version": 1,
 	"window_width": 880,
 	"window_height": 587,
@@ -8,7 +8,6 @@
 	"editbox_width": 430,
 	"editbox_height": 52,
 	"editbox_padding_top": 8,
-	"editbox_padding_left": 8,
 	"editbox_padding_right": 10,
 	"editbox_x": 50,
 	"editbox_y": 80,
@@ -17,7 +16,8 @@
 	"editbox_font_color": "#0A121D",
 	"editbox_bg_color": "#273752",
 	"editbox_hint_color": "#693914",
-	"editbox_bg_picture": "\\art_deco_jazz\\text_edit_side_paste_window.9.png",
+	"editbox_bg_picture": "\\skin_default\\text_edit_side_paste_window.9.png",
+	"editbox_padding_left": 10,
 	"listview_width": 438,
 	"listview_height": 290,
 	"listview_x": 55,
