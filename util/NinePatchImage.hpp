@@ -312,9 +312,7 @@ static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, 
 				continue;
 			}
 			// 尺寸不变的格子原样复制，保证圆角像素精确
-			g.SetInterpolationMode(dstW == srcW && dstH == srcH
-										? InterpolationModeNearestNeighbor
-										: InterpolationModeHighQualityBicubic);
+			g.SetInterpolationMode(InterpolationModeNearestNeighbor);
 			g.DrawImage(&content, Rect(dx, dy, dstW, dstH), srcX, srcY, srcW, srcH, UnitPixel, &attrs);
 			dx += dstW;
 		}
