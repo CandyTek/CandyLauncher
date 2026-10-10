@@ -18,6 +18,7 @@
 #include "../util/MainTools.hpp"
 #include "../view/ScrollViewController.hpp"
 #include "SettingsManager.hpp"
+#include "SkinEditorWindow.hpp"
 #include "../common/GlobalState.hpp"
 #include "../view/CustomButtonHelper.hpp"
 #include "../view/HotkeyEditView.hpp"

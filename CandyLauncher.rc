@@ -169,3 +169,4 @@ END
 
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "common/app.manifest"
 IDR_SETTINGS_JSON RCDATA "common/settings.json"
+IDR_SKIN_EDITOR_HTML RCDATA "web/skin_editor.html"

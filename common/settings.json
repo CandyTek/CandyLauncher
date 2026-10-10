@@ -622,6 +622,14 @@
 			"type": "button",
 			"subPage": "skin",
 			"defValue": ""
+		},
+		{
+			"key": "btn_open_skin_editor",
+			"title": "可视化皮肤编辑器（拖放预览）",
+			"title_en": "Visual skin editor (drag & drop preview)",
+			"type": "button",
+			"subPage": "skin",
+			"defValue": ""
 		}
 	]
 }

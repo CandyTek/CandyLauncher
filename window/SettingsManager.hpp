@@ -474,6 +474,9 @@ static void applySettings(HWND hwnd, const std::vector<std::string>& subPages,
 }
 
 
+// 定义在 SkinEditorWindow.hpp
+static void ShowSkinEditorWindow();
+
 static void handleButtonAction(HWND hwnd, const std::string& key) {
 	if (key == "pref_open_config_folder") {
 		// Open the configuration folder
@@ -555,6 +558,8 @@ static void handleButtonAction(HWND hwnd, const std::string& key) {
 	} else if (key == "btn_edit_skin_file") {
 		std::wstring currentSkinFileName = getCurrectSkinPath(g_currectSkinFilePath);
 		OpenFileInDefaultProgram(currentSkinFileName);
+	} else if (key == "btn_open_skin_editor") {
+		ShowSkinEditorWindow();
 	}
 }
 

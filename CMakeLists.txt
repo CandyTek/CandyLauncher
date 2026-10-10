@@ -25,6 +25,8 @@ add_executable(CandyLauncher WIN32
 		manager/EditManager.hpp
 		window/SettingsManager.hpp
 		window/SettingsWindow.hpp
+		window/SkinEditorWindow.hpp
+		web/skin_editor.html
 		common/Constants.hpp
 		util/BaseTools.hpp
 		CandyLauncher.rc
@@ -197,6 +199,9 @@ endif ()
 #add_compile_definitions(_WIN32_WINNT=0x0600)
 #add_compile_definitions(NTDDI_VERSION=0x06010000)
 add_compile_definitions(NTDDI_VERSION=0x0A000003)
+
+# 内嵌的皮肤编辑器页面改动后需要重新编译资源
+set_source_files_properties(CandyLauncher.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html")
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 8) # 64-bit
 	set(EVERYTHING_LIB ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/lib/Everything64.lib)

@@ -1,0 +1,2599 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta charset="utf-8">
+<title>Skin Editor</title>
+<!--
+	CandyLauncher 皮肤编辑器页面，运行在 Win32 WebBrowser(IE11) 控件中，
+	只能使用 ES5 语法；宿主接口见 window/SkinEditorWindow.hpp
+-->
+<style>
+	* { box-sizing: border-box; }
+	html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+	body {
+		font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+		font-size: 13px;
+		color: #1f2328;
+		background: #f3f4f6;
+	}
+	button, select, input { font-family: inherit; font-size: 13px; }
+	#toolbar {
+		position: absolute; left: 0; right: 0; top: 0; height: 46px;
+		padding: 8px 10px; background: #ffffff; border-bottom: 1px solid #d8dbe0;
+		white-space: nowrap; overflow: hidden;
+	}
+	#toolbar > * { vertical-align: middle; }
+	.btn {
+		height: 30px; padding: 0 14px; margin-right: 4px;
+		border: 1px solid #c9ced6; border-radius: 4px; background: #ffffff; color: #1f2328; cursor: pointer;
+	}
+	.btn:hover { background: #f0f2f5; }
+	.btn.primary { background: #2f6fde; border-color: #2f6fde; color: #ffffff; }
+	.btn.primary:hover { background: #2a63c7; }
+	.btn.small { height: 26px; padding: 0 10px; font-size: 12px; }
+	.sep { display: inline-block; width: 1px; height: 22px; margin: 0 8px; background: #d8dbe0; }
+	select { height: 30px; border: 1px solid #c9ced6; border-radius: 4px; background: #ffffff; padding: 0 4px; }
+	#skinList { width: 200px; margin-right: 4px; }
+	label { margin-right: 10px; }
+	.seg { display: inline-block; margin-right: 4px; border: 1px solid #c9ced6; border-radius: 4px; overflow: hidden; }
+	.seg button {
+		float: left; height: 28px; padding: 0 12px; border: none; border-left: 1px solid #c9ced6;
+		background: #ffffff; color: #1f2328; cursor: pointer;
+	}
+	.seg button:first-child { border-left: none; }
+	.seg button:hover { background: #f0f2f5; }
+	.seg button.on { background: #2f6fde; color: #ffffff; }
+	#zoomRange { width: 150px; height: 30px; margin: 0 4px; padding: 0; vertical-align: middle; }
+	#zoomRange::-ms-tooltip { display: none; }
+	#zoomValue { display: inline-block; width: 46px; text-align: right; cursor: pointer; }
+
+	/* ---- 三栏布局 ---- */
+	#main { position: absolute; left: 0; right: 0; top: 46px; bottom: 26px; }
+	.pane { position: absolute; top: 0; bottom: 0; overflow: hidden; background: #ffffff; }
+	#leftPane { left: 0; border-right: 1px solid #d8dbe0; }
+	#rightPane { right: 0; border-left: 1px solid #d8dbe0; }
+	.pane-head {
+		position: absolute; left: 0; right: 0; top: 0; height: 30px; line-height: 29px; padding: 0 4px 0 10px;
+		background: #f8f9fb; border-bottom: 1px solid #e5e7eb; color: #374151; font-weight: bold;
+		white-space: nowrap; overflow: hidden;
+	}
+	.fold {
+		float: right; width: 24px; height: 22px; margin-top: 3px; line-height: 20px; padding: 0;
+		border: 1px solid transparent; border-radius: 3px; background: transparent; color: #4b5563; cursor: pointer;
+	}
+	.fold:hover { background: #e5e7eb; border-color: #d1d5db; }
+	.pane-body { position: absolute; left: 0; right: 0; top: 30px; bottom: 0; }
+	.pane-strip {
+		display: none; position: absolute; left: 0; top: 0; bottom: 0; width: 100%;
+		padding-top: 6px; text-align: center; background: #f8f9fb; color: #4b5563; cursor: pointer;
+	}
+	.pane-strip:hover { background: #eef1f5; }
+	.strip-label { display: inline-block; margin-top: 10px; writing-mode: tb-rl; writing-mode: vertical-rl; font-weight: bold; }
+	.pane.collapsed .pane-head, .pane.collapsed .pane-body { display: none; }
+	.pane.collapsed .pane-strip { display: block; }
+	.splitter { position: absolute; top: 0; bottom: 0; width: 6px; margin-left: -3px; z-index: 20; cursor: col-resize; }
+	.splitter:hover, .splitter.active { background: rgba(47, 111, 222, 0.35); }
+	body.resizing, body.resizing * { cursor: col-resize !important; -ms-user-select: none; user-select: none; }
+	#centerPane { position: absolute; top: 0; bottom: 0; }
+
+	/*#editor {*/
+	/*	position: absolute; left: 0; top: 0; right: 0; bottom: 0; width: 100%; height: 100%;*/
+	/*	margin: 0; padding: 8px 10px; border: none; outline: none; resize: none;*/
+	/*	font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 13px; line-height: 1.45;*/
+	/*	tab-size: 4; -moz-tab-size: 4; white-space: pre; overflow: auto; color: #1f2328;*/
+	/*}*/
+    /* 修改原有的 #editor，并让 #editorPre 尺寸完全镜像对齐 */
+    #editor, #editorPre {
+        position: absolute;
+        left: 0; top: 0; right: 0; bottom: 0;
+        width: 100%; height: 100%;
+        margin: 0;
+        padding: 8px 10px;
+        border: none;
+        outline: none;
+        font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+        font-size: 13px;
+        line-height: 19px; /* 务必换成固定的像素行高，不要用 1.45 相对行高，IE11 累积舍入误差会导致底部错位！ */
+        tab-size: 4; -moz-tab-size: 4; -o-tab-size: 4;
+        white-space: pre;
+        box-sizing: border-box;
+    }
+
+    #editorPre {
+        z-index: 1;
+        background: #ffffff;
+        pointer-events: none;
+        overflow: hidden;
+    }
+    /* <code> 自带 UA 样式 font-family: monospace（IE 下为 Courier New），必须继承 pre 的字体，否则与 textarea 字宽不一致 */
+    #editorCode {
+        font: inherit;
+        /* textarea 有滚动条而 pre 没有，pre 可滚动范围更小；多留空白使其能滚到与 textarea 相同的位置 */
+        display: inline-block;
+        vertical-align: top;
+        padding: 0 40px 40px 0;
+    }
+
+    #editor {
+        z-index: 2;
+        background: transparent;
+        color: transparent;
+        resize: none;
+        overflow: auto; /* 保留原生滚动条 */
+    }
+
+    /* 关键修复 1：IE11 专用：消除 textarea 底部多出的伪空白 */
+    #editor::-ms-clear { display: none; }
+
+    /* IE11 兼容：IE11 不支持 caret-color 且透明文字会导致光标不可见。
+	   通过 ::selection 保持选中可见，并在 IE 下保留极微弱的对比度，
+	   若在纯 IE11 环境测试看不见光标，可将 color 改为 rgba(0,0,0,0.01) */
+    #editor::-ms-value {
+        color: transparent;
+    }
+    #editor::selection {
+        background: rgba(47, 111, 222, 0.25);
+        color: transparent;
+    }
+
+    /* 错误时高度收缩 */
+    #editorPane.has-error #editor,
+    #editorPane.has-error #editorPre {
+        bottom: 56px;
+        height: auto;
+    }
+
+    /* 词法高亮颜色配置 (VS Code / GitHub 风格)；不要用粗体，粗体（尤其中文回退字体的伪粗体）字宽与 textarea 不同会导致选区错位 */
+    .tok-key  { color: #0550ae; } /* 属性名(深蓝) */
+    .tok-str  { color: #0a8043; }                     /* 字符串值(绿色) */
+    .tok-num  { color: #cf222e; }                     /* 数字(红色) */
+    .tok-bool { color: #8250df; } /* 布尔(紫色) */
+    .tok-null { color: #6e7781; } /* null(灰色) */
+	
+	#editorPane.has-error #editor { bottom: 56px; height: auto; }
+	#error {
+		display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; overflow: auto;
+		padding: 6px 10px; background: #fdecec; border-top: 1px solid #f1b5b5; color: #b42318;
+		font-family: Consolas, monospace; font-size: 12px;
+	}
+	#editorPane.has-error #error { display: block; }
+	#previewPane {
+		position: absolute; left: 0; right: 0; top: 0; bottom: 0; overflow: auto;
+		/* 棋盘格用 20x20 的 PNG 平铺：渐变背景在 IE 软件渲染下滚动时每帧都要重新光栅化整个视口，平移画布会明显卡顿 */
+		background: #e9ebef url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAIAAAAC64paAAAAJUlEQVR42mO4/+g5HvTy9Xs8iGFU86hmgprxS+M3elTzqGaCmgGRTjvVY3keTwAAAABJRU5ErkJggg==) 0 0 repeat;
+	}
+	#stage { display: inline-block; padding: 24px; }
+	#emptyHint { margin: 80px auto; width: 360px; text-align: center; color: #6b7280; line-height: 1.8; }
+	#emptyHint b { display: block; font-size: 16px; color: #374151; margin-bottom: 6px; }
+	/*body.pan-ready #previewPane, body.pan-ready #previewPane *,*/
+	/*body.panning, body.panning * { cursor: move !important; }*/
+
+	#status {
+		position: absolute; left: 0; right: 0; bottom: 0; height: 26px; line-height: 25px; padding: 0 10px;
+		background: #ffffff; border-top: 1px solid #d8dbe0; color: #4b5563; white-space: nowrap; overflow: hidden;
+	}
+	#statusHint { float: right; margin-left: 16px; color: #9ca3af; }
+	#status .dirty { color: #c2410c; font-weight: bold; }
+	#status .err { color: #b42318; }
+	#status .ok { color: #15803d; }
+	#dropOverlay {
+		display: none; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 100;
+		background: rgba(47, 111, 222, 0.12); border: 3px dashed #2f6fde;
+	}
+	#dropOverlay div {
+		position: absolute; left: 50%; top: 50%; width: 360px; margin: -30px 0 0 -180px; height: 60px; line-height: 60px;
+		text-align: center; font-size: 18px; color: #ffffff; background: #2f6fde; border-radius: 6px;
+	}
+	body.dragging #dropOverlay { display: block; }
+
+	/* ---- 属性面板 ---- */
+	#inspector { overflow: auto; padding: 8px 10px 24px; }
+	.ins-pick { width: 100%; height: 28px; margin-bottom: 8px; }
+	.ins-empty { margin-top: 30px; color: #6b7280; line-height: 1.8; text-align: center; }
+	.ins-warn { margin-bottom: 8px; padding: 4px 8px; background: #fdecec; color: #b42318; border-radius: 3px; font-size: 12px; display: none; }
+	#inspector.invalid .ins-warn { display: block; }
+	.ins-title { font-size: 15px; font-weight: bold; margin: 2px 0 2px; }
+	.ins-title small { font: 12px Consolas, monospace; color: #6b7280; font-weight: normal; margin-left: 6px; }
+	.ins-links { margin: 4px 0; color: #6b7280; font-size: 12px; }
+	.ins-links a { color: #2f6fde; cursor: pointer; margin-right: 8px; text-decoration: none; }
+	.ins-links a:hover { text-decoration: underline; }
+	.ins-group {
+		margin: 14px 0 4px; padding-bottom: 3px; border-bottom: 1px solid #e5e7eb;
+		color: #6b7280; font-size: 12px; font-weight: bold;
+	}
+	.f-row { position: relative; padding: 3px 0; }
+	.f-key {
+		display: block; margin: 0 22px 2px 0; font: 12px Consolas, monospace; color: #6b7280;
+		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	}
+	.f-row.set .f-key { color: #1f2328; font-weight: bold; }
+	.f-reset {
+		display: none; position: absolute; right: 0; top: 2px; width: 20px; height: 18px; padding: 0;
+		border: none; background: transparent; color: #9ca3af; font-size: 14px; line-height: 16px; cursor: pointer;
+	}
+	.f-reset:hover { color: #b42318; }
+	.f-row.set .f-reset { display: block; }
+	.f-ctl { position: relative; }
+	.f-ctl input, .f-ctl select {
+		width: 100%; height: 26px; margin: 0; padding: 0 6px; border: 1px solid #c9ced6; border-radius: 3px; background: #ffffff;
+	}
+	.f-ctl input:focus, .f-ctl select:focus { border-color: #2f6fde; outline: none; }
+	.f-row.bad input { border-color: #dc2626; background: #fef2f2; }
+	.f-color input { padding-left: 30px; }
+	.f-swatch {
+		position: absolute; left: 5px; top: 4px; width: 18px; height: 18px; border: 1px solid #9ca3af;
+		background-color: #ffffff;
+		background-image: linear-gradient(45deg, #d1d5db 25%, transparent 25%, transparent 75%, #d1d5db 75%),
+			linear-gradient(45deg, #d1d5db 25%, transparent 25%, transparent 75%, #d1d5db 75%);
+		background-size: 8px 8px; background-position: 0 0, 4px 4px;
+	}
+	.f-swatch div { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+	.img-info { display: none; margin-top: 5px; padding: 6px; border: 1px solid #e5e7eb; border-radius: 3px; background: #f9fafb; font-size: 12px; }
+	.img-thumb {
+		margin-bottom: 5px; text-align: center; line-height: 0;
+		background-color: #ffffff;
+		background-image: linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%),
+			linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%);
+		background-size: 12px 12px; background-position: 0 0, 6px 6px;
+	}
+	.img-thumb img { max-width: 100%; max-height: 120px; }
+	.img-line { line-height: 1.6; color: #374151; }
+	.img-line.err { color: #b42318; }
+	.img-path { margin: 3px 0 6px; font: 11px Consolas, monospace; color: #6b7280; word-break: break-all; }
+
+	/* ---- 预览 ---- */
+	.pv-win { position: relative; overflow: hidden;
+		/*box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);*/
+	}
+	.pv-layer { position: absolute; left: 0; top: 0; }
+	.pv-abs { position: absolute; overflow: hidden; }
+	.pv-input {
+		position: absolute; margin: 0; padding: 0; border: none; outline: none; background: transparent;
+	}
+	.pv-input::-ms-clear { display: none; }
+	.pv-item { position: absolute; left: 0; overflow: hidden; cursor: pointer; }
+	.pv-icon {
+		position: absolute; width: 48px; height: 48px; border-radius: 10px; color: #ffffff;
+		font: bold 22px/48px "Segoe UI", sans-serif; text-align: center;
+	}
+	.pv-text { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.pv-text2 { white-space: normal; }
+	.outlined .pv-box { outline: 1px dashed #ff2d75; }
+	.outlined .pv-item { outline: 1px dotted #0ea5e9; }
+	.pv-tag {
+		display: none; position: absolute; left: 0; top: 0; z-index: 5; padding: 0 4px;
+		font: 11px/16px Consolas, monospace; color: #ffffff; background: #ff2d75;
+	}
+	.outlined .pv-tag { display: block; }
+	.pv-sel, .pv-hov { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 8; pointer-events: none; }
+	.pv-sel { border: 2px solid #2f6fde; }
+	.pv-hov { border: 1px dashed #2f6fde; background: rgba(47, 111, 222, 0.08); }
+	.pv-handle {
+		display: none; position: absolute; right: 0; bottom: 0; width: 10px; height: 10px;
+		background: #2f6fde; border: 1px solid #ffffff; pointer-events: auto; cursor: nwse-resize;
+	}
+	body.mode-interact .pv-sel, body.mode-interact .pv-hov { display: none; }
+	body.mode-select #stage [data-ctl] { cursor: default; }
+	body.mode-drag #stage [data-ctl] { cursor: move; }
+	body.mode-drag .pv-handle { display: block; }
+	/* 磁吸参考线，画在 zoomBox 中，不受窗口和列表项 overflow 裁剪 */
+	#zoomBox { position: relative; }
+	.pv-guide { position: absolute; z-index: 30; background: #ff2d75; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+	<button class="btn" id="btnOpen"></button>
+	<select id="skinList"></select>
+	<span class="sep"></span>
+	<button class="btn primary" id="btnSave"></button>
+	<button class="btn" id="btnSaveAs"></button>
+	<button class="btn" id="btnFormat"></button>
+	<button class="btn" id="btnReload"></button>
+	<span class="sep"></span>
+	<span class="seg" id="modeSeg">
+		<button data-mode="interact"></button><button data-mode="select"></button><button data-mode="drag"></button>
+	</span>
+	<span class="sep"></span>
+	<span id="lblZoom"></span><input type="range" id="zoomRange" min="0" max="1000" step="1"><span id="zoomValue">100%</span>
+	<span class="sep"></span>
+	<label><input type="checkbox" id="outline"> <span id="lblOutline"></span></label>
+	<label id="snapLabel">
+		<input type="checkbox" id="snap" checked>
+		<span id="iconSnap" class="icon-magnet" aria-hidden="true">
+    	<img width="16" height="16" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA20lEQVR4AcyS0RHCMAxDfUwCm7AJMAkwCTAJbAKbgF6uSl33p3f8tGfXtiwrTZpN/Plkgae07Hvl1cDcJ7a+BbaqINipBU0MzH0idVjgI+op+V15tZeAzGGmC6gXN73sR+XVWNX9s5qTL2iFwKXW+d7C0sEZbz0CnCjuTzw4SbFijZ+30IBhgBPnpIcyyMFc99+cBa7uDvGi+JZ/5eQK3R7OsgAXpRL77/KAIqvDVRqTiwSAchUBt9PjNrqeCXAObGUnBkRWwxkEo6fWaHkLIxqBEIOI4AyCRX1+AAAA///6XHtrAAAABklEQVQDAAVZKCHz5TCXAAAAAElFTkSuQmCC"></img>
+  </span>
+		<span id="lblSnap">Snap</span>
+	</label>
+
+	<style>
+        #snapLabel {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .icon-magnet {
+            display: inline-flex;
+            align-items: center;
+            color: #4b5563; /* 图标颜色 */
+        }
+	</style>
+</div>
+<div id="main">
+	<div id="leftPane" class="pane">
+		<div class="pane-head"><button class="fold" id="foldLeft">&laquo;</button><span id="lblJson"></span></div>
+		<div class="pane-body" id="editorPane">
+			<pre id="editorPre" aria-hidden="true"><code id="editorCode"></code></pre>
+			<textarea id="editor" spellcheck="false" wrap="off"></textarea>
+			<div id="error"></div>
+		</div>
+		<div class="pane-strip" id="stripLeft">&raquo;<br><span class="strip-label" id="stripLeftLabel"></span></div>
+	</div>
+	<div class="splitter" id="splitLeft"></div>
+	<div id="centerPane"><div id="previewPane"><div id="stage"></div></div></div>
+	<div class="splitter" id="splitRight"></div>
+	<div id="rightPane" class="pane">
+		<div class="pane-head"><button class="fold" id="foldRight">&raquo;</button><span id="lblProps"></span></div>
+		<div class="pane-body" id="inspector"></div>
+		<div class="pane-strip" id="stripRight">&laquo;<br><span class="strip-label" id="stripRightLabel"></span></div>
+	</div>
+</div>
+<div id="status"><span id="statusHint"></span><span id="statusMain"></span></div>
+<div id="dropOverlay"><div id="dropText"></div></div>
+
+<script>
+(function () {
+	'use strict';
+	var I18N = {
+		zh: {
+			open: '打开…', save: '保存', saveAs: '另存为…', format: '格式化', reload: '重新加载',
+			zoom: '缩放', zoomReset: '单击恢复 100%（Ctrl+滚轮缩放）', outline: '显示布局边框', drop: '松开以载入皮肤 JSON',
+			snap: '磁吸对齐', snapTip: '拖放模式下移动或调整大小时，自动对齐窗口、列表项和其他控件的边缘与中线（按住 Ctrl 临时关闭）',
+			chooseSkin: '— 选择 skins 目录中的皮肤 —',
+			emptyTitle: '拖放皮肤 JSON 文件到此处',
+			emptyBody: '或者点击「打开」选择文件，也可以直接在左侧编辑 JSON。',
+			unsaved: '未保存', saved: '已保存', newFile: '(未命名)',
+			discard: '当前修改尚未保存，确定要放弃吗？',
+			invalidSave: 'JSON 格式有错误，仍然要保存吗？',
+			onlyJson: '只能载入 .json 皮肤文件：',
+			readFail: '读取文件失败：', saveFail: '保存失败：', saveOk: '已保存到 ',
+			loaded: '已载入 ', missingImage: '图片无法加载：',
+			jsonError: 'JSON 错误', notObject: '皮肤文件的根节点必须是对象 { }',
+			line: '行', col: '列',
+			sampleTitle: ['Visual Studio Code', '记事本', '计算器', '浏览器', '设置', '命令提示符', '画图', '资源管理器', '任务管理器', '控制面板', '截图工具', '音乐'],
+			sampleSub: 'C:\\Program Files\\Example\\app.exe',
+			modes: {interact: '交互', select: '选择', drag: '拖放'},
+			modeTips: {
+				interact: '交互模式（1）：可在搜索框输入，点击列表项切换选中',
+				select: '选择模式（2）：点击控件后在右侧面板编辑它的字段',
+				drag: '拖放模式（3）：拖动控件移动位置，拖动右下角方块调整大小'
+			},
+			modeHints: {
+				interact: '交互模式：搜索框可输入，点击列表项切换选中',
+				select: '选择模式：点击控件编辑属性 · 方向键微调位置 · Esc 取消选择',
+				drag: '拖放模式：拖动移动 · 拖右下角方块改大小 · Shift 锁定方向 · Ctrl 暂停磁吸'
+			},
+			panHint: '空格+拖动 平移画布 · Ctrl+滚轮 缩放',
+			json: 'JSON', props: '属性', fold: '折叠', unfold: '展开',
+			noSel: '— 选择控件 —',
+			insHint: '在「选择」或「拖放」模式下点击预览中的控件，\n即可在此编辑它的全部字段。',
+			insInvalid: 'JSON 有错误，这里显示的是上一次有效的值',
+			ctl: {
+				window: '窗口', editbox: '搜索框', listview: '列表', item: '列表项', itemSel: '选中项',
+				icon: '图标', text1: '标题', text2: '副标题'
+			},
+			groups: {
+				layout: '位置与尺寸', look: '外观', shape: '窗口形状', font: '文字', icon: '图标',
+				text1: '标题文字', text2: '副标题文字', other: '其他字段'
+			},
+			parent: '上级：', children: '子元素：',
+			defaultIs: '默认值：', defaultOpt: '默认', reset: '移除此字段（恢复默认值）',
+			sharedSize: '与选中项共用',
+			imgSize: '尺寸：', nineContent: '，内容区 ', stretch: '拉伸区 ',
+			fileSize: '大小：', modified: '修改：', fileMissing: '文件不存在',
+			imgLoading: '正在读取图片…', imgFail: '图片无法加载', openLocation: '打开所在位置'
+		},
+		en: {
+			open: 'Open…', save: 'Save', saveAs: 'Save As…', format: 'Format', reload: 'Reload',
+			zoom: 'Zoom', zoomReset: 'Click to reset to 100% (Ctrl+wheel to zoom)', outline: 'Show layout outlines', drop: 'Release to load the skin JSON',
+			snap: 'Snap', snapTip: 'In Move mode, snap to the edges and center lines of the window, list items and other controls while moving or resizing (hold Ctrl to bypass)',
+			chooseSkin: '— Pick a skin from the skins folder —',
+			emptyTitle: 'Drop a skin JSON file here',
+			emptyBody: 'Or click "Open" to choose a file, or type JSON on the left.',
+			unsaved: 'Unsaved', saved: 'Saved', newFile: '(untitled)',
+			discard: 'You have unsaved changes. Discard them?',
+			invalidSave: 'The JSON has errors. Save anyway?',
+			onlyJson: 'Only .json skin files can be loaded: ',
+			readFail: 'Failed to read file: ', saveFail: 'Failed to save: ', saveOk: 'Saved to ',
+			loaded: 'Loaded ', missingImage: 'Image failed to load: ',
+			jsonError: 'JSON error', notObject: 'The root of a skin file must be an object { }',
+			line: 'line', col: 'col',
+			sampleTitle: ['Visual Studio Code', 'Notepad', 'Calculator', 'Browser', 'Settings', 'Command Prompt', 'Paint', 'File Explorer', 'Task Manager', 'Control Panel', 'Snipping Tool', 'Music'],
+			sampleSub: 'C:\\Program Files\\Example\\app.exe',
+			modes: {interact: 'Interact', select: 'Select', drag: 'Move'},
+			modeTips: {
+				interact: 'Interact mode (1): type in the search box, click items to select them',
+				select: 'Select mode (2): click a control to edit its fields in the right panel',
+				drag: 'Move mode (3): drag controls to move them, drag the corner square to resize'
+			},
+			modeHints: {
+				interact: 'Interact: type in the search box, click items to select them',
+				select: 'Select: click a control to edit it · arrow keys nudge · Esc deselects',
+				drag: 'Move: drag to move · drag the corner square to resize · Shift locks the axis · Ctrl bypasses snapping'
+			},
+			panHint: 'Space+drag to pan · Ctrl+wheel to zoom',
+			json: 'JSON', props: 'Properties', fold: 'Collapse', unfold: 'Expand',
+			noSel: '— Select a control —',
+			insHint: 'In Select or Move mode, click a control in the preview\nto edit all of its fields here.',
+			insInvalid: 'The JSON has errors; showing the last valid values',
+			ctl: {
+				window: 'Window', editbox: 'Search box', listview: 'List', item: 'List item', itemSel: 'Selected item',
+				icon: 'Icon', text1: 'Title', text2: 'Subtitle'
+			},
+			groups: {
+				layout: 'Position & size', look: 'Appearance', shape: 'Window shape', font: 'Text', icon: 'Icon',
+				text1: 'Title text', text2: 'Subtitle text', other: 'Other fields'
+			},
+			parent: 'Parent: ', children: 'Children: ',
+			defaultIs: 'Default: ', defaultOpt: 'Default', reset: 'Remove this field (use the default)',
+			sharedSize: 'shared with the selected item',
+			imgSize: 'Size: ', nineContent: ', content ', stretch: 'stretch ',
+			fileSize: 'Size: ', modified: 'Modified: ', fileMissing: 'File does not exist',
+			imgLoading: 'Reading image…', imgFail: 'Image failed to load', openLocation: 'Open file location'
+		}
+	};
+
+	// ---------- 宿主接口 ----------
+	var host = null;
+	try {
+		if (window.external && window.external.isCandyHost()) host = window.external;
+	} catch (e) {
+		host = null;
+	}
+
+	var lang = 'zh';
+	if (host) {
+		lang = host.getLanguage();
+	} else if ((navigator.language || navigator.userLanguage || '').toLowerCase().indexOf('zh') !== 0) {
+		lang = 'en';
+	}
+	var T = I18N[lang] || I18N.en;
+
+	function $(id) { return document.getElementById(id); }
+
+	// 搜索框提示词设置，同 SkinHelper refreshSkin
+	var hintSetting = {text: 'please input text...', useTheme: true};
+	if (host) {
+		try {
+			hintSetting = JSON.parse(host.getHintText());
+		} catch (e) {
+		}
+	}
+
+    var editor = $('editor');
+    var editorPre = $('editorPre');
+    var editorCode = $('editorCode');
+
+// ES5 正则语法高亮函数
+    function highlightJson(jsonStr) {
+        if (!jsonStr) return '';
+        // 1. 转义基础 HTML 实体
+        var safe = jsonStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // 2. 匹配 JSON Token：字符串、键、数字、布尔值、null
+        var re = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
+
+        return safe.replace(re, function (match) {
+            var cls = 'tok-num';
+            if (/^"/.test(match)) {
+                if (/:$/.test(match)) {
+                    cls = 'tok-key';
+                } else {
+                    cls = 'tok-str';
+                }
+            } else if (/true|false/.test(match)) {
+                cls = 'tok-bool';
+            } else if (/null/.test(match)) {
+                cls = 'tok-null';
+            }
+            return '<span class="' + cls + '">' + match + '</span>';
+        });
+    }
+
+    // 高亮层与 textarea 的唯一同步入口；文本未变时只同步滚动
+    var highlightedText = null;
+    function updateHighlight() {
+        if (!editorCode) return;
+        var val = editor.value;
+        if (val === highlightedText) {
+            syncScroll();
+            return;
+        }
+        highlightedText = val;
+        if (val.slice(-1) === '\n') {
+            val += ' ';
+        }
+        editorCode.innerHTML = highlightJson(val);
+        syncScroll();
+    }
+
+    function syncScroll() {
+        if (editorPre) {
+            editorPre.scrollTop = editor.scrollTop;
+            editorPre.scrollLeft = editor.scrollLeft;
+        }
+    }
+    
+	var stage = $('stage');
+	var previewPane = $('previewPane');
+	var STAGE_PAD = 24;
+	var ZOOM_MIN = 10, ZOOM_MAX = 800;
+	var state = {
+		path: '',
+		folder: '',
+		savedText: '',
+		eol: '\r\n',
+		selectedIndex: 0,
+		inputValue: '',
+		renderTimer: 0,
+		lastSkin: null,
+		skinValid: true,
+		missing: {},
+		mode: 'interact',
+		zoom: 1,
+		sel: null,          // 当前选中的控件 id，见 CONTROLS
+		selItem: -1,        // 选中控件属于列表项时，点击的是第几项
+		hoverEl: null,
+		spaceDown: false,
+		undo: [], redo: [], undoGroup: null, undoTime: 0,
+		insRows: [], insSig: ''
+	};
+	var layoutState = {left: 380, right: 300, leftCollapsed: false, rightCollapsed: false};
+
+	// ---------- 通用工具 ----------
+	function startsWith(s, prefix) { return s.substr(0, prefix.length) === prefix; }
+
+	function dirname(path) {
+		var i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+		return i >= 0 ? path.substr(0, i) : '';
+	}
+
+	function basename(path) {
+		var i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+		return i >= 0 ? path.substr(i + 1) : path;
+	}
+
+	function escapeHtml(s) {
+		return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	}
+
+	function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+	function hasClass(e, cls) { return (' ' + e.className + ' ').indexOf(' ' + cls + ' ') >= 0; }
+
+	function toggleClass(e, cls, on) {
+		var has = hasClass(e, cls);
+		if (on && !has) {
+			e.className = e.className ? e.className + ' ' + cls : cls;
+		} else if (!on && has) {
+			e.className = (' ' + e.className + ' ').replace(' ' + cls + ' ', ' ').replace(/^\s+|\s+$/g, '');
+		}
+	}
+
+	function setText(e, text) {
+		e.innerHTML = '';
+		e.appendChild(document.createTextNode(text));
+	}
+
+	function prevent(e) {
+		if (e.preventDefault) e.preventDefault();
+		e.returnValue = false;
+		return false;
+	}
+
+	function isTypingTarget(e) {
+		if (!e || !e.tagName) return false;
+		var tag = e.tagName.toUpperCase();
+		if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+		return tag === 'INPUT' && (e.type === 'text' || e.type === 'search' || !e.type);
+	}
+
+	function storageGet(key) {
+		try {
+			return window.localStorage ? window.localStorage.getItem(key) : null;
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function storageSet(key, value) {
+		try {
+			if (window.localStorage) window.localStorage.setItem(key, value);
+		} catch (e) {
+		}
+	}
+
+	// 在 document 上跟踪一次鼠标拖动，直到松开
+	function captureMouse(onMove, onUp) {
+		function move(e) { onMove(e || window.event); }
+		function up(e) {
+			document.removeEventListener('mousemove', move, true);
+			document.removeEventListener('mouseup', up, true);
+			if (onUp) onUp(e || window.event);
+		}
+		document.addEventListener('mousemove', move, true);
+		document.addEventListener('mouseup', up, true);
+	}
+
+	function isDirty() { return editor.value !== state.savedText; }
+
+	function setStatus(html) {
+		var name = state.path ? escapeHtml(state.path) : T.newFile;
+		var dirty = isDirty() ? ' <span class="dirty">● ' + T.unsaved + '</span>' : '';
+		$('statusMain').innerHTML = name + dirty + (html ? ' &nbsp;|&nbsp; ' + html : '');
+	}
+
+	// ---------- 皮肤取值，与 C++ 端的默认值保持一致 ----------
+	function num(skin, key, def) {
+		var v = skin[key];
+		return (typeof v === 'number' && isFinite(v)) ? v : def;
+	}
+
+	function str(skin, key, def) {
+		var v = skin[key];
+		return typeof v === 'string' ? v : def;
+	}
+
+	function bool(skin, key, def) {
+		var v = skin[key];
+		return typeof v === 'boolean' ? v : def;
+	}
+
+	// #RRGGBB 或 #AARRGGBB（与 HexToGdiplusColor 一致）
+	function cssColor(value, def) {
+		var v = typeof value === 'string' ? value.replace(/^\s+|\s+$/g, '') : '';
+		var m6 = /^#([0-9a-f]{6})$/i.exec(v);
+		if (m6) return v;
+		var m8 = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(v);
+		if (m8) {
+			return 'rgba(' + parseInt(m8[2], 16) + ',' + parseInt(m8[3], 16) + ',' + parseInt(m8[4], 16) + ',' +
+				(parseInt(m8[1], 16) / 255).toFixed(3) + ')';
+		}
+		return def;
+	}
+
+	// 同 ListViewManager getListItemFontStyle
+	function fontStyle(skin, styleKey, boldKey, italicKey, underlineKey) {
+		var r = {bold: false, italic: false, underline: false};
+		if (skin.hasOwnProperty(styleKey)) {
+			var tokens = String(skin[styleKey]).toLowerCase().split('|');
+			for (var i = 0; i < tokens.length; i++) {
+				var t = tokens[i].replace(/^\s+|\s+$/g, '');
+				if (t === 'bold') r.bold = true;
+				else if (t === 'it' || t === 'italic') r.italic = true;
+				else if (t === 'underline') r.underline = true;
+			}
+		} else {
+			r.bold = bool(skin, boldKey, true);
+			r.italic = bool(skin, italicKey, false);
+			r.underline = bool(skin, underlineKey, false);
+		}
+		return r;
+	}
+
+	// 同 SkinHelper getSkinPictureFile：以单个 \ 开头的路径相对皮肤文件所在目录
+	function resolvePicture(value) {
+		var p = typeof value === 'string' ? value.replace(/^\s+|\s+$/g, '') : '';
+		if (!p) return '';
+		if (!startsWith(p, '\\\\') && startsWith(p, '\\')) {
+			p = (state.folder || '') + p;
+		}
+		return p;
+	}
+
+	function toFileUrl(path) {
+		if (/^(https?|file|data):/i.test(path)) return path;
+		var p = path.replace(/\\/g, '/');
+		p = p.replace(/%/g, '%25').replace(/#/g, '%23').replace(/ /g, '%20');
+		return startsWith(p, '//') ? 'file:' + p : 'file:///' + p;
+	}
+
+	// ---------- 控件与字段定义 ----------
+	// 字段类型：int/num 数值，color 颜色，str 文本，font 字体名，style 字形，bool 布尔，pic 图片路径
+	function F(key, type, def) { return {key: key, type: type, def: def}; }
+
+	function itemIconFields(sel) {
+		var s = sel ? '_selected' : '';
+		return [F('item_icon' + s + '_x', 'int', 4), F('item_icon' + s + '_y', 'int', 4)];
+	}
+
+	function itemTextFields(sel, n) {
+		var s = sel ? '_selected' : '';
+		return [
+			F('item_text' + s + '_x_' + n, 'int', 60), F('item_text' + s + '_y_' + n, 'int', n === 1 ? 4 : 22),
+			F('item_font_family' + s + '_' + n, 'font', 'Segoe UI'),
+			F('item_font_size' + s + '_' + n, 'num', n === 1 ? 14 : 12),
+			F('item_font_color' + s + '_' + n, 'color', n === 1 ? '#FFFFFF' : '#DDDDDD'),
+			F('item_font_style' + s + '_' + n, 'style', ''),
+			F('item_font_bold' + s + '_' + n, 'bool', true),
+			F('item_font_italic' + s + '_' + n, 'bool', false),
+			F('item_font_underline' + s + '_' + n, 'bool', false)
+		];
+	}
+
+	function itemControl(sel) {
+		var s = sel ? '_selected' : '';
+		var id = sel ? 'itemSel' : 'item';
+		return {
+			size: ['item_width', 'item_height'],
+			children: [id + '.icon', id + '.text1', id + '.text2'],
+			groups: [
+				['layout', [F('item_width', 'int', 580), F('item_height', 'int', 35)]],
+				['look', [F('item_bg_color' + s, 'color', sel ? '#DDDDDD' : '#FFFFFF'), F('item_bg_picture' + s, 'pic', '')]],
+				['icon', itemIconFields(sel)],
+				['text1', itemTextFields(sel, 1)],
+				['text2', itemTextFields(sel, 2)]
+			]
+		};
+	}
+
+	var CONTROLS = {
+		window: {
+			size: ['window_width', 'window_height'],
+			groups: [
+				['layout', [F('window_width', 'int', 620), F('window_height', 'int', 480)]],
+				['look', [F('window_bg_color', 'color', '#FFFFFF'), F('window_bg_picture', 'pic', ''),
+					F('window_opacity', 'int', 255)]],
+				['shape', [F('window_shape_from_bg_alpha', 'bool', false), F('window_shape_alpha_threshold', 'int', 6)]]
+			]
+		},
+		editbox: {
+			pos: ['editbox_x', 'editbox_y'],
+			size: ['editbox_width', 'editbox_height'],
+			groups: [
+				['layout', [F('editbox_x', 'int', 10), F('editbox_y', 'int', 10), F('editbox_width', 'int', 580),
+					F('editbox_height', 'int', 35), F('editbox_padding_left', 'int', 4), F('editbox_padding_right', 'int', 4),
+					F('editbox_padding_top', 'int', 0)]],
+				['look', [F('editbox_bg_color', 'color', '#FFFFFF'), F('editbox_bg_picture', 'pic', '')]],
+				['font', [F('editbox_font_family', 'font', '宋体'), F('editbox_font_size', 'num', 12),
+					F('editbox_font_color', 'color', '#222222'), F('editbox_hint_text', 'str', ''),
+					F('editbox_hint_color', 'color', '#888888'), F('editbox_caret_color', 'color', ''),
+					F('editbox_selection_bg_color', 'color', '#3399FF'), F('editbox_selection_font_color', 'color', '#FFFFFF')]]
+			]
+		},
+		listview: {
+			pos: ['listview_x', 'listview_y'],
+			size: ['listview_width', 'listview_height'],
+			groups: [
+				['layout', [F('listview_x', 'int', 10), F('listview_y', 'int', 45), F('listview_width', 'int', 580),
+					F('listview_height', 'int', 380)]],
+				['look', [F('listview_bg_color', 'color', '#FFFFFF'), F('listview_bg_picture', 'pic', ''),
+					F('listview_hide_scrollbar', 'bool', false)]]
+			]
+		},
+		item: itemControl(false),
+		itemSel: itemControl(true)
+	};
+	(function () {
+		var parts = [['icon', 'icon'], ['text1', 'text1'], ['text2', 'text2']];
+		for (var k = 0; k < 2; k++) {
+			var sel = k === 1;
+			var parentId = sel ? 'itemSel' : 'item';
+			var s = sel ? '_selected' : '';
+			CONTROLS[parentId + '.icon'] = {
+				parent: parentId, pos: ['item_icon' + s + '_x', 'item_icon' + s + '_y'],
+				groups: [['icon', itemIconFields(sel)]]
+			};
+			for (var n = 1; n <= 2; n++) {
+				CONTROLS[parentId + '.text' + n] = {
+					parent: parentId, pos: ['item_text' + s + '_x_' + n, 'item_text' + s + '_y_' + n],
+					groups: [[parts[n][1], itemTextFields(sel, n)]]
+				};
+			}
+		}
+	})();
+	var CONTROL_ORDER = ['window', 'editbox', 'listview', 'item', 'item.icon', 'item.text1', 'item.text2',
+		'itemSel', 'itemSel.icon', 'itemSel.text1', 'itemSel.text2'];
+
+	var FIELD_INDEX = {};
+	(function () {
+		for (var i = 0; i < CONTROL_ORDER.length; i++) {
+			var groups = CONTROLS[CONTROL_ORDER[i]].groups;
+			for (var g = 0; g < groups.length; g++) {
+				for (var f = 0; f < groups[g][1].length; f++) {
+					var field = groups[g][1][f];
+					if (!FIELD_INDEX[field.key]) FIELD_INDEX[field.key] = field;
+				}
+			}
+		}
+	})();
+
+	function controlLabel(id) {
+		var dot = id.indexOf('.');
+		if (dot < 0) return T.ctl[id];
+		return T.ctl[id.substr(0, dot)] + ' › ' + T.ctl[id.substr(dot + 1)];
+	}
+
+	// 未在 CONTROLS 中声明的字段按前缀归属到控件，便于在「其他字段」中编辑
+	function ownerOf(key) {
+		if (startsWith(key, 'editbox_')) return 'editbox';
+		if (startsWith(key, 'listview_')) return 'listview';
+		if (startsWith(key, 'item_')) return key.indexOf('_selected') >= 0 ? 'itemSel' : 'item';
+		return 'window';
+	}
+
+	function otherKeys(id, skin) {
+		var keys = [];
+		if (!skin || CONTROLS[id].parent) return keys;
+		for (var k in skin) {
+			if (skin.hasOwnProperty(k) && !FIELD_INDEX[k] && ownerOf(k) === id) keys.push(k);
+		}
+		return keys;
+	}
+
+	function currentNumber(key) {
+		var f = FIELD_INDEX[key];
+		return state.lastSkin ? num(state.lastSkin, key, f ? f.def : 0) : (f ? f.def : 0);
+	}
+
+	// ---------- 按字段改写 JSON 文本，尽量保留原有格式 ----------
+	var VALUE_RE = '(?:"(?:[^"\\\\]|\\\\.)*"|-?[0-9][0-9.eE+\\-]*|true|false|null|\\[[^\\[\\]]*\\]|\\{[^{}]*\\})';
+
+	function keyPattern(key) {
+		return '"' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"\\s*:\\s*';
+	}
+
+	function textEol(text) { return text.indexOf('\r\n') >= 0 || text.indexOf('\n') < 0 ? '\r\n' : '\n'; }
+
+	function setKeyInText(text, key, value) {
+		var json = JSON.stringify(value);
+		var m = new RegExp('(' + keyPattern(key) + ')' + VALUE_RE).exec(text);
+		if (m) return text.substr(0, m.index) + m[1] + json + text.substr(m.index + m[0].length);
+
+		var eol = textEol(text);
+		if (text.lastIndexOf('}') < 0) {
+			if (!/^\s*$/.test(text)) return text;
+			text = '{' + eol + '}';
+		}
+		// 插到同一控件的最后一个字段后面，保持字段分组
+		var prefix = key.split('_')[0] + '_';
+		var wantSelected = key.indexOf('_selected') >= 0;
+		var re = new RegExp('"(' + prefix + '[A-Za-z0-9_]*)"\\s*:\\s*' + VALUE_RE, 'g');
+		var anchor = null, mm;
+		while ((mm = re.exec(text))) {
+			if (prefix !== 'item_' || (mm[1].indexOf('_selected') >= 0) === wantSelected) anchor = mm;
+		}
+		if (anchor) {
+			var lineStart = text.lastIndexOf('\n', anchor.index) + 1;
+			var indent = /^[ \t]*/.exec(text.substring(lineStart, anchor.index))[0];
+			var end = anchor.index + anchor[0].length;
+			return text.substr(0, end) + ',' + eol + indent + '"' + key + '": ' + json + text.substr(end);
+		}
+		var close = text.lastIndexOf('}');
+		var j = close - 1;
+		while (j >= 0 && /\s/.test(text.charAt(j))) j--;
+		var comma = text.charAt(j) === '{' ? '' : ',';
+		return text.substr(0, j + 1) + comma + eol + '\t"' + key + '": ' + json + text.substr(j + 1);
+	}
+
+	function removeKeyFromText(text, key) {
+		var kp = keyPattern(key);
+		var patterns = [',\\s*' + kp + VALUE_RE, kp + VALUE_RE + '\\s*,[ \\t]*(?:\\r?\\n[ \\t]*)?', '\\s*' + kp + VALUE_RE];
+		for (var i = 0; i < patterns.length; i++) {
+			var m = new RegExp(patterns[i]).exec(text);
+			if (m) return text.substr(0, m.index) + text.substr(m.index + m[0].length);
+		}
+		return text;
+	}
+
+	// ---------- 撤销 / 重做（仅针对属性面板与拖放产生的修改） ----------
+	function pushUndo(group) {
+		var now = new Date().getTime();
+		if (group && group === state.undoGroup && now - state.undoTime < 1500) {
+			state.undoTime = now;
+			return;
+		}
+		state.undoGroup = group;
+		state.undoTime = now;
+		if (state.undo[state.undo.length - 1] !== editor.value) state.undo.push(editor.value);
+		if (state.undo.length > 200) state.undo.shift();
+		state.redo = [];
+	}
+
+	function undoRedo(isRedo) {
+		var from = isRedo ? state.redo : state.undo, to = isRedo ? state.undo : state.redo;
+		if (!from.length) return;
+		to.push(editor.value);
+		state.undoGroup = null;
+		setEditorText(from.pop());
+	}
+
+	function setEditorText(text) {
+		var st = editor.scrollTop, sl = editor.scrollLeft;
+		editor.value = text;
+		state.lastValue = editor.value;
+		editor.scrollTop = st;
+		editor.scrollLeft = sl;
+		updateHighlight();
+		clearTimeout(state.renderTimer);
+		refresh();
+	}
+
+	// changes: {key: 新值}，值为 undefined 表示删除；group 为 false 时不记录撤销
+	function applyEdit(changes, group) {
+		var text = editor.value;
+		for (var k in changes) {
+			if (!changes.hasOwnProperty(k)) continue;
+			text = changes[k] === undefined ? removeKeyFromText(text, k) : setKeyInText(text, k, changes[k]);
+		}
+		if (text === editor.value) return;
+		if (group !== false) pushUndo(group);
+		setEditorText(text);
+	}
+
+	function pair(k0, v0, k1, v1) {
+		var o = {};
+		o[k0] = v0;
+		if (k1 !== undefined) o[k1] = v1;
+		return o;
+	}
+
+	// ---------- 图片与 .9.png ----------
+	var imageCache = {};
+
+	function loadImage(path, callback) {
+		var url = toFileUrl(path);
+		var entry = imageCache[url];
+		if (!entry) {
+			entry = imageCache[url] = {img: new Image(), url: url, status: 0, callbacks: [], nine: undefined};
+			entry.img.onload = function () {
+				entry.status = 1;
+				flush(entry);
+			};
+			entry.img.onerror = function () {
+				entry.status = -1;
+				flush(entry);
+			};
+			entry.img.src = url;
+		}
+		if (entry.status === 0) {
+			entry.callbacks.push(callback);
+		} else {
+			callback(entry);
+		}
+	}
+
+	function flush(entry) {
+		var list = entry.callbacks;
+		entry.callbacks = [];
+		for (var i = 0; i < list.length; i++) list[i](entry);
+	}
+
+	// 读取 .9.png 的黑色标记线，读不到像素（例如画布被安全策略污染）时返回 null
+	function analyzeNinePatch(entry) {
+		if (entry.nine !== undefined) return entry.nine;
+		entry.nine = null;
+		var img = entry.img;
+		var w = img.width, h = img.height;
+		if (w < 3 || h < 3) return null;
+		try {
+			var c = document.createElement('canvas');
+			c.width = w;
+			c.height = h;
+			var ctx = c.getContext('2d');
+			ctx.drawImage(img, 0, 0);
+			var top = ctx.getImageData(0, 0, w, 1).data;
+			var left = ctx.getImageData(0, 0, 1, h).data;
+			var range = function (data, length) {
+				var first = -1, last = -1;
+				for (var i = 1; i < length - 1; i++) {
+					var o = i * 4;
+					if (data[o + 3] > 128 && data[o] < 64 && data[o + 1] < 64 && data[o + 2] < 64) {
+						if (first < 0) first = i - 1;
+						last = i;
+					}
+				}
+				return first < 0 ? null : [first, last];
+			};
+			var xs = range(top, w), ys = range(left, h);
+			entry.nine = {
+				x0: xs ? xs[0] : 0, x1: xs ? xs[1] : w - 2,
+				y0: ys ? ys[0] : 0, y1: ys ? ys[1] : h - 2
+			};
+		} catch (e) {
+			entry.nine = null;
+		}
+		return entry.nine;
+	}
+
+	function drawSlice(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
+		if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
+		ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+	}
+
+	function drawNinePatch(ctx, entry, w, h) {
+		var img = entry.img;
+		var iw = img.width - 2, ih = img.height - 2;
+		var info = analyzeNinePatch(entry);
+		if (!info) {
+			drawSlice(ctx, img, 1, 1, iw, ih, 0, 0, w, h);
+			return;
+		}
+		var left = info.x0, right = iw - info.x1, top = info.y0, bottom = ih - info.y1;
+		// 目标尺寸比固定区域还小时按比例压缩固定区域
+		var sxScale = Math.min(1, w / Math.max(1, left + right));
+		var syScale = Math.min(1, h / Math.max(1, top + bottom));
+		var dl = Math.floor(left * sxScale), dr = Math.floor(right * sxScale);
+		var dt = Math.floor(top * syScale), db = Math.floor(bottom * syScale);
+		var cols = [[0, left, 0, dl], [left, info.x1 - left, dl, w - dl - dr], [info.x1, right, w - dr, dr]];
+		var rows = [[0, top, 0, dt], [top, info.y1 - top, dt, h - dt - db], [info.y1, bottom, h - db, db]];
+		for (var r = 0; r < 3; r++) {
+			for (var c = 0; c < 3; c++) {
+				drawSlice(ctx, img, 1 + cols[c][0], 1 + rows[r][0], cols[c][1], rows[r][1],
+					cols[c][2], rows[r][2], cols[c][3], rows[r][3]);
+			}
+		}
+	}
+
+	// 在容器中铺一层图片画布，返回是否配置了图片
+	function addPicture(parent, value, w, h) {
+		var path = resolvePicture(value);
+		if (!path || w <= 0 || h <= 0) return false;
+		var canvas = document.createElement('canvas');
+		canvas.className = 'pv-layer';
+		canvas.width = w;
+		canvas.height = h;
+		parent.appendChild(canvas);
+		loadImage(path, function (entry) {
+			if (entry.status < 0) {
+				state.missing[path] = true;
+				refreshStatus();
+				return;
+			}
+			var ctx = canvas.getContext('2d');
+			ctx.clearRect(0, 0, w, h);
+			if (/\.9\.png$/i.test(path)) {
+				drawNinePatch(ctx, entry, w, h);
+			} else {
+				ctx.drawImage(entry.img, 0, 0, w, h);
+			}
+		});
+		return true;
+	}
+
+	// ---------- 预览渲染 ----------
+	function el(tag, cls, parent) {
+		var e = document.createElement(tag);
+		if (cls) e.className = cls;
+		if (parent) parent.appendChild(e);
+		return e;
+	}
+
+	function place(e, x, y, w, h) {
+		e.style.left = x + 'px';
+		e.style.top = y + 'px';
+		if (w !== undefined) e.style.width = Math.max(0, w) + 'px';
+		if (h !== undefined) e.style.height = Math.max(0, h) + 'px';
+	}
+
+	function tag(parent, text) {
+		var t = el('div', 'pv-tag', parent);
+		t.appendChild(document.createTextNode(text));
+	}
+
+	function applyFont(e, family, sizePx, style, color) {
+		e.style.fontFamily = '"' + family.replace(/"/g, '') + '"';
+		e.style.fontSize = sizePx + 'px';
+		e.style.lineHeight = 'normal';
+		e.style.fontWeight = style.bold ? 'bold' : 'normal';
+		e.style.fontStyle = style.italic ? 'italic' : 'normal';
+		e.style.textDecoration = style.underline ? 'underline' : 'none';
+		e.style.color = color;
+	}
+
+	var ICON_COLORS = ['#2f6fde', '#16a34a', '#ea580c', '#9333ea', '#0891b2', '#db2777', '#ca8a04', '#4f46e5'];
+
+	function renderEditBox(win, skin) {
+		var x = num(skin, 'editbox_x', 10), y = num(skin, 'editbox_y', 10);
+		var w = num(skin, 'editbox_width', 580), h = num(skin, 'editbox_height', 35);
+		var box = el('div', 'pv-abs pv-box', win);
+		box.setAttribute('data-ctl', 'editbox');
+		place(box, x, y, w, h);
+		box.title = 'editbox_x / editbox_y / editbox_width / editbox_height';
+		box.style.backgroundColor = cssColor(skin.editbox_bg_color, '#FFFFFF');
+		if (addPicture(box, skin.editbox_bg_picture, w, h)) box.style.backgroundColor = 'transparent';
+
+		var padLeft = Math.max(0, num(skin, 'editbox_padding_left', 4));
+		var padRight = Math.max(0, num(skin, 'editbox_padding_right', 4));
+		var padTop = num(skin, 'editbox_padding_top', 0);
+		// 编辑框字号是磅值（C++ 中按 LOGPIXELSY 换算）
+		var sizePx = num(skin, 'editbox_font_size', 12) * 96 / 72;
+		var input = el('input', 'pv-input', box);
+		input.type = 'text';
+		input.id = 'pvEdit';
+		input.value = state.inputValue;
+		// 非交互模式下点击搜索框用于选择控件，不应获得输入焦点
+		input.readOnly = state.mode !== 'interact';
+		if (input.readOnly) input.tabIndex = -1;
+		input.setAttribute('placeholder', hintSetting.useTheme ? str(skin, 'editbox_hint_text', hintSetting.text) : hintSetting.text);
+		applyFont(input, str(skin, 'editbox_font_family', '宋体'), sizePx,
+			{bold: false, italic: false, underline: false}, cssColor(skin.editbox_font_color, '#222222'));
+		place(input, padLeft, padTop, w - padLeft - padRight, Math.ceil(sizePx * 1.4));
+		input.oninput = input.onkeyup = function () { state.inputValue = input.value; };
+
+		var hint = cssColor(skin.editbox_hint_color, '#888888');
+		// 分成两条规则，浏览器遇到不认识的伪类只会丢弃所在的那一条
+		$('dynStyle').textContent = '#pvEdit:-ms-input-placeholder{color:' + hint + ';}' +
+			'#pvEdit::placeholder{color:' + hint + ';}';
+		tag(box, 'editbox');
+	}
+
+	function renderListView(win, skin) {
+		var x = num(skin, 'listview_x', 10), y = num(skin, 'listview_y', 45);
+		var w = num(skin, 'listview_width', 580), h = num(skin, 'listview_height', 380);
+		var list = el('div', 'pv-abs pv-box', win);
+		list.setAttribute('data-ctl', 'listview');
+		place(list, x, y, w, h);
+		list.title = 'listview_x / listview_y / listview_width / listview_height';
+		list.style.backgroundColor = cssColor(skin.listview_bg_color, '#FFFFFF');
+		if (addPicture(list, skin.listview_bg_picture, w, h)) list.style.backgroundColor = 'transparent';
+		var scroller = el('div', 'pv-layer', list);
+		scroller.id = 'pvScroller';
+		place(scroller, 0, 0, w, h);
+		scroller.style.overflowX = 'hidden';
+		scroller.style.overflowY = bool(skin, 'listview_hide_scrollbar', false) ? 'hidden' : 'scroll';
+
+		var itemW = num(skin, 'item_width', 580), itemH = num(skin, 'item_height', 35);
+		if (itemW <= 0) itemW = 580;
+		if (itemH <= 0) itemH = 60;
+
+		var normal = {
+			bg: cssColor(skin.item_bg_color, '#FFFFFF'), picture: skin.item_bg_picture,
+			iconX: num(skin, 'item_icon_x', 4), iconY: num(skin, 'item_icon_y', 4),
+			x1: num(skin, 'item_text_x_1', 60), y1: num(skin, 'item_text_y_1', 4),
+			x2: num(skin, 'item_text_x_2', 60), y2: num(skin, 'item_text_y_2', 22),
+			family1: str(skin, 'item_font_family_1', 'Segoe UI'), family2: str(skin, 'item_font_family_2', 'Segoe UI'),
+			size1: num(skin, 'item_font_size_1', 14), size2: num(skin, 'item_font_size_2', 12),
+			color1: cssColor(skin.item_font_color_1, '#FFFFFF'), color2: cssColor(skin.item_font_color_2, '#DDDDDD'),
+			style1: fontStyle(skin, 'item_font_style_1', 'item_font_bold_1', 'item_font_italic_1', 'item_font_underline_1'),
+			style2: fontStyle(skin, 'item_font_style_2', 'item_font_bold_2', 'item_font_italic_2', 'item_font_underline_2')
+		};
+		var selected = {
+			bg: cssColor(skin.item_bg_color_selected, '#DDDDDD'), picture: skin.item_bg_picture_selected,
+			iconX: num(skin, 'item_icon_selected_x', 4), iconY: num(skin, 'item_icon_selected_y', 4),
+			x1: num(skin, 'item_text_selected_x_1', 60), y1: num(skin, 'item_text_selected_y_1', 4),
+			x2: num(skin, 'item_text_selected_x_2', 60), y2: num(skin, 'item_text_selected_y_2', 22),
+			family1: str(skin, 'item_font_family_selected_1', 'Segoe UI'),
+			family2: str(skin, 'item_font_family_selected_2', 'Segoe UI'),
+			size1: num(skin, 'item_font_size_selected_1', 14), size2: num(skin, 'item_font_size_selected_2', 12),
+			color1: cssColor(skin.item_font_color_selected_1, '#FFFFFF'),
+			color2: cssColor(skin.item_font_color_selected_2, '#DDDDDD'),
+			style1: fontStyle(skin, 'item_font_style_selected_1', 'item_font_bold_selected_1',
+				'item_font_italic_selected_1', 'item_font_underline_selected_1'),
+			style2: fontStyle(skin, 'item_font_style_selected_2', 'item_font_bold_selected_2',
+				'item_font_italic_selected_2', 'item_font_underline_selected_2')
+		};
+
+		var titles = T.sampleTitle;
+		var inner = el('div', '', scroller);
+		inner.style.position = 'relative';
+		inner.style.height = (titles.length * itemH) + 'px';
+		for (var i = 0; i < titles.length; i++) {
+			var isSel = i === state.selectedIndex;
+			var s = isSel ? selected : normal;
+			var ctl = isSel ? 'itemSel' : 'item';
+			var item = el('div', 'pv-item', inner);
+			item.setAttribute('data-ctl', ctl);
+			item.setAttribute('data-index', String(i));
+			place(item, 0, i * itemH, itemW, itemH);
+			item.style.backgroundColor = s.bg;
+			if (addPicture(item, s.picture, itemW, itemH)) item.style.backgroundColor = 'transparent';
+			item.title = isSel ? 'item_*_selected' : 'item_*';
+			item.onclick = onItemClick;
+
+			var icon = el('div', 'pv-icon', item);
+			icon.setAttribute('data-ctl', ctl + '.icon');
+			icon.setAttribute('data-index', String(i));
+			place(icon, s.iconX, s.iconY);
+			icon.style.backgroundColor = ICON_COLORS[i % ICON_COLORS.length];
+			icon.appendChild(document.createTextNode(titles[i].charAt(0).toUpperCase()));
+
+			var t1 = el('div', 'pv-text', item);
+			t1.setAttribute('data-ctl', ctl + '.text1');
+			t1.setAttribute('data-index', String(i));
+			applyFont(t1, s.family1, s.size1, s.style1, s.color1);
+			place(t1, s.x1, s.y1, itemW - s.x1);
+			t1.appendChild(document.createTextNode(titles[i]));
+
+			var t2 = el('div', 'pv-text pv-text2', item);
+			t2.setAttribute('data-ctl', ctl + '.text2');
+			t2.setAttribute('data-index', String(i));
+			applyFont(t2, s.family2, s.size2, s.style2, s.color2);
+			// 与 C++ 一致，副标题最多两行
+			place(t2, s.x2, s.y2, itemW - s.x2, Math.ceil(s.size2 * 1.2 * 2.2));
+			t2.appendChild(document.createTextNode(T.sampleSub.replace('Example', titles[i])));
+		}
+		tag(list, 'listview');
+	}
+
+	function onItemClick() {
+		if (state.mode !== 'interact') return;
+		state.selectedIndex = parseInt(this.getAttribute('data-index'), 10) || 0;
+		if (state.lastSkin) renderPreview(state.lastSkin);
+	}
+
+	function renderPreview(skin) {
+		state.lastSkin = skin;
+		var scrollTop = 0;
+		var oldScroller = $('pvScroller');
+		if (oldScroller) scrollTop = oldScroller.scrollTop;
+
+		stage.innerHTML = '';
+		state.hoverEl = null;
+		var zoomBox = el('div', '', stage);
+		zoomBox.id = 'zoomBox';
+		zoomBox.style.zoom = state.zoom;
+		var w = num(skin, 'window_width', 620), h = num(skin, 'window_height', 480);
+		var win = el('div', 'pv-win' + ($('outline').checked ? ' outlined' : ''), zoomBox);
+		win.setAttribute('data-ctl', 'window');
+		win.style.width = Math.max(1, w) + 'px';
+		win.style.height = Math.max(1, h) + 'px';
+		win.title = 'window_width / window_height';
+		var opacity = Math.min(255, Math.max(0, num(skin, 'window_opacity', 255)));
+		win.style.opacity = (opacity / 255).toFixed(3);
+		win.style.backgroundColor = cssColor(skin.window_bg_color, '#FFFFFF');
+        if (addPicture(win, skin.window_bg_picture, w, h)) {
+            win.style.backgroundColor = 'transparent';
+        }
+        
+		renderListView(win, skin);
+		renderEditBox(win, skin);
+
+		var newScroller = $('pvScroller');
+		if (newScroller) newScroller.scrollTop = scrollTop;
+		applySelectionOverlay();
+	}
+
+	function renderEmpty() {
+		state.lastSkin = null;
+		state.hoverEl = null;
+		stage.innerHTML = '<div id="emptyHint"><b>' + escapeHtml(T.emptyTitle) + '</b>' + escapeHtml(T.emptyBody) + '</div>';
+	}
+
+	// ---------- 选中框与悬停框 ----------
+	function findCtlNode(node) {
+		while (node && node !== previewPane && node.nodeType === 1) {
+			if (node.getAttribute('data-ctl')) return node;
+			node = node.parentNode;
+		}
+		return null;
+	}
+
+	function findCtlElement(id) {
+		var nodes = stage.querySelectorAll('[data-ctl="' + id + '"]');
+		if (!nodes.length) return null;
+		for (var i = 0; i < nodes.length; i++) {
+			if (nodes[i].getAttribute('data-index') === String(state.selItem)) return nodes[i];
+		}
+		return nodes[0];
+	}
+
+	function removeByClass(cls) {
+		var list = stage.getElementsByClassName(cls);
+		for (var i = list.length - 1; i >= 0; i--) list[i].parentNode.removeChild(list[i]);
+	}
+
+	// CSS zoom 会把边框一起放大，按缩放比例反向调整，让选中框在任何缩放下都保持细线
+	function scaleOverlay() {
+		var z = state.zoom;
+		var nodes = stage.querySelectorAll('.pv-sel, .pv-hov, .pv-handle');
+		for (var i = 0; i < nodes.length; i++) {
+			var n = nodes[i];
+			if (hasClass(n, 'pv-handle')) {
+				n.style.width = n.style.height = (10 / z) + 'px';
+				n.style.borderWidth = (1 / z) + 'px';
+			} else {
+				n.style.borderWidth = ((hasClass(n, 'pv-sel') ? 2 : 1) / z) + 'px';
+			}
+		}
+	}
+
+	function applySelectionOverlay() {
+		removeByClass('pv-sel');
+		if (!state.sel || !state.lastSkin) return;
+		var target = findCtlElement(state.sel);
+		if (!target) return;
+		var overlay = el('div', 'pv-sel', target);
+		if (CONTROLS[state.sel].size) el('div', 'pv-handle', overlay);
+		scaleOverlay();
+	}
+
+	function setHover(node) {
+		if (node === state.hoverEl) return;
+		removeByClass('pv-hov');
+		state.hoverEl = node;
+		if (node) {
+			el('div', 'pv-hov', node);
+			scaleOverlay();
+		}
+	}
+
+	function selectControl(id, itemIndex) {
+		var changed = id !== state.sel;
+		state.sel = id || null;
+		if (itemIndex !== undefined) state.selItem = itemIndex;
+		if (changed) buildInspector();
+		applySelectionOverlay();
+	}
+
+	// ---------- 属性面板 ----------
+	function displayDefault(f) {
+		if (f.def === '' || f.def === undefined) return '';
+		return String(f.def);
+	}
+
+	function inferType(value) {
+		if (typeof value === 'number') return 'num';
+		if (typeof value === 'boolean') return 'bool';
+		if (typeof value === 'string') return 'str';
+		return 'json';
+	}
+
+	// 把输入框文本转成字段值：{value} 中 undefined 表示删除字段，{bad: true} 表示无法解析
+	function parseFieldText(f, text) {
+		var t = text.replace(/^\s+|\s+$/g, '');
+		if (f.type === 'int' || f.type === 'num') {
+			if (t === '') return {value: undefined};
+			if (!/^-?\d+(\.\d+)?$/.test(t)) return {bad: true};
+			return {value: Number(t)};
+		}
+		if (f.type === 'bool') {
+			if (t === '') return {value: undefined};
+			return {value: t === 'true'};
+		}
+		if (f.type === 'json') {
+			if (t === '') return {value: undefined};
+			try {
+				return {value: JSON.parse(t)};
+			} catch (e) {
+				return {bad: true};
+			}
+		}
+		if (f.type === 'str') return {value: text};
+		if (t === '') return {value: undefined};
+		if (f.type === 'color' && !cssColor(t, '')) return {bad: true, value: t};
+		return {value: text};
+	}
+
+	function valueToText(v) {
+		if (v === undefined) return '';
+		if (typeof v === 'string') return v;
+		if (typeof v === 'object') return JSON.stringify(v);
+		return String(v);
+	}
+
+	function formatSize(bytes) {
+		if (bytes < 1024) return bytes + ' B';
+		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+		return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+	}
+
+	function addFieldRow(parent, f) {
+		var row = el('div', 'f-row', parent);
+		var label = el('label', 'f-key', row);
+		setText(label, f.key);
+		var def = displayDefault(f);
+		label.title = f.key + (def ? '\n' + T.defaultIs + def : '') +
+			(f.key === 'item_width' || f.key === 'item_height' ? '\n' + T.sharedSize : '');
+		var reset = el('button', 'f-reset', row);
+		reset.innerHTML = '&times;';
+		reset.title = T.reset;
+		var wrap = el('div', 'f-ctl', row);
+		var r = {f: f, row: row, input: null, swatch: null, info: null, lastText: '', picPath: null};
+
+		var input;
+		if (f.type === 'bool') {
+			input = el('select', '', wrap);
+			input.options.add(new Option(T.defaultOpt + (def ? ' (' + def + ')' : ''), ''));
+			input.options.add(new Option('true', 'true'));
+			input.options.add(new Option('false', 'false'));
+		} else {
+			input = el('input', '', wrap);
+			input.type = 'text';
+			input.setAttribute('spellcheck', 'false');
+			if (def) input.setAttribute('placeholder', def);
+		}
+		r.input = input;
+		if (f.type === 'color') {
+			toggleClass(wrap, 'f-color', true);
+			r.swatch = el('div', '', el('span', 'f-swatch', wrap));
+		}
+		if (f.type === 'pic') r.info = el('div', 'img-info', row);
+
+		function commit() {
+			var text = input.value;
+			if (text === r.lastText) return;
+			r.lastText = text;
+			var parsed = parseFieldText(f, text);
+			toggleClass(row, 'bad', !!parsed.bad);
+			if (parsed.bad && parsed.value === undefined) return;
+			applyEdit(pair(f.key, parsed.value), 'field:' + f.key);
+		}
+
+		if (f.type === 'bool') {
+			input.onchange = commit;
+		} else {
+			// IE 的 oninput 对删除等操作不总是触发，keyup 兜底
+			input.oninput = input.onkeyup = input.onchange = commit;
+		}
+		if (f.type === 'int' || f.type === 'num') {
+			input.onkeydown = function (e) {
+				e = e || window.event;
+				if (e.keyCode !== 38 && e.keyCode !== 40) return;
+				var cur = parseFloat(input.value);
+				if (isNaN(cur)) cur = typeof f.def === 'number' ? f.def : 0;
+				var step = (e.shiftKey ? 10 : 1) * (e.keyCode === 38 ? 1 : -1);
+				input.value = String(Math.round((cur + step) * 100) / 100);
+				commit();
+				return prevent(e);
+			};
+		}
+		reset.onclick = function () {
+			applyEdit(pair(f.key, undefined), null);
+		};
+		state.insRows.push(r);
+		return r;
+	}
+
+	function syncFieldRow(r, skin) {
+		var has = !!skin && skin.hasOwnProperty(r.f.key);
+		var value = has ? skin[r.f.key] : undefined;
+		toggleClass(r.row, 'set', has);
+		var text = valueToText(value);
+		if (document.activeElement !== r.input && r.input.value !== text) {
+			r.input.value = text;
+			r.lastText = r.input.value;
+			toggleClass(r.row, 'bad', false);
+		}
+		if (r.swatch) r.swatch.style.backgroundColor = cssColor(has ? value : r.f.def, 'transparent');
+		if (r.info) updatePictureInfo(r, has ? value : '');
+	}
+
+	function updatePictureInfo(r, value) {
+		var path = resolvePicture(value);
+		if (path === r.picPath) return;
+		r.picPath = path;
+		var info = r.info;
+		info.innerHTML = '';
+		info.style.display = path ? 'block' : 'none';
+		if (!path) return;
+
+		var thumb = el('div', 'img-thumb', info);
+		var dims = el('div', 'img-line', info);
+		var fileLine = el('div', 'img-line', info);
+		var pathLine = el('div', 'img-path', info);
+		setText(dims, T.imgLoading);
+
+		var fullPath = path;
+		var fileInfo = null;
+		if (host) {
+			try {
+				fileInfo = JSON.parse(host.getFileInfo(path));
+			} catch (e) {
+				fileInfo = null;
+			}
+		}
+		if (fileInfo) {
+			if (fileInfo.fullPath) fullPath = fileInfo.fullPath;
+			if (fileInfo.exists) {
+				setText(fileLine, T.fileSize + formatSize(fileInfo.size) + '   ' + T.modified + fileInfo.modified);
+			} else {
+				fileLine.className = 'img-line err';
+				setText(fileLine, T.fileMissing);
+			}
+		} else {
+			fileLine.style.display = 'none';
+		}
+		setText(pathLine, fullPath);
+		if (host) {
+			var btn = el('button', 'btn small', info);
+			setText(btn, T.openLocation);
+			btn.onclick = function () { host.revealInExplorer(fullPath); };
+		}
+
+		loadImage(path, function (entry) {
+			if (r.picPath !== path) return;
+			if (entry.status < 0) {
+				thumb.style.display = 'none';
+				dims.className = 'img-line err';
+				setText(dims, T.imgFail);
+				return;
+			}
+			var img = el('img', '', thumb);
+			img.src = entry.url;
+			var w = entry.img.width, h = entry.img.height;
+			var ext = (/\.([^.\\\/]+)$/.exec(path) || ['', ''])[1].toUpperCase();
+			var text = T.imgSize + w + ' × ' + h + ' px' + (ext ? '   ' + ext : '');
+			if (/\.9\.png$/i.test(path)) {
+				text += T.nineContent + (w - 2) + ' × ' + (h - 2);
+				var nine = analyzeNinePatch(entry);
+				if (nine) {
+					text += '\n' + T.stretch + 'x ' + nine.x0 + '–' + nine.x1 + ', y ' + nine.y0 + '–' + nine.y1;
+				}
+			}
+			dims.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+		});
+	}
+
+	function inspectorSignature(skin) {
+		return (state.sel || '') + '|' + (state.sel ? otherKeys(state.sel, skin).join(',') : '');
+	}
+
+	function buildInspector() {
+		var box = $('inspector');
+		var scrollTop = box.scrollTop;
+		var sameControl = box.getAttribute('data-sel') === (state.sel || '');
+		box.innerHTML = '';
+		box.setAttribute('data-sel', state.sel || '');
+		state.insRows = [];
+		var skin = state.lastSkin;
+		state.insSig = inspectorSignature(skin);
+
+		var pick = el('select', 'ins-pick', box);
+		pick.options.add(new Option(T.noSel, ''));
+		for (var i = 0; i < CONTROL_ORDER.length; i++) {
+			var id = CONTROL_ORDER[i];
+			pick.options.add(new Option((CONTROLS[id].parent ? '\u3000' : '') + controlLabel(id), id));
+		}
+		pick.value = state.sel || '';
+		pick.onchange = function () { selectControl(pick.value || null); };
+
+		var warn = el('div', 'ins-warn', box);
+		setText(warn, T.insInvalid);
+
+		if (!state.sel) {
+			var empty = el('div', 'ins-empty', box);
+			empty.innerHTML = escapeHtml(T.insHint).replace(/\n/g, '<br>');
+			return;
+		}
+		var def = CONTROLS[state.sel];
+		var title = el('div', 'ins-title', box);
+		title.appendChild(document.createTextNode(controlLabel(state.sel)));
+		setText(el('small', '', title), state.sel);
+
+		var related = def.parent ? [def.parent] : (def.children || []);
+		if (related.length) {
+			var links = el('div', 'ins-links', box);
+			links.appendChild(document.createTextNode(def.parent ? T.parent : T.children));
+			for (var j = 0; j < related.length; j++) {
+				var a = el('a', '', links);
+				var target = related[j];
+				setText(a, def.parent ? controlLabel(target) : T.ctl[target.substr(target.indexOf('.') + 1)]);
+				a.setAttribute('data-target', target);
+				a.onclick = function () { selectControl(this.getAttribute('data-target')); };
+			}
+		}
+
+		for (var g = 0; g < def.groups.length; g++) {
+			setText(el('div', 'ins-group', box), T.groups[def.groups[g][0]]);
+			var fields = def.groups[g][1];
+			for (var f = 0; f < fields.length; f++) addFieldRow(box, fields[f]);
+		}
+		var others = otherKeys(state.sel, skin);
+		if (others.length) {
+			setText(el('div', 'ins-group', box), T.groups.other);
+			for (var o = 0; o < others.length; o++) {
+				addFieldRow(box, F(others[o], inferType(skin[others[o]]), undefined));
+			}
+		}
+		syncInspector(skin);
+		if (sameControl) box.scrollTop = scrollTop;
+	}
+
+	function syncInspector(skin) {
+		if (inspectorSignature(skin) !== state.insSig) {
+			buildInspector();
+			return;
+		}
+		toggleClass($('inspector'), 'invalid', state.sel !== null && !state.skinValid);
+		if (!skin) return;
+		for (var i = 0; i < state.insRows.length; i++) syncFieldRow(state.insRows[i], skin);
+	}
+
+	// ---------- JSON 校验：IE 的 JSON.parse 不给出错位置，这里自己定位 ----------
+	function locateJsonError(text) {
+		var i = 0, n = text.length;
+		function fail(msg) { var e = new Error(msg); e.pos = i; throw e; }
+		function ws() { while (i < n && /\s/.test(text.charAt(i))) i++; }
+		function value() {
+			ws();
+			var ch = text.charAt(i);
+			if (ch === '{') return object();
+			if (ch === '[') return array();
+			if (ch === '"') return string();
+			if (ch === '-' || (ch >= '0' && ch <= '9')) return number();
+			if (text.substr(i, 4) === 'true' || text.substr(i, 4) === 'null') { i += 4; return; }
+			if (text.substr(i, 5) === 'false') { i += 5; return; }
+			fail(i >= n ? 'Unexpected end of input' : 'Unexpected character ' + ch);
+		}
+		function object() {
+			i++; ws();
+			if (text.charAt(i) === '}') { i++; return; }
+			for (;;) {
+				ws();
+				if (text.charAt(i) !== '"') fail('Expected property name');
+				string(); ws();
+				if (text.charAt(i) !== ':') fail('Expected :');
+				i++; value(); ws();
+				var ch = text.charAt(i);
+				if (ch === ',') { i++; ws(); if (text.charAt(i) === '}') fail('Trailing comma'); continue; }
+				if (ch === '}') { i++; return; }
+				fail('Expected , or }');
+			}
+		}
+		function array() {
+			i++; ws();
+			if (text.charAt(i) === ']') { i++; return; }
+			for (;;) {
+				value(); ws();
+				var ch = text.charAt(i);
+				if (ch === ',') { i++; continue; }
+				if (ch === ']') { i++; return; }
+				fail('Expected , or ]');
+			}
+		}
+		function string() {
+			i++;
+			while (i < n) {
+				var ch = text.charAt(i);
+				if (ch === '\\') { i += 2; continue; }
+				if (ch === '"') { i++; return; }
+				if (ch === '\n') fail('Unterminated string');
+				i++;
+			}
+			fail('Unterminated string');
+		}
+		function number() {
+			var m = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/.exec(text.substr(i));
+			if (!m) fail('Invalid number');
+			i += m[0].length;
+		}
+		try {
+			value(); ws();
+			if (i < n) fail('Unexpected content after JSON');
+		} catch (e) {
+			var before = text.substr(0, e.pos || 0).split('\n');
+			return {message: e.message, line: before.length, col: before[before.length - 1].length + 1, pos: e.pos || 0};
+		}
+		return null;
+	}
+
+	function showError(msg) {
+		toggleClass($('editorPane'), 'has-error', !!msg);
+		$('error').innerHTML = msg ? escapeHtml(msg) : '';
+	}
+
+	// 解析编辑器内容；成功返回对象，失败返回 null 并显示错误
+	function parseEditor() {
+		var text = editor.value;
+		if (/^\s*$/.test(text)) {
+			showError('');
+			return null;
+		}
+		var skin;
+		try {
+			skin = JSON.parse(text);
+		} catch (e) {
+			var loc = locateJsonError(text);
+			showError(T.jsonError + (loc ? ' (' + T.line + ' ' + loc.line + ', ' + T.col + ' ' + loc.col + '): ' + loc.message
+				: ': ' + (e.message || e)));
+			return null;
+		}
+		if (!skin || typeof skin !== 'object' || skin instanceof Array) {
+			showError(T.notObject);
+			return null;
+		}
+		showError('');
+		return skin;
+	}
+
+	function refresh() {
+		state.missing = {};
+		var skin = parseEditor();
+		state.skinValid = !!skin;
+		if (skin) {
+			renderPreview(skin);
+		} else if (/^\s*$/.test(editor.value)) {
+			renderEmpty();
+		}
+		syncInspector(state.lastSkin);
+		refreshStatus();
+	}
+
+	function refreshStatus(extra) {
+		var parts = [];
+		for (var p in state.missing) {
+			if (state.missing.hasOwnProperty(p)) parts.push('<span class="err">' + escapeHtml(T.missingImage + p) + '</span>');
+		}
+		if (extra) parts.unshift(extra);
+		setStatus(parts.join(' &nbsp; '));
+	}
+
+	function scheduleRefresh() {
+		clearTimeout(state.renderTimer);
+		state.renderTimer = setTimeout(refresh, 250);
+		refreshStatus();
+	}
+
+	// ---------- 文件操作 ----------
+	function confirmDiscard() {
+		return !isDirty() || window.confirm(T.discard);
+	}
+
+	function loadText(path, text) {
+		state.path = path;
+		state.folder = path ? dirname(path) : (host ? host.getSkinFolder() : '');
+		state.selectedIndex = 0;
+		state.eol = text.indexOf('\r\n') >= 0 || text.indexOf('\n') < 0 ? '\r\n' : '\n';
+		editor.value = text;
+		// IE 的 textarea 会把换行统一成 CRLF，以 textarea 实际内容作为未修改基准
+		state.savedText = editor.value;
+		state.lastValue = editor.value;
+		state.undo = [];
+		state.redo = [];
+		state.undoGroup = null;
+		imageCache = {};
+		syncSkinList();
+        updateHighlight();
+		refresh();
+		// 图片路径相对皮肤目录，换文件后重建属性面板里的图片信息
+		buildInspector();
+		refreshStatus('<span class="ok">' + escapeHtml(T.loaded + basename(path)) + '</span>');
+	}
+
+	function loadPath(path) {
+		if (!host || !path) return;
+		var text = host.readTextFile(path);
+		if (text === null || text === undefined) {
+			refreshStatus('<span class="err">' + escapeHtml(T.readFail + path) + '</span>');
+			return;
+		}
+		loadText(path, String(text));
+	}
+
+	function writeTo(path) {
+		// 保持文件原本的换行风格
+		var text = editor.value.replace(/\r\n/g, '\n');
+		if (state.eol === '\r\n') text = text.replace(/\n/g, '\r\n');
+		if (host) {
+			if (!host.writeTextFile(path, text)) {
+				refreshStatus('<span class="err">' + escapeHtml(T.saveFail + path) + '</span>');
+				return false;
+			}
+		} else {
+			downloadText(basename(path) || 'skin.json', text);
+		}
+		state.path = path;
+		state.folder = dirname(path) || state.folder;
+		state.savedText = editor.value;
+		populateSkinList();
+		refreshStatus('<span class="ok">' + escapeHtml(T.saveOk + path) + '</span>');
+		return true;
+	}
+
+	function checkBeforeSave() {
+		return !!parseEditor() || window.confirm(T.invalidSave);
+	}
+
+	function save() {
+		if (!state.path) return saveAs();
+		if (!checkBeforeSave()) return false;
+		return writeTo(state.path);
+	}
+
+	function saveAs() {
+		if (!checkBeforeSave()) return false;
+		var path;
+		if (host) {
+			path = host.saveFileDialog(state.path || (host.getSkinFolder() + '\\skin_custom.json'));
+		} else {
+			path = window.prompt('File name', basename(state.path) || 'skin_custom.json');
+		}
+		return path ? writeTo(String(path)) : false;
+	}
+
+	function openDialog() {
+		if (!host) return;
+		var path = host.openFileDialog(state.path || (host.getSkinFolder() + '\\'));
+		if (path && confirmDiscard()) loadPath(String(path));
+	}
+
+	function downloadText(name, text) {
+		var blob = new Blob([text], {type: 'application/json'});
+		if (window.navigator.msSaveBlob) {
+			window.navigator.msSaveBlob(blob, name);
+			return;
+		}
+		var a = document.createElement('a');
+		a.href = URL.createObjectURL(blob);
+		a.download = name;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+	}
+
+	function populateSkinList() {
+		var select = $('skinList');
+		if (!host) {
+			select.style.display = 'none';
+			return;
+		}
+		var files = String(host.listSkinFiles() || '').split('\n');
+		var html = '<option value="">' + escapeHtml(T.chooseSkin) + '</option>';
+		for (var i = 0; i < files.length; i++) {
+			if (!files[i]) continue;
+			html += '<option value="' + escapeHtml(files[i]) + '">' + escapeHtml(basename(files[i])) + '</option>';
+		}
+		// IE 中不能直接给 select.innerHTML 赋值 option
+		var holder = document.createElement('div');
+		holder.innerHTML = '<select>' + html + '</select>';
+		var options = holder.firstChild.options;
+		select.options.length = 0;
+		while (options.length) select.appendChild(options[0]);
+		syncSkinList();
+	}
+
+	function syncSkinList() {
+		var select = $('skinList');
+		select.selectedIndex = 0;
+		for (var i = 0; i < select.options.length; i++) {
+			if (select.options[i].value.toLowerCase() === state.path.toLowerCase()) {
+				select.selectedIndex = i;
+				break;
+			}
+		}
+	}
+
+	// ---------- 三栏布局：分隔条拖动与折叠 ----------
+	var STRIP_WIDTH = 26, MIN_CENTER = 200, MIN_LEFT = 160, MIN_RIGHT = 220;
+
+	function paneWidths() {
+		var W = $('main').clientWidth;
+		var lw = layoutState.leftCollapsed ? STRIP_WIDTH : layoutState.left;
+		var rw = layoutState.rightCollapsed ? STRIP_WIDTH : layoutState.right;
+		// 窗口变窄时先压缩右栏再压缩左栏，保证中间预览区可用
+		var over = MIN_CENTER - (W - lw - rw);
+		if (over > 0 && !layoutState.rightCollapsed) {
+			rw = Math.max(MIN_RIGHT, rw - over);
+			over = MIN_CENTER - (W - lw - rw);
+		}
+		if (over > 0 && !layoutState.leftCollapsed) lw = Math.max(MIN_LEFT, lw - over);
+		return {W: W, lw: lw, rw: rw};
+	}
+
+	function layout() {
+		var p = paneWidths();
+		$('leftPane').style.width = p.lw + 'px';
+		$('rightPane').style.width = p.rw + 'px';
+		$('centerPane').style.left = p.lw + 'px';
+		$('centerPane').style.right = p.rw + 'px';
+		$('splitLeft').style.left = p.lw + 'px';
+		$('splitRight').style.left = (p.W - p.rw) + 'px';
+		$('splitLeft').style.display = layoutState.leftCollapsed ? 'none' : 'block';
+		$('splitRight').style.display = layoutState.rightCollapsed ? 'none' : 'block';
+		toggleClass($('leftPane'), 'collapsed', layoutState.leftCollapsed);
+		toggleClass($('rightPane'), 'collapsed', layoutState.rightCollapsed);
+	}
+
+	function saveLayout() {
+		storageSet('skinEditor.layout', JSON.stringify(layoutState));
+	}
+
+	function setCollapsed(side, collapsed) {
+		layoutState[side + 'Collapsed'] = collapsed;
+		layout();
+		saveLayout();
+	}
+
+	function bindSplitter(id, isLeft) {
+		var bar = $(id);
+		bar.onmousedown = function (e) {
+			e = e || window.event;
+			var mainLeft = $('main').getBoundingClientRect().left;
+			toggleClass(bar, 'active', true);
+			toggleClass(document.body, 'resizing', true);
+			captureMouse(function (ev) {
+				var p = paneWidths();
+				var x = ev.clientX - mainLeft;
+				if (isLeft) {
+					layoutState.left = Math.round(clamp(x, MIN_LEFT, Math.max(MIN_LEFT, p.W - p.rw - MIN_CENTER)));
+				} else {
+					layoutState.right = Math.round(clamp(p.W - x, MIN_RIGHT, Math.max(MIN_RIGHT, p.W - p.lw - MIN_CENTER)));
+				}
+				layout();
+			}, function () {
+				toggleClass(bar, 'active', false);
+				toggleClass(document.body, 'resizing', false);
+				saveLayout();
+			});
+			return prevent(e);
+		};
+	}
+
+	// ---------- 缩放：滑块按对数刻度映射到 10% ~ 800% ----------
+	function zoomToSlider(pct) { return Math.round(1000 * Math.log(pct / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN)); }
+
+	function sliderToZoom(v) { return ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v / 1000); }
+
+	// anchorX/anchorY 为预览区内保持不动的点（相对预览区左上角），默认是预览区中心
+	function setZoom(pct, anchorX, anchorY, fromSlider) {
+		pct = Math.round(clamp(pct, ZOOM_MIN, ZOOM_MAX));
+		var old = state.zoom, z = pct / 100;
+		if (anchorX === undefined) {
+			anchorX = previewPane.clientWidth / 2;
+			anchorY = previewPane.clientHeight / 2;
+		}
+		var cx = (previewPane.scrollLeft + anchorX - STAGE_PAD) / old;
+		var cy = (previewPane.scrollTop + anchorY - STAGE_PAD) / old;
+		state.zoom = z;
+		var zoomBox = $('zoomBox');
+		if (zoomBox) zoomBox.style.zoom = z;
+		if (!fromSlider) $('zoomRange').value = zoomToSlider(pct);
+		setText($('zoomValue'), pct + '%');
+		scaleOverlay();
+		previewPane.scrollLeft = Math.max(0, cx * z + STAGE_PAD - anchorX);
+		previewPane.scrollTop = Math.max(0, cy * z + STAGE_PAD - anchorY);
+		storageSet('skinEditor.zoom', String(pct));
+	}
+
+	function onZoomSlider() {
+		var pct = sliderToZoom(parseFloat($('zoomRange').value));
+		// 靠近 100% 时吸附
+		if (Math.abs(pct - 100) < 4) pct = 100;
+		setZoom(pct, undefined, undefined, true);
+	}
+
+	// ---------- 操作模式 ----------
+	function setMode(mode) {
+		state.mode = mode;
+		var buttons = $('modeSeg').getElementsByTagName('button');
+		for (var i = 0; i < buttons.length; i++) {
+			toggleClass(buttons[i], 'on', buttons[i].getAttribute('data-mode') === mode);
+		}
+		toggleClass(document.body, 'mode-interact', mode === 'interact');
+		toggleClass(document.body, 'mode-select', mode === 'select');
+		toggleClass(document.body, 'mode-drag', mode === 'drag');
+		setHover(null);
+		if (state.lastSkin) renderPreview(state.lastSkin);
+		updateHint();
+		storageSet('skinEditor.mode', mode);
+	}
+
+	function updateHint() {
+		setText($('statusHint'), T.modeHints[state.mode] + ' · ' + T.panHint);
+	}
+
+	// ---------- 预览区鼠标：平移、选择、拖放 ----------
+    function startPan(e) {
+        var startX = e.clientX, startY = e.clientY;
+        var sl = previewPane.scrollLeft, st = previewPane.scrollTop;
+        var targetSl = sl, targetSt = st;
+        var rafId = 0;
+
+        toggleClass(document.body, 'panning', true);
+        setHover(null);
+
+        function updateScroll() {
+            rafId = 0;
+            previewPane.scrollLeft = targetSl;
+            previewPane.scrollTop = targetSt;
+        }
+
+        captureMouse(function (ev) {
+            targetSl = sl - (ev.clientX - startX);
+            targetSt = st - (ev.clientY - startY);
+
+            // 使用 requestAnimationFrame 配合 IE11 降级处理，锁定到屏幕刷新率帧率，避免每次 mousemove 触发重排
+            if (!rafId) {
+                rafId = (window.requestAnimationFrame || function (cb) { return setTimeout(cb, 16); })(updateScroll);
+            }
+        }, function () {
+            if (rafId) {
+                (window.cancelAnimationFrame || clearTimeout)(rafId);
+                rafId = 0;
+            }
+            updateScroll(); // 确保松开时应用最后的位置
+            toggleClass(document.body, 'panning', false);
+        });
+    }
+
+	// ---------- 磁吸对齐 ----------
+	// 吸附阈值（屏幕像素），换算成皮肤坐标后与缩放无关
+	var SNAP_PX = 6;
+
+	// 节点相对 frameRect 的矩形，单位为皮肤像素；scale 为屏幕像素 / 皮肤像素
+	function rectIn(node, frameRect, scale) {
+		var r = node.getBoundingClientRect();
+		return {
+			l: Math.round((r.left - frameRect.left) / scale), t: Math.round((r.top - frameRect.top) / scale),
+			r: Math.round((r.right - frameRect.left) / scale), b: Math.round((r.bottom - frameRect.top) / scale)
+		};
+	}
+
+	function pushEdges(xs, ys, c) {
+		xs.push(c.l, (c.l + c.r) / 2, c.r);
+		ys.push(c.t, (c.t + c.b) / 2, c.b);
+	}
+
+	function ctlChildren(parent, exceptId) {
+		var list = [];
+		for (var i = 0; i < parent.children.length; i++) {
+			var c = parent.children[i];
+			var cid = c.getAttribute('data-ctl');
+			if (cid && cid !== exceptId) list.push(c);
+		}
+		return list;
+	}
+
+	// 拖动开始时收集参考线。坐标系为 frame（顶层控件是窗口，子控件是所在列表项，列表项是列表内容区）：
+	// self 为被拖控件的矩形，xs/ys 为候选线，mx/my 为被拖控件上参与吸附的边相对 self.l/self.t 的偏移
+	function buildSnapContext(id, resize) {
+		var skin = state.lastSkin;
+		var node = findCtlElement(id);
+		var win = stage.querySelector('.pv-win');
+		if (!skin || !node || !win) return null;
+		var winRect = win.getBoundingClientRect();
+		// 用窗口实际尺寸反推缩放，不依赖浏览器对 CSS zoom 下 getBoundingClientRect 的实现
+		var scale = winRect.width / Math.max(1, num(skin, 'window_width', 620));
+		if (!(scale > 0)) return null;
+		var frame = id === 'window' ? win : node.parentNode;
+		var fr = frame.getBoundingClientRect();
+		var box = {l: 0, t: 0, r: Math.round(fr.width / scale), b: Math.round(fr.height / scale)};
+		var self = id === 'window' ? box : rectIn(node, fr, scale);
+		var xs = [], ys = [], kids, c, i;
+
+		if (id === 'window') {
+			// 窗口大小：贴住内容，或让右/下边距与左/上边距相同
+			kids = ctlChildren(win, null);
+			var minL = Infinity, minT = Infinity, rects = [];
+			for (i = 0; i < kids.length; i++) {
+				c = rectIn(kids[i], fr, scale);
+				rects.push(c);
+				minL = Math.min(minL, c.l);
+				minT = Math.min(minT, c.t);
+			}
+			for (i = 0; i < rects.length; i++) {
+				c = rects[i];
+				xs.push(c.r, c.r + minL);
+				ys.push(c.b, c.b + minL, c.b + minT);
+			}
+		} else if (id === 'item' || id === 'itemSel') {
+			// 列表项大小：宽度贴列表内容区或列表外框，高度为列表高度的整数分之一或刚好包住图标/文字
+			var listNode = $('pvScroller') ? $('pvScroller').parentNode : null;
+			xs.push(box.r);
+			if (listNode) xs.push(rectIn(listNode, fr, scale).r);
+			var listH = num(skin, 'listview_height', 380);
+			for (i = 1; i <= 12; i++) ys.push(self.t + Math.round(listH / i));
+			kids = ctlChildren(node, null);
+			for (i = 0; i < kids.length; i++) {
+				c = rectIn(kids[i], fr, scale);
+				ys.push(c.b);
+				if (hasClass(kids[i], 'pv-icon')) {
+					xs.push(c.r + (c.l - self.l));
+					ys.push(c.b + (c.t - self.t));
+				}
+			}
+		} else if (CONTROLS[id].parent) {
+			// 列表项内的图标/文字：对齐列表项边缘与中线、同一项内的其他部件，以及另一种状态下的同名部件
+			pushEdges(xs, ys, box);
+			kids = ctlChildren(frame, id);
+			for (i = 0; i < kids.length; i++) pushEdges(xs, ys, rectIn(kids[i], fr, scale));
+			var otherId = id.indexOf('itemSel') === 0 ? 'item' + id.slice(7) : 'itemSel' + id.slice(4);
+			var keys = CONTROLS[otherId] && CONTROLS[otherId].pos;
+			if (keys) {
+				xs.push(currentNumber(keys[0]));
+				ys.push(currentNumber(keys[1]));
+			}
+		} else {
+			// 编辑框/列表：对齐窗口边缘与中线、其他顶层控件；调整大小时还可让两侧边距相等
+			pushEdges(xs, ys, box);
+			kids = ctlChildren(win, id);
+			for (i = 0; i < kids.length; i++) pushEdges(xs, ys, rectIn(kids[i], fr, scale));
+			if (resize) {
+				xs.push(box.r - self.l);
+				ys.push(box.b - self.l, box.b - self.t);
+			}
+		}
+
+		var w = self.r - self.l, h = self.b - self.t;
+		var mx, my;
+		if (resize) {
+			mx = [w];
+			my = [h];
+		} else {
+			// 文字框宽度一直延伸到列表项右边，只有左边有意义
+			mx = hasClass(node, 'pv-text') ? [0] : [0, w / 2, w];
+			my = [0, h / 2, h];
+		}
+		return {
+			self: self, xs: xs, ys: ys, mx: mx, my: my,
+			// 参考线画在 zoomBox 中，需要 frame 相对窗口的偏移
+			ox: (fr.left - winRect.left) / scale, oy: (fr.top - winRect.top) / scale,
+			fw: Math.max(box.r, self.r), fh: Math.max(box.b, self.b),
+			gx: null, gy: null
+		};
+	}
+
+	// 在一个方向上找最近的候选线，返回需要补偿的位移和命中的线
+	function snapAxis(offsets, cands, base, thr) {
+		var best = null;
+		for (var i = 0; i < offsets.length; i++) {
+			for (var j = 0; j < cands.length; j++) {
+				var d = cands[j] - (base + offsets[i]);
+				if (Math.abs(d) <= thr && (!best || Math.abs(d) < Math.abs(best.d))) best = {d: d, at: cands[j]};
+			}
+		}
+		return best;
+	}
+
+	function showGuides(ctx, gx, gy) {
+		if (gx === ctx.gx && gy === ctx.gy) return;
+		ctx.gx = gx;
+		ctx.gy = gy;
+		removeByClass('pv-guide');
+		var zoomBox = $('zoomBox');
+		if (!zoomBox) return;
+		var t = 1 / state.zoom;
+		if (gx !== null) place(el('div', 'pv-guide', zoomBox), ctx.ox + gx, ctx.oy, t, ctx.fh);
+		if (gy !== null) place(el('div', 'pv-guide', zoomBox), ctx.ox, ctx.oy + gy, ctx.fw, t);
+	}
+
+    function startControlDrag(id, resize, e) {
+        var def = CONTROLS[id];
+        var keys = resize ? def.size : def.pos;
+        if (!keys || !state.lastSkin) return;
+
+        var startX = e.clientX;
+        var startY = e.clientY;
+        var start0 = currentNumber(keys[0]);
+        var start1 = currentNumber(keys[1]);
+
+        var nodes = stage.querySelectorAll(
+            '[data-ctl="' + id + '"]'
+        );
+
+        var targets = [];
+        var i;
+
+        for (i = 0; i < nodes.length; i++) {
+            targets.push(nodes[i]);
+        }
+
+        var moved = false;
+        var frame = 0;
+        var dx = 0;
+        var dy = 0;
+        var v0 = start0;
+        var v1 = start1;
+
+        var snap = buildSnapContext(id, resize);
+
+        var raf = window.requestAnimationFrame ||
+            function (cb) { return setTimeout(cb, 16); };
+
+        var caf = window.cancelAnimationFrame ||
+            clearTimeout;
+
+        // Prevent hover overlays from being rebuilt.
+        state.draggingControl = true;
+        removeByClass('pv-hov');
+        state.hoverEl = null;
+
+        function renderFrame() {
+            frame = 0;
+
+            if (resize) {
+                for (var j = 0; j < targets.length; j++) {
+                    targets[j].style.width = v0 + 'px';
+                    targets[j].style.height = v1 + 'px';
+                }
+            } else {
+                // GPU-composited translation.
+                // No left/top changes during dragging.
+                var transform = 'translate3d(' +
+                    dx + 'px,' + dy + 'px,0)';
+
+                for (var k = 0; k < targets.length; k++) {
+                    targets[k].style.msTransform = transform;
+                    targets[k].style.transform = transform;
+                }
+            }
+        }
+
+        captureMouse(function (ev) {
+            var mx = ev.clientX - startX;
+            var my = ev.clientY - startY;
+
+            if (!moved) {
+                if (Math.abs(mx) < 3 &&
+                    Math.abs(my) < 3) {
+                    return;
+                }
+
+                moved = true;
+                pushUndo(null);
+            }
+
+            dx = Math.round(mx / state.zoom);
+            dy = Math.round(my / state.zoom);
+
+            var lockX = false, lockY = false;
+            if (ev.shiftKey) {
+                if (Math.abs(dx) >= Math.abs(dy)) {
+                    dy = 0;
+                    lockY = true;
+                } else {
+                    dx = 0;
+                    lockX = true;
+                }
+            }
+
+            // 磁吸：按住 Ctrl 临时关闭
+            if (snap) {
+                var gx = null, gy = null;
+                if ($('snap').checked && !ev.ctrlKey) {
+                    var thr = SNAP_PX / state.zoom;
+                    var sx = lockX ? null : snapAxis(snap.mx, snap.xs, snap.self.l + dx, thr);
+                    var sy = lockY ? null : snapAxis(snap.my, snap.ys, snap.self.t + dy, thr);
+                    if (sx) {
+                        dx = Math.round(dx + sx.d);
+                        gx = sx.at;
+                    }
+                    if (sy) {
+                        dy = Math.round(dy + sy.d);
+                        gy = sy.at;
+                    }
+                }
+                showGuides(snap, gx, gy);
+            }
+
+            v0 = start0 + dx;
+            v1 = start1 + dy;
+
+            if (resize) {
+                v0 = Math.max(1, v0);
+                v1 = Math.max(1, v1);
+            }
+
+            if (!frame) {
+                frame = raf(renderFrame);
+            }
+        }, function () {
+            if (frame) {
+                caf(frame);
+                frame = 0;
+            }
+
+            state.draggingControl = false;
+            removeByClass('pv-guide');
+
+            if (!moved) return;
+
+            // Commit once. Full refresh restores actual geometry.
+            applyEdit(
+                pair(keys[0], v0, keys[1], v1),
+                false
+            );
+        });
+    }
+
+    function onPreviewMouseDown(e) {
+		e = e || window.event;
+		if (state.spaceDown || e.button === 1) {
+			startPan(e);
+			return prevent(e);
+		}
+		if (state.mode === 'interact' || e.button !== 0) return;
+		var target = e.target || e.srcElement;
+		// 点在滚动条上时交给浏览器
+		if (target === previewPane && (e.offsetX >= previewPane.clientWidth || e.offsetY >= previewPane.clientHeight)) return;
+		if (target.id === 'pvScroller' && target.getBoundingClientRect().right - e.clientX < 18 * state.zoom) return;
+
+		var active = document.activeElement;
+		if (active && active !== document.body && isTypingTarget(active) && active.blur) active.blur();
+		var node = findCtlNode(target);
+		if (!node) {
+			selectControl(null);
+			return prevent(e);
+		}
+		var id = node.getAttribute('data-ctl');
+		var index = node.getAttribute('data-index');
+		selectControl(id, index === null ? -1 : parseInt(index, 10));
+		if (state.mode === 'drag') startControlDrag(id, hasClass(target, 'pv-handle'), e);
+		return prevent(e);
+	}
+
+	function onPreviewMouseOver(e) {
+        if (state.draggingControl) return;
+		e = e || window.event;
+		if (state.mode === 'interact' || hasClass(document.body, 'panning')) return;
+		setHover(findCtlNode(e.target || e.srcElement));
+	}
+
+	function onPreviewWheel(e) {
+		if (!e.ctrlKey) return;
+		var rect = previewPane.getBoundingClientRect();
+		var delta = e.deltaY !== undefined ? -e.deltaY : e.wheelDelta;
+		var factor = delta > 0 ? 1.15 : 1 / 1.15;
+		setZoom(state.zoom * 100 * factor, e.clientX - rect.left, e.clientY - rect.top);
+		return prevent(e);
+	}
+
+	function nudge(dx, dy) {
+		var def = state.sel ? CONTROLS[state.sel] : null;
+		if (!def || !def.pos || !state.lastSkin) return false;
+		var k = def.pos;
+		applyEdit(pair(k[0], currentNumber(k[0]) + dx, k[1], currentNumber(k[1]) + dy), 'nudge');
+		return true;
+	}
+
+	// ---------- 宿主回调（C++ 通过 IHTMLDocument2::get_Script 调用） ----------
+	window.onHostDragState = function (active) {
+		toggleClass(document.body, 'dragging', active === '1');
+	};
+
+	window.onHostFileDrop = function (path) {
+		toggleClass(document.body, 'dragging', false);
+		if (!/\.json$/i.test(path)) {
+			refreshStatus('<span class="err">' + escapeHtml(T.onlyJson + path) + '</span>');
+			return;
+		}
+		if (confirmDiscard()) loadPath(path);
+	};
+
+	// 关闭窗口前由宿主调用，返回 false 取消关闭
+	window.hostQueryClose = function () {
+		return confirmDiscard();
+	};
+
+	// ---------- 浏览器中直接打开时的拖放（无宿主，仅用于调试页面） ----------
+	if (!host) {
+		document.ondragover = function (e) {
+			e.preventDefault();
+			toggleClass(document.body, 'dragging', true);
+		};
+		document.ondragleave = function (e) {
+			if (e.target === $('dropOverlay')) toggleClass(document.body, 'dragging', false);
+		};
+		document.ondrop = function (e) {
+			e.preventDefault();
+			toggleClass(document.body, 'dragging', false);
+			var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+			if (!file || !confirmDiscard()) return;
+			var reader = new FileReader();
+			reader.onload = function () { loadText(file.name, String(reader.result)); };
+			reader.readAsText(file);
+		};
+	}
+
+	// ---------- 事件绑定 ----------
+	function initTexts() {
+		$('btnOpen').innerHTML = escapeHtml(T.open);
+		$('btnSave').innerHTML = escapeHtml(T.save) + ' <small>Ctrl+S</small>';
+		$('btnSaveAs').innerHTML = escapeHtml(T.saveAs);
+		$('btnFormat').innerHTML = escapeHtml(T.format);
+		$('btnReload').innerHTML = escapeHtml(T.reload);
+		$('lblZoom').innerHTML = escapeHtml(T.zoom);
+		$('zoomValue').title = T.zoomReset;
+		$('lblOutline').innerHTML = escapeHtml(T.outline);
+		$('lblSnap').innerHTML = escapeHtml(T.snap);
+		$('snapLabel').title = T.snapTip;
+		$('dropText').innerHTML = escapeHtml(T.drop);
+		setText($('lblJson'), T.json);
+		setText($('lblProps'), T.props);
+		setText($('stripLeftLabel'), T.json);
+		setText($('stripRightLabel'), T.props);
+		$('foldLeft').title = $('foldRight').title = T.fold;
+		$('stripLeft').title = $('stripRight').title = T.unfold;
+		var buttons = $('modeSeg').getElementsByTagName('button');
+		for (var i = 0; i < buttons.length; i++) {
+			var mode = buttons[i].getAttribute('data-mode');
+			setText(buttons[i], T.modes[mode]);
+			buttons[i].title = T.modeTips[mode];
+		}
+		document.title = lang === 'zh' ? '皮肤编辑器' : 'Skin Editor';
+		if (!host) $('btnOpen').style.display = 'none';
+	}
+
+	function insertTab() {
+		var start = editor.selectionStart, end = editor.selectionEnd;
+		var v = editor.value;
+		editor.value = v.substring(0, start) + '\t' + v.substring(end);
+		editor.selectionStart = editor.selectionEnd = start + 1;
+		updateHighlight();
+		scheduleRefresh();
+	}
+
+	function onDocumentKeyDown(e) {
+		e = e || window.event;
+		var typing = isTypingTarget(document.activeElement);
+		if (e.ctrlKey) {
+			if (e.keyCode === 83) {
+				if (e.shiftKey) saveAs(); else save();
+				return prevent(e);
+			}
+			if (e.keyCode === 79) {
+				openDialog();
+				return prevent(e);
+			}
+			// 文本框里的 Ctrl+Z 交给文本框自己处理
+			if (!typing && (e.keyCode === 90 || e.keyCode === 89)) {
+				undoRedo(e.keyCode === 89 || e.shiftKey);
+				return prevent(e);
+			}
+			return;
+		}
+		if (typing || e.altKey) return;
+		if (e.keyCode === 32) {
+			var active = document.activeElement;
+			if (active && active.tagName && active.tagName.toUpperCase() === 'BUTTON') active.blur();
+			if (!state.spaceDown) {
+				state.spaceDown = true;
+				toggleClass(document.body, 'pan-ready', true);
+				setHover(null);
+			}
+			return prevent(e);
+		}
+		if (e.keyCode >= 49 && e.keyCode <= 51) {
+			setMode(['interact', 'select', 'drag'][e.keyCode - 49]);
+			return prevent(e);
+		}
+		if (e.keyCode === 27 && state.sel) {
+			selectControl(null);
+			return prevent(e);
+		}
+		if (e.keyCode >= 37 && e.keyCode <= 40 && state.mode !== 'interact') {
+			var step = e.shiftKey ? 10 : 1;
+			var d = {37: [-step, 0], 38: [0, -step], 39: [step, 0], 40: [0, step]}[e.keyCode];
+			if (nudge(d[0], d[1])) return prevent(e);
+		}
+	}
+
+	function endSpacePan() {
+		state.spaceDown = false;
+		toggleClass(document.body, 'pan-ready', false);
+	}
+
+	function bind() {
+		var dynStyle = document.createElement('style');
+		dynStyle.id = 'dynStyle';
+		document.getElementsByTagName('head')[0].appendChild(dynStyle);
+
+		// 文本变化：同步重绘高亮（textarea 文字透明，高亮层必须与输入同帧更新），预览延迟刷新
+		function onEditorChange() {
+			updateHighlight();
+			if (editor.value !== state.lastValue) {
+				state.lastValue = editor.value;
+				scheduleRefresh();
+			}
+		}
+		// 粘贴/剪切/拖放时值在事件之后才改变
+		function onEditorChangeLater() { setTimeout(onEditorChange, 0); }
+		editor.oninput = onEditorChange;
+		// IE 的 oninput 对删除、右键菜单编辑等操作不总是触发，以下事件兜底
+		editor.onkeyup = onEditorChange;
+		editor.onmouseup = onEditorChange;
+		editor.onpaste = onEditorChangeLater;
+		editor.oncut = onEditorChangeLater;
+		editor.ondrop = onEditorChangeLater;
+		editor.onscroll = syncScroll;
+		editor.onkeydown = function (e) {
+			e = e || window.event;
+			if (e.keyCode === 9 && !e.ctrlKey && !e.altKey) {
+				insertTab();
+				return prevent(e);
+			}
+		};
+		document.onkeydown = onDocumentKeyDown;
+		document.onkeyup = function (e) {
+			e = e || window.event;
+			if (e.keyCode === 32) endSpacePan();
+		};
+		window.onblur = endSpacePan;
+
+		$('btnOpen').onclick = openDialog;
+		$('btnSave').onclick = save;
+		$('btnSaveAs').onclick = saveAs;
+		$('btnFormat').onclick = function () {
+			var skin = parseEditor();
+			if (!skin) return;
+			pushUndo(null);
+			setEditorText(JSON.stringify(skin, null, '\t'));
+		};
+		$('btnReload').onclick = function () {
+			imageCache = {};
+			if (host && state.path && confirmDiscard()) {
+				loadPath(state.path);
+			} else {
+				refresh();
+				buildInspector();
+			}
+		};
+		$('skinList').onchange = function () {
+			var path = this.value;
+			if (!path) return;
+			if (confirmDiscard()) {
+				loadPath(path);
+			} else {
+				syncSkinList();
+			}
+		};
+		$('outline').onclick = function () { if (state.lastSkin) renderPreview(state.lastSkin); };
+		$('snap').onclick = function () { storageSet('skinEditor.snap', $('snap').checked ? '1' : '0'); };
+
+		var modeButtons = $('modeSeg').getElementsByTagName('button');
+		for (var i = 0; i < modeButtons.length; i++) {
+			modeButtons[i].onclick = function () {
+				setMode(this.getAttribute('data-mode'));
+				this.blur();
+			};
+		}
+
+		// IE11 拖动滑块时只触发 change，其他浏览器触发 input
+		$('zoomRange').onchange = $('zoomRange').oninput = onZoomSlider;
+		$('zoomValue').onclick = function () { setZoom(100); };
+
+		previewPane.onmousedown = onPreviewMouseDown;
+		previewPane.onmouseover = onPreviewMouseOver;
+		previewPane.onmouseleave = function () { setHover(null); };
+		previewPane.addEventListener('wheel', onPreviewWheel, false);
+
+		bindSplitter('splitLeft', true);
+		bindSplitter('splitRight', false);
+		$('foldLeft').onclick = function () { setCollapsed('left', true); };
+		$('foldRight').onclick = function () { setCollapsed('right', true); };
+		$('stripLeft').onclick = function () { setCollapsed('left', false); };
+		$('stripRight').onclick = function () { setCollapsed('right', false); };
+		window.onresize = layout;
+	}
+
+	function restorePreferences() {
+		try {
+			var saved = JSON.parse(storageGet('skinEditor.layout') || 'null');
+			if (saved) {
+				for (var k in layoutState) {
+					if (layoutState.hasOwnProperty(k) && typeof saved[k] === typeof layoutState[k]) layoutState[k] = saved[k];
+				}
+			}
+		} catch (e) {
+		}
+		var zoom = parseFloat(storageGet('skinEditor.zoom'));
+		state.zoom = isFinite(zoom) ? clamp(zoom, ZOOM_MIN, ZOOM_MAX) / 100 : 1;
+		$('zoomRange').value = zoomToSlider(state.zoom * 100);
+		setText($('zoomValue'), Math.round(state.zoom * 100) + '%');
+		$('snap').checked = storageGet('skinEditor.snap') !== '0';
+		var mode = storageGet('skinEditor.mode');
+		setMode(mode === 'select' || mode === 'drag' ? mode : 'interact');
+	}
+
+	initTexts();
+	bind();
+	restorePreferences();
+	layout();
+	buildInspector();
+	populateSkinList();
+	if (host) {
+		var current = host.getCurrentSkinPath();
+		if (current) loadPath(String(current));
+	}
+	if (!state.lastSkin && /^\s*$/.test(editor.value)) {
+		renderEmpty();
+		refreshStatus();
+	}
+})();
+</script>
+</body>
+</html>

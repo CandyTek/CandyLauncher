@@ -27,6 +27,7 @@
 // (IDI_SMALL+9)，不能使用IDI_SMALL+n，这种方法；以及数字不能被括号包裹，不然就不能正确引用图标
 
 #define IDR_SETTINGS_JSON 131
+#define IDR_SKIN_EDITOR_HTML 132
 #define IDC_MYICON				2
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1
