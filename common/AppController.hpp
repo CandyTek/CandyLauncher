@@ -305,16 +305,26 @@ inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
 												ps.rcPaint.bottom - ps.rcPaint.top));
 			clearGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
 		}
+		bool rendered = false;
 		if (g_BgCachedBitmap) {
 			Gdiplus::Graphics graphics(hdc);
 			// 直接将烘焙好的硬件级位图推送到目标 DC，速度与 BitBlt 相当
-			graphics.DrawCachedBitmap(g_BgCachedBitmap, 0, 0);
-		} else if (g_BgScaledBitmap) {
+			if (graphics.DrawCachedBitmap(g_BgCachedBitmap, 0, 0) == Gdiplus::Ok) {
+				rendered = true;
+			} else {
+				// 设备不兼容导致失败，释放并置空，交由下层兜底并等待重建
+				Loge("graphics","g_BgCachedBitmap paint fail");
+			}
+		}
+		if (!rendered && g_BgScaledBitmap) {
 			Gdiplus::Graphics graphics(hdc);
 			graphics.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
-			graphics.DrawImage(g_BgScaledBitmap, 0, 0, ps.rcPaint.right - ps.rcPaint.left,
-												ps.rcPaint.bottom - ps.rcPaint.top);
-		} else {
+			graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeNone);
+			graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+			if (graphics.DrawImage(g_BgScaledBitmap, 0, 0)== Gdiplus::Ok) {
+				rendered = true;
+			}
+		} else if (!rendered) {
 			std::string bgColorStr = g_skinJson.value("window_bg_color", "#FFFFFF");
 			if (bgColorStr.empty()) {
 				EndPaint(g_mainHwnd, &ps);

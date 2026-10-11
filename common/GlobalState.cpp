@@ -65,7 +65,7 @@ int64_t pref_fuzzy_match_score_threshold = 60;
 
 // 皮肤
 nlohmann::json g_skinJson = nullptr;
-Gdiplus::Image* g_BgImage = nullptr;
+// Gdiplus::Image* g_BgImage = nullptr;
 Gdiplus::Image* g_editBgImage = nullptr;
 Gdiplus::Image* g_listViewBgImage = nullptr;
 Gdiplus::Image* g_listItemBgImage = nullptr;

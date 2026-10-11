@@ -34,8 +34,6 @@ static void clearBackgroundCachedBitmaps() {
 	g_listViewBgCachedBitmap = nullptr;
 	delete g_BgScaledBitmap;
 	g_BgScaledBitmap = nullptr;
-	delete g_BgImage;
-	g_BgImage = nullptr;
 }
 
 static Gdiplus::CachedBitmap* createBackgroundCachedBitmap(Gdiplus::Image* image, HWND hwnd,
@@ -151,7 +149,7 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 // keep the existing child edit/list controls usable while making empty pixels
 // outside a character illustration transparent and click-through.
 static void updateSkinWindowRegion() {
-	if (!g_skinJson.value("window_shape_from_bg_alpha", false) || !g_BgImage) {
+	if (!g_skinJson.value("window_shape_from_bg_alpha", false) || !g_BgScaledBitmap) {
 		SetWindowRgn(g_mainHwnd, nullptr, TRUE);
 		return;
 	}
@@ -164,7 +162,7 @@ static void updateSkinWindowRegion() {
 	Gdiplus::Graphics graphics(&mask);
 	graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
 	graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-	graphics.DrawImage(g_BgImage, Gdiplus::Rect(0, 0, width, height));
+	// graphics.DrawImage(g_BgImage, Gdiplus::Rect(0, 0, width, height));
 
 	Gdiplus::BitmapData bitmapData{};
 	Gdiplus::Rect bounds(0, 0, width, height);
@@ -324,6 +322,8 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	clearBackgroundCachedBitmaps();
 
 	// 处理背景图片
+	
+	Gdiplus::Image* g_BgImage = nullptr;
 	getSkinPictureFile(g_BgImage, "window_bg_picture", MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	//RenderNinePatchToSize
 	getSkinPictureFile(g_editBgImage, "editbox_bg_picture", editWidth, editHeight);
@@ -354,18 +354,21 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	g_BgCachedBitmap = createBackgroundCachedBitmap(g_BgImage, g_mainHwnd,
 													 MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	g_BgScaledBitmap = createScaledBackgroundBitmap(g_BgImage, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
+	delete g_BgImage;
+	g_BgImage = nullptr;
+
 	g_editBgCachedBitmap = createBackgroundCachedBitmap(g_editBgImage, g_editHwnd,
 													  editWidth, editHeight);
 	g_listViewBgCachedBitmap = createBackgroundCachedBitmap(g_listViewBgImage, g_listViewHwnd,
 														g_listViewWidth, g_listViewHeight);
-	
+
 	g_listViewHideScrollbar = g_skinJson.value("listview_hide_scrollbar", false);
 	// 这里是调节列表item宽度重要的地方，调好了横向滚动条就不存在
 	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
 	ListView_SetColumnWidth(g_listViewHwnd, 0, g_listViewWidth - thumbWidth - 0);
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
 	UpdateListViewScrollbarStyle();
-	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	// InvalidateRect(g_listViewHwnd, nullptr, TRUE);
 
 	// 更新列表视图颜色
 	// COLORREF listBgColor = HexToCOLORREF(g_skinJson.value("listview_bg_color", "#FFFFFF"));

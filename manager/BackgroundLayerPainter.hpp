@@ -5,8 +5,6 @@
 #include "../common/GlobalState.hpp"
 #include "../util/ColorUtil.hpp"
 
-// 已缩放到主窗口大小的背景图，子控件重绘时从这里按位置裁剪出自己下方的那一块
-inline Gdiplus::Bitmap* g_BgScaledBitmap = nullptr;
 
 static Gdiplus::Bitmap* createScaledBackgroundBitmap(Gdiplus::Image* image, const int width, const int height) {
 	if (!image || width <= 0 || height <= 0) return nullptr;
@@ -44,11 +42,6 @@ static void paintMainWindowBackgroundUnderChild(HWND child, Gdiplus::Graphics& g
 			graphics.DrawImage(g_BgScaledBitmap, rect, rc.left + offset.x, rc.top + offset.y,
 								rect.Width, rect.Height, Gdiplus::UnitPixel);
 			graphics.SetInterpolationMode(oldMode);
-		} else if (!g_BgImage) {
-			if (!g_windowBgColor.empty()) {
-				const Gdiplus::SolidBrush bgBrush(HexToGdiplusColor(g_windowBgColor));
-				graphics.FillRectangle(&bgBrush, rect);
-			}
 		}
 	}
 	graphics.SetClip(&oldClip);

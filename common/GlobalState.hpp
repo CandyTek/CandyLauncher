@@ -98,7 +98,6 @@ const int COLOR_UI_BG_GLASS = (0x22 << 24) | (0x00 << 16) | (0x00 << 8) | 0x00;
 
 // 皮肤
 extern nlohmann::json g_skinJson;
-extern Gdiplus::Image* g_BgImage;
 extern Gdiplus::Image* g_editBgImage;
 extern Gdiplus::Image* g_listViewBgImage;
 extern Gdiplus::Image* g_listItemBgImage;
@@ -109,6 +108,8 @@ extern Gdiplus::Color g_listItemBgColorSelected;
 inline Gdiplus::CachedBitmap* g_BgCachedBitmap = nullptr; // 新增背景缓存
 inline Gdiplus::CachedBitmap* g_editBgCachedBitmap = nullptr;
 inline Gdiplus::CachedBitmap* g_listViewBgCachedBitmap = nullptr;
+// 已缩放到主窗口大小的背景图，子控件重绘时从这里按位置裁剪出自己下方的那一块
+inline Gdiplus::Bitmap* g_BgScaledBitmap = nullptr;
 
 // extern Gdiplus::Color g_listItemBgColor;
 // extern Gdiplus::Color g_listItemBgColorSelected;
