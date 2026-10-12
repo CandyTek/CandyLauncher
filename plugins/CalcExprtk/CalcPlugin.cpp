@@ -1,5 +1,4 @@
-﻿#include "../Plugin.hpp"
-#include <windows.h>
+﻿#include <windows.h>
 #include <memory>
 
 #include "CalcEngine.hpp"
@@ -16,8 +15,6 @@
 
 #include "util/BitmapUtil.hpp"
 
-
-inline std::vector<std::shared_ptr<BaseAction>> allPluginActions;
 
 inline std::wstring startStr = L"=";
 inline bool isDetectReplace = true;
@@ -94,33 +91,48 @@ enum CalcHelpSection : int8_t {
 
 struct AngleUnitInfo {
 	calc::AngleUnit unit;
-	const char* settingValue;
+	const wchar_t* settingValue;
 	const wchar_t* name;
 };
 
 // 与设置项 com.candytek.calc.trigonometric.units 的 entryValues 顺序一致，回车按此顺序循环切换
 inline const AngleUnitInfo angleUnitInfos[] = {
-	{calc::AngleUnit::Radian, "radian", L"弧度"},
-	{calc::AngleUnit::Degree, "degree", L"度"},
-	{calc::AngleUnit::Gradian, "gradian", L"百分度"},
+	{calc::AngleUnit::Radian, L"radian", L"弧度"},
+	{calc::AngleUnit::Degree, L"degree", L"度"},
+	{calc::AngleUnit::Gradian, L"gradian", L"百分度"},
 };
 
-inline constexpr char kAngleUnitSettingKey[] = "com.candytek.calc.trigonometric.units";
+inline constexpr wchar_t kAngleUnitSettingKey[] = L"com.candytek.calc.trigonometric.units";
+inline constexpr wchar_t kStartStrSettingKey[] = L"com.candytek.calc.start_str";
 
 struct CalcHistoryItem {
 	std::wstring expr;
 	std::wstring result;
 };
 
-class CalcPlugin : public IPlugin {
+class CalcPlugin : public candy::Plugin {
 private:
 	static constexpr size_t kMaxHistory = 200;
+	using ActionList = std::vector<std::shared_ptr<CalcAction>>;
+
+	// 0 号集合：全局搜索里的 “计算器” 入口，只在设置了激活命令时参与全局搜索
+	candy::ActionSet<CalcAction> entryActions{0};
+	// 1 号：每次按键生成的计算结果 / 帮助列表，不进入任何集合
+	candy::TransientSet<CalcAction> results{1};
+	// 2 号：回车展开分组、清除历史、切换单位后直接显示的列表（不参与全局搜索）
+	candy::ActionSet<CalcAction> shownActions{2, 0u};
 
 	calc::CalcEngine engine;
 	int iconIndex = -1;
 	bool expandedSections[kSectionCount] = {};
 	// 本次启动以来的计算历史，最新的在前
 	std::vector<CalcHistoryItem> history;
+
+	std::shared_ptr<CalcAction> FindAction(const uint64_t userData) const {
+		if (auto action = results.Find(userData)) return action;
+		if (auto action = shownActions.Find(userData)) return action;
+		return entryActions.Find(userData);
+	}
 
 	void AddHistory(const std::wstring& expr, const std::wstring& result) {
 		if (!isShowHistory || expr.find_first_not_of(L" \t") == std::wstring::npos) return;
@@ -144,7 +156,7 @@ private:
 	}
 
 	// 整数显示进制，小数显示分数，大数显示千分位、科学计数法
-	void AppendExtraFormats(std::vector<std::shared_ptr<BaseAction>>& list, const double v) const {
+	void AppendExtraFormats(ActionList& list, const double v) const {
 		if (!isShowExtraFormats || !std::isfinite(v)) return;
 		const double absV = std::fabs(v);
 
@@ -171,10 +183,9 @@ private:
 		}
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> BuildResultActions(const calc::CalcEngine::Result& r,
-																const std::wstring& expr) const {
+	ActionList BuildResultActions(const calc::CalcEngine::Result& r, const std::wstring& expr) const {
 		using Kind = calc::CalcEngine::Result::Kind;
-		std::vector<std::shared_ptr<BaseAction>> list;
+		ActionList list;
 		switch (r.kind) {
 		case Kind::Value:
 			list.push_back(MakeCopyAction(calc::FormatNumber(r.value), L"计算结果 · 回车复制", calc::FormatPlain(r.value), r.value));
@@ -205,8 +216,7 @@ private:
 		if (isShowAngleUnitAction && r.kind != Kind::Error && calc::CalcEngine::UsesAngleFunction(expr)) {
 			list.push_back(MakeAngleUnitAction());
 		}
-		for (const auto& item : list) {
-			const auto action = std::static_pointer_cast<CalcAction>(item);
+		for (const auto& action : list) {
 			if (action->kind == CalcAction::Kind::Copy) action->source = expr;
 		}
 		return list;
@@ -232,7 +242,7 @@ private:
 	void SwitchToNextAngleUnit() {
 		const AngleUnitInfo& next = angleUnitInfos[(CurrentAngleUnitIndex() + 1) % std::size(angleUnitInfos)];
 		engine.SetAngleUnit(next.unit);
-		if (!m_host->SetPluginSettingValue(m_pluginId, kAngleUnitSettingKey, next.settingValue)) {
+		if (!GetHost().SetSettingJson(kAngleUnitSettingKey, L"\"" + std::wstring(next.settingValue) + L"\"")) {
 			Loge(L"CalcPlugin", L"save angle unit setting failed");
 		}
 	}
@@ -248,8 +258,8 @@ private:
 	}
 
 	// 只输入前缀时展示：函数用法、计算示例、当前变量三个可展开分组 + 本次启动以来的计算历史
-	std::vector<std::shared_ptr<BaseAction>> BuildHelpActions() const {
-		std::vector<std::shared_ptr<BaseAction>> list;
+	ActionList BuildHelpActions() const {
+		ActionList list;
 
 		if (isShowFunctionsSection) {
 			list.push_back(MakeSectionAction(kSectionFunctions, L"函数用法",
@@ -299,7 +309,7 @@ private:
 		return list;
 	}
 
-	void AppendVariableActions(std::vector<std::shared_ptr<BaseAction>>& list) const {
+	void AppendVariableActions(ActionList& list) const {
 		const size_t symbolStart = list.size();
 		for (const auto& [name, value] : engine.GetVariables()) {
 			auto action = MakeAction(utf8_to_wide(name) + L" = " + calc::FormatNumber(value), L"变量 · 回车插入", CalcAction::Kind::Fill);
@@ -344,166 +354,8 @@ private:
 		}
 	}
 
-public:
-	CalcPlugin() = default;
-	~CalcPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"计算器";
-	}
-
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.calc";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.1.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"科学计算器，支持变量、自定义函数、求导积分、方程求根、进制转换等";
-	}
-
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.calc.start_str",
-			"title": "直接激活命令（留空则自动识别输入的算式）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "="
-		},
-		{
-			"key": "com.candytek.calc.autoreplace",
-			"title": "如果查询以 “=” 结尾，则替换输入",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.show_formats",
-			"title": "显示其他格式的结果（进制、分数、千分位、科学计数法）",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.show_functions_section",
-			"title": "只输入前缀时显示 “函数用法” 分组",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.show_examples_section",
-			"title": "只输入前缀时显示 “计算示例” 分组",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.show_variables_section",
-			"title": "只输入前缀时显示 “当前变量” 分组",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.show_angle_unit_action",
-			"title": "显示切换三角学单位的选项",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.show_history",
-			"title": "记录并显示计算历史",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.calc.trigonometric.units",
-			"title": "三角学单位",
-			"type": "list",
-			"subPage": "plugin",
-			"entries": [
-				"弧度",
-				"度",
-				"百分度"
-			],
-			"entryValues": [
-			    "radian",
-			    "degree",
-			    "gradian"
-			],
-			"defValue": "radian"
-		}
-	]
-}
-
-   )";
-	}
-
-	void OnUserSettingsLoadDone() override {
-		const auto& settings = m_host->GetSettingsMap();
-		startStr = utf8_to_wide(settings.at("com.candytek.calc.start_str").stringValue);
-		isDetectReplace = settings.at("com.candytek.calc.autoreplace").boolValue;
-		const auto readBool = [&settings](const char* key, const bool defValue) {
-			const auto it = settings.find(key);
-			return it != settings.end() ? it->second.boolValue : defValue;
-		};
-		isShowExtraFormats = readBool("com.candytek.calc.show_formats", true);
-		isShowFunctionsSection = readBool("com.candytek.calc.show_functions_section", true);
-		isShowExamplesSection = readBool("com.candytek.calc.show_examples_section", true);
-		isShowVariablesSection = readBool("com.candytek.calc.show_variables_section", true);
-		isShowAngleUnitAction = readBool("com.candytek.calc.show_angle_unit_action", true);
-		isShowHistory = readBool("com.candytek.calc.show_history", true);
-		if (!isShowHistory) history.clear();
-		calc::AngleUnit unit = calc::AngleUnit::Radian;
-		if (const auto it = settings.find(kAngleUnitSettingKey); it != settings.end()) {
-			for (const auto& info : angleUnitInfos) {
-				if (it->second.stringValue == info.settingValue) unit = info.unit;
-			}
-		}
-		engine.SetAngleUnit(unit);
-	}
-
-
-	void RefreshAllActions() override {
-		if (!m_host) return;
-
-		iconIndex = GetSysImageIndex(CalcAction().getIconFilePath());
-		allPluginActions.clear();
-		auto action = MakeAction(L"计算器", L"输入 " + startStr + L" 开始计算", CalcAction::Kind::Fill);
-		action->fillText = startStr;
-		allPluginActions.push_back(action);
-	}
-
-	void Shutdown() override {
-		allPluginActions.clear();
-		m_host = nullptr;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	// 根据输入生成结果列表，列表为空表示本插件不接管这次输入
+	ActionList BuildInputResults(const std::wstring& input) {
 		if (StartsWith(input, L"latex ")) {
 			const std::wstring result = EvaluateLatex(input.substr(6));
 			return {MakeCopyAction(result, L"LaTeX 计算结果 · 回车复制", result, calc::kNaN)};
@@ -523,7 +375,7 @@ public:
 			if (r.kind == calc::CalcEngine::Result::Kind::Value && !std::isnan(r.value)) {
 				engine.SetAns(r.value);
 				AddHistory(expr.substr(0, expr.size() - 1), calc::FormatNumber(r.value));
-				m_host->ChangeEditTextText(startStr + calc::FormatPlain(r.value));
+				GetHost().SetEditText(startStr + calc::FormatPlain(r.value));
 				return {};
 			}
 		}
@@ -538,31 +390,130 @@ public:
 		return BuildResultActions(r, expr);
 	}
 
+	// 回车后直接用 list 替换当前结果列表
+	void ShowActions(ActionList list) {
+		shownActions.Publish(GetHost(), std::move(list));
+		GetHost().ShowActionSet(shownActions.Id());
+	}
+
+	// 设置了激活命令时只在输入以激活命令或 "latex " 开头时被调用；留空时自动识别算式，每次输入都要被调用
+	void ApplyTriggerKeywords() const {
+		if (startStr.empty()) GetHost().SetTriggerKeywords({L"latex "}, CL_TRIGGER_ALSO_GLOBAL);
+		else GetHost().SetTriggerKeywords({startStr, L"latex "});
+	}
+
+	void CopyToClipboard(const std::wstring& text) const {
+		// 主程序低于 2.1 时没有 set_clipboard_text，退回自行复制
+		if (!GetHost().SetClipboardText(text)) CopyTextToClipboard(nullptr, text);
+	}
+
+public:
+	CalcPlugin() = default;
+	~CalcPlugin() override = default;
+
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
+	}
+
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		const std::wstring oldStartStr = startStr;
+		startStr = host.GetString(kStartStrSettingKey, L"=");
+		isDetectReplace = host.GetBool(L"com.candytek.calc.autoreplace", true);
+		isShowExtraFormats = host.GetBool(L"com.candytek.calc.show_formats", true);
+		isShowFunctionsSection = host.GetBool(L"com.candytek.calc.show_functions_section", true);
+		isShowExamplesSection = host.GetBool(L"com.candytek.calc.show_examples_section", true);
+		isShowVariablesSection = host.GetBool(L"com.candytek.calc.show_variables_section", true);
+		isShowAngleUnitAction = host.GetBool(L"com.candytek.calc.show_angle_unit_action", true);
+		isShowHistory = host.GetBool(L"com.candytek.calc.show_history", true);
+		if (!isShowHistory) history.clear();
+		calc::AngleUnit unit = calc::AngleUnit::Radian;
+		const std::wstring unitValue = host.GetString(kAngleUnitSettingKey, L"radian");
+		for (const auto& info : angleUnitInfos) {
+			if (unitValue == info.settingValue) unit = info.unit;
+		}
+		engine.SetAngleUnit(unit);
+		ApplyTriggerKeywords();
+		// 入口项的副标题含激活命令，变化后重新发布
+		if (oldStartStr != startStr) RefreshActions();
+	}
+
+	void OnSettingChanged(const std::wstring& key) override {
+		if (key == kStartStrSettingKey) {
+			startStr = GetHost().GetString(kStartStrSettingKey, L"=");
+			ApplyTriggerKeywords();
+			RefreshActions();
+		}
+	}
+
+	void RefreshActions() override {
+		if (!m_host) return;
+
+		iconIndex = GetSysImageIndex(kCalcIconPath);
+		// 留空激活命令时没有入口项，直接自动识别输入的算式
+		if (startStr.empty()) {
+			entryActions.Clear(GetHost());
+			return;
+		}
+		auto action = MakeAction(L"计算器", L"输入 " + startStr + L" 开始计算", CalcAction::Kind::Fill);
+		action->fillText = startStr;
+		action->stableKey = L"CalcPlugin_entry";
+		entryActions.Publish(GetHost(), {action});
+	}
+
+	void Shutdown() override {
+		entryActions.ClearLocal();
+		shownActions.ClearLocal();
+		results.Begin();
+		m_host = nullptr;
+	}
+
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
+		const ActionList list = BuildInputResults(input);
+		if (!list.empty()) sink.AddTransient(results, list);
+	}
+
 	void OnMainWindowShow(const bool isShow) override {
 		if (!isShow) std::fill(std::begin(expandedSections), std::end(expandedSections), false);
 	}
 
 	// 拖拽历史记录时提供表达式文本
-	bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) override {
-		const auto calcAction = std::dynamic_pointer_cast<CalcAction>(action);
-		if (!m_host || !calcAction || calcAction->kind != CalcAction::Kind::History || calcAction->source.empty()) {
+	bool OnItemBeginDrag(const uint64_t userData, const HWND sourceHwnd, const POINT screenPt) override {
+		const auto calcAction = FindAction(userData);
+		if (!calcAction || calcAction->kind != CalcAction::Kind::History || calcAction->source.empty()) {
 			return false;
 		}
-		OleDragDropData data;
+		candy::DragData data;
 		data.text = calcAction->source;
-		return m_host->BeginOleDragDropData(data, sourceHwnd);
+		return GetHost().BeginDrag(data, sourceHwnd);
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		const auto calcAction = std::dynamic_pointer_cast<CalcAction>(action);
+	// Ctrl+C 复制结果或历史记录的表达式
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto calcAction = FindAction(userData);
+		if (!calcAction) return false;
+		switch (calcAction->kind) {
+		case CalcAction::Kind::Copy:
+			text = calcAction->copyText;
+			return true;
+		case CalcAction::Kind::History:
+			text = calcAction->source;
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto calcAction = FindAction(userData);
 		if (!calcAction) return false;
 
 		switch (calcAction->kind) {
 		case CalcAction::Kind::Copy:
 			if (std::isfinite(calcAction->value)) engine.SetAns(calcAction->value);
 			AddHistory(calcAction->source, calcAction->title);
-			CopyTextToClipboard(nullptr, calcAction->copyText);
+			CopyToClipboard(calcAction->copyText);
 			return true;
 		case CalcAction::Kind::Commit: {
 			// 重新计算一次，保证保存的是当前输入
@@ -570,52 +521,37 @@ public:
 			engine.CommitPending();
 			if (r.kind == calc::CalcEngine::Result::Kind::Assignment) engine.SetAns(r.value);
 			AddHistory(calcAction->source, calcAction->title);
-			m_host->ChangeEditTextText(startStr);
+			GetHost().SetEditText(startStr);
 			return false;
 		}
 		case CalcAction::Kind::Fill:
 		case CalcAction::Kind::History:
-			m_host->ChangeEditTextText(calcAction->fillText);
+			GetHost().SetEditText(calcAction->fillText);
 			return false;
-		case CalcAction::Kind::ToggleHelp: {
+		case CalcAction::Kind::ToggleHelp:
 			if (calcAction->section >= 0 && calcAction->section < kSectionCount) {
 				expandedSections[calcAction->section] = !expandedSections[calcAction->section];
 			}
-			auto list = BuildHelpActions();
-			m_host->ShowResultsDerectly(list);
+			ShowActions(BuildHelpActions());
 			return false;
-		}
 		case CalcAction::Kind::ClearSymbols:
 			engine.ClearUserSymbols();
-			m_host->ChangeEditTextText(startStr);
+			GetHost().SetEditText(startStr);
 			return false;
-		case CalcAction::Kind::ClearHistory: {
+		case CalcAction::Kind::ClearHistory:
 			history.clear();
-			auto list = BuildHelpActions();
-			m_host->ShowResultsDerectly(list);
+			ShowActions(BuildHelpActions());
 			return false;
-		}
-		case CalcAction::Kind::SwitchAngleUnit: {
+		case CalcAction::Kind::SwitchAngleUnit:
 			SwitchToNextAngleUnit();
 			// 用新单位重新计算当前输入，刷新结果和切换项的文字
-			auto list = InterceptInputShowResultsDirectly(m_host->GetEditTextText());
-			m_host->ShowResultsDerectly(list);
+			ShowActions(BuildInputResults(GetHost().GetEditText()));
 			return false;
-		}
 		default:
 			return false;
 		}
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new CalcPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(CalcPlugin, L"Calculator", L"Scientific calculator with variables, custom functions, derivatives and integrals, root finding, base conversion and more", L"1.1.0",
+					L"com.candytek.calc", nullptr)

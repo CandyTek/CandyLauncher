@@ -31,7 +31,7 @@ inline bool GetTable(sqlite3* db, const std::string& sql, std::vector<std::vecto
 }
 
 // 主函数：解析 Evernote 数据库
-inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allActions) {
+inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<EverNoteAction>>& allActions) {
 	Logi(L"EverNote", L"db_parse start");
 
 	// 1. 读取 Notebook 表建立 ID -> 名称映射
@@ -71,8 +71,9 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 			try {
 				auto action = std::make_shared<EverNoteAction>();
 
-				// 设置笔记 ID (GUID)
+				// 设置笔记 ID (GUID)，同时作为刷新后不变的条目标识
 				action->noteId = utf8_to_wide(row[0]);
+				action->stableKey = action->noteId;
 
 				// 设置标题 (label)
 				std::string label = row[1].empty() ? "无标题" : row[1];
@@ -104,18 +105,17 @@ inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allA
 				if (snippet.length() > 100) {
 					snippet = snippet.substr(0, 100) + "...";
 				}
-				action->subTitle = action->notebookName;
+				action->subtitle = action->notebookName;
 				if (!snippet.empty()) {
-					action->subTitle += L" | " + utf8_to_wide(snippet);
+					action->subtitle += L" | " + utf8_to_wide(snippet);
 				}
 
-				// 设置图标（可以使用 Evernote 的默认图标或自定义）
-				action->iconFilePath = L"";  // 暂时留空
-				action->iconFilePathIndex = -1;
+				// 图标暂时留空（可以使用 Evernote 的默认图标或自定义）
 
-				// 设置匹配文本（标题 + 笔记本名称用于搜索）
+				// 设置匹配文本（标题 + 笔记本名称用于搜索），插件已处理，主程序原样使用
 				std::wstring searchText = action->title + L" " + action->notebookName;
-				action->matchText = m_host->GetTheProcessedMatchingText(searchText);
+				action->matchTextVerbatim = true;
+				action->matchText = m_host->ProcessMatchText(searchText);
 
 				// 添加到 allActions
 				allActions.push_back(action);

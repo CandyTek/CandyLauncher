@@ -1,5 +1,4 @@
-﻿#include "../Plugin.hpp"
-#include <windows.h>
+﻿#include <windows.h>
 #include <memory>
 
 #include "RunningAppAction.hpp"
@@ -57,8 +56,8 @@ inline void WorkerThreadFunction()
 		std::function<void()> task;
 		{
 			std::unique_lock<std::mutex> lock(g_taskQueueMutex);
-			g_taskQueueCV.wait(lock, []() { 
-				return !g_taskQueue.empty() || g_workerShouldStop.load(); 
+			g_taskQueueCV.wait(lock, []() {
+				return !g_taskQueue.empty() || g_workerShouldStop.load();
 			});
 
 			if (g_workerShouldStop) break;
@@ -114,16 +113,17 @@ inline void SubmitTask(std::function<void()> task)
 	g_taskQueueCV.notify_one();
 }
 
-class RunningAppPlugin : public IPlugin
+class RunningAppPlugin : public candy::Plugin
 {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-	bool indexEdgeTabs = false;
+	candy::ActionSet<RunningAppAction> windows{0};
+	std::atomic<bool> indexEdgeTabs{false};
 
 	// 本程序自身的 exe 路径，用于排除自身窗口
 	std::wstring selfExePath;
 
-	void appendNormalWindows(std::unordered_set<std::wstring>& seenKeys)
+	void appendNormalWindows(std::vector<std::shared_ptr<RunningAppAction>>& items,
+							std::unordered_set<std::wstring>& seenKeys)
 	{
 		::TraverseRunningWindows([&](const std::wstring &name,
 									 const std::wstring &fullPath,
@@ -141,16 +141,19 @@ private:
 
 			auto action = std::make_shared<RunningAppAction>();
 			action->title = L"正在运行: " + name;
-			action->subTitle = fullPath;
+			action->subtitle = fullPath;
 			action->filePath = fullPath;
 			action->runningAppHwnd = hwnd;
-			action->iconFilePathIndex = GetSysImageIndex(fullPath);
-			action->matchText = m_host->GetTheProcessedMatchingText(name) + GetFileNameFromPath(fullPath);
-			allPluginActions.push_back(action);
+			action->stableKey = dedupeKey;
+			action->iconPath = fullPath;
+			action->matchTextVerbatim = true;
+			action->matchText = GetHost().ProcessMatchText(name) + GetFileNameFromPath(fullPath);
+			items.push_back(std::move(action));
 		});
 	}
 
-	void appendEdgeTabs(std::unordered_set<std::wstring>& seenKeys)
+	void appendEdgeTabs(std::vector<std::shared_ptr<RunningAppAction>>& items,
+						std::unordered_set<std::wstring>& seenKeys)
 	{
 		TraverseImmersiveApplicationViews([&](const ImmersiveAppViewInfo& viewInfo) {
 			if (!IsEdgeProcessPath(viewInfo.processPath)) {
@@ -169,106 +172,44 @@ private:
 
 			auto action = std::make_shared<RunningAppAction>();
 			action->title = L"Edge 标签页: " + viewInfo.title;
-			action->subTitle = viewInfo.processPath;
+			action->subtitle = viewInfo.processPath;
 			action->filePath = viewInfo.processPath;
 			action->runningAppHwnd = std::to_wstring(reinterpret_cast<uintptr_t>(viewInfo.thumbnailHwnd));
-			action->iconFilePathIndex = GetSysImageIndex(viewInfo.processPath);
-			std::wstring tempTitle= viewInfo.title; 
-			m_host->GetTheProcessedMatchingText(tempTitle);
-			action->matchText = m_host->GetTheProcessedMatchingText(viewInfo.title)
+			action->stableKey = dedupeKey;
+			action->iconPath = viewInfo.processPath;
+			action->matchTextVerbatim = true;
+			action->matchText = GetHost().ProcessMatchText(viewInfo.title)
 				+ GetFileNameFromPath(viewInfo.processPath)
-				+ m_host->GetTheProcessedMatchingText(viewInfo.appUserModelId);
+				+ GetHost().ProcessMatchText(viewInfo.appUserModelId);
 			action->activateType = RunningAppAction::ActivateType::ApplicationView;
 			action->applicationView = viewInfo.view;
 			action->isModernApplicationView = viewInfo.isModernView;
 
 			Logi(L"RunningApp", L"索引: ", action->title);
-			allPluginActions.push_back(action);
+			items.push_back(std::move(action));
 		});
 	}
 
 public:
-	RunningAppPlugin() = default;
-	~RunningAppPlugin() override = default;
-
-	std::wstring GetPluginName() const override
+	bool Initialize() override
 	{
-		return L"运行中的窗口";
-	}
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.runningapp";
-	}
-
-	std::wstring GetPluginVersion() const override
-	{
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override
-	{
-		return L"正在运行的应用";
-	}
-
-	std::wstring DefaultSettingJson() override
-	{
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.runningapp.index_edge_tabs",
-			"title": "索引 Edge 标签页",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": false
-		}
-	]
-}
-		)";
-	}
-
-
-	bool Initialize(IPluginHost* host) override
-	{
-		m_host = host;
+		m_host = &GetHost();
 		selfExePath = GetExecutablePath();
 		g_pluginIndexedRunningAppsThread = std::thread(WorkerThreadFunction);
-		return m_host != nullptr;
+		return true;
 	}
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
 
 	void Shutdown() override
 	{
-		if (m_host)
-		{
-			stopThreadPluginRunningApps();
-		}
-		allPluginActions.clear();
-		
+		stopThreadPluginRunningApps();
+		windows.ClearLocal();
 		m_host = nullptr;
 	}
 
-	void OnUserSettingsLoadDone() override
+	void OnUserSettingsLoaded() override
 	{
-		if (!m_host) return;
-		const auto& settingsMap = m_host->GetSettingsMap();
-		const auto it = settingsMap.find("com.candytek.runningapp.index_edge_tabs");
-		if (it != settingsMap.end()) {
-			indexEdgeTabs = it->second.boolValue;
-		}
+		indexEdgeTabs = GetHost().GetBool(L"com.candytek.runningapp.index_edge_tabs", false);
 	}
-	
-
-
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override
-	{
-		if (!m_host) return {};
-		return allPluginActions;
-	}
-	
 
 	void OnMainWindowShow(bool isShow) override
 	{
@@ -281,57 +222,49 @@ public:
 		}
 	}
 
-
+	// 在工作线程上运行：发布集合后通知主程序刷新当前列表
 	void refreshRunningApps()
 	{
-		allPluginActions.clear();
+		std::vector<std::shared_ptr<RunningAppAction>> items;
 		std::unordered_set<std::wstring> seenKeys;
-		appendNormalWindows(seenKeys);
+		appendNormalWindows(items, seenKeys);
 		if (indexEdgeTabs) {
-			appendEdgeTabs(seenKeys);
+			appendEdgeTabs(items, seenKeys);
 		}
-
+		windows.Publish(GetHost(), std::move(items));
+		GetHost().NotifyActionsChanged();
 	}
 
-
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override
 	{
-		if (!m_host) return false;
-		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
+		const auto runningAppAction = windows.Find(userData);
 		if (!runningAppAction) return false;
 
 		runningAppAction->Invoke();
 		return true;
 	}
 
-	
-	bool OnItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
-		Logi(L"RunningApp", L"OnItemRightClick entered");
-		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
+	bool OnItemRightClick(const uint64_t userData, HWND parentHwnd, POINT screenPt) override {
+		const auto runningAppAction = windows.Find(userData);
 		if (!runningAppAction) {
-			Logw(L"RunningApp", L"OnItemRightClick skipped: action is not RunningAppAction");
+			Logw(L"RunningApp", L"OnItemRightClick skipped: action not found");
 			return false;
 		}
 		Logi(L"RunningApp", L"ShowShellContextMenu path=", runningAppAction->getFilePath());
 		ShowShellContextMenu(parentHwnd, runningAppAction->getFilePath(), screenPt);
-		Logi(L"RunningApp", L"ShowShellContextMenu returned");
 		return true;
 	}
 
-	
-	bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
-		Logi(L"RunningApp", L"OnItemShiftRightClick entered");
-		auto runningAppAction = std::dynamic_pointer_cast<RunningAppAction>(action);
+	bool OnItemShiftRightClick(const uint64_t userData, HWND parentHwnd, POINT screenPt) override {
+		const auto runningAppAction = windows.Find(userData);
 		if (!runningAppAction) {
-			Logw(L"RunningApp", L"OnItemShiftRightClick skipped: action is not RunningAppAction");
+			Logw(L"RunningApp", L"OnItemShiftRightClick skipped: action not found");
 			return false;
 		}
-		Logi(L"RunningApp", L"ShowMyContextMenu path=", runningAppAction->getFilePath());
 		const UINT cmd = ShowMyContextMenu(parentHwnd, runningAppAction->getFilePath(), screenPt);
 		Logi(L"RunningApp", L"ShowMyContextMenu cmd=", cmd);
 		switch (cmd) {
 		case IDM_OPEN_APP:
-			// runningAppAction->Invoke(runningAppAction->getFilePath());
 			break;
 		case IDM_OPEN_IN_CONSOLE:
 			OpenConsoleHere(SaveGetShortcutTargetAndReturn(runningAppAction->getFilePath()));
@@ -340,31 +273,21 @@ public:
 			KillProcessByImagePath(SaveGetShortcutTargetAndReturn(runningAppAction->getFilePath()));
 			break;
 		case IDM_COPY_PATH:
-			CopyTextToClipboard(parentHwnd, runningAppAction->getFilePath());
+			GetHost().SetClipboardText(runningAppAction->getFilePath());
 			break;
-		// case IDM_COPY_TARGET_PATH:
-		// 	CopyTextToClipboard(parentHwnd, SaveGetShortcutTargetAndReturn(runningAppAction->getFilePath()));
-		// 	break;
 		default:
 			break;
 		}
 		return true;
 	}
 
-
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto runningAppAction = windows.Find(userData);
+		if (!runningAppAction || runningAppAction->filePath.empty()) return false;
+		text = runningAppAction->filePath;
+		return true;
+	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin()
-{
-	return new RunningAppPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin)
-{
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion()
-{
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(RunningAppPlugin, L"Running Windows", L"Windows of running applications", L"1.1.0", L"com.candytek.runningapp",
+					nullptr)

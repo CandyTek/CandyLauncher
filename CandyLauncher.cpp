@@ -730,6 +730,9 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 	case WM_PLUGIN_DIR_CHANGED:
 		if (g_pluginManager) g_pluginManager->HandleDirChangedMessage();
 		return 0;
+	case WM_PLUGIN_REFRESH_REQUEST:
+		if (g_pluginManager) g_pluginManager->HandleRefreshRequestMessage(static_cast<uint16_t>(wParam));
+		return 0;
 	case WM_APP_UPDATE_AVAILABLE:
 		return AppUpdate::HandleUpdateAvailableMessage(lParam);
 	case WM_APP_UPDATE_ERROR:

@@ -1,10 +1,11 @@
 ﻿#pragma once
-#include "plugins/Plugin.hpp"
+#include "util/LogUtil.hpp"
+#include "plugins/sdk/CandyPluginSdk.hpp"
+#include <functional>
 #include <vector>
 #include <string>
 
-inline IPluginHost* m_host = nullptr;
-inline uint16_t m_pluginId = 65535;
+inline const candy::Host* m_host = nullptr;
 
 struct SearchEngineInfo {
 	std::wstring key;
@@ -16,4 +17,5 @@ struct SearchEngineInfo {
 inline std::vector<SearchEngineInfo> g_searchEngines;
 inline std::wstring g_browser; // empty = use default browser
 inline std::wstring g_subbrowser; // empty = use default browser
-
+// 搜索管理器保存配置后回调插件，重建条目和触发关键字
+inline std::function<void()> g_onSearchEnginesSaved;

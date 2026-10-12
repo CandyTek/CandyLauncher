@@ -1,5 +1,4 @@
-﻿#include "../Plugin.hpp"
-#include <chrono>
+﻿#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <thread>
@@ -11,238 +10,157 @@
 #include "../../util/ClipboardUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
-class CherryTreePlugin : public IPlugin {
+class CherryTreePlugin : public candy::Plugin {
 private:
-    std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-    std::wstring startStr = L"c ";
+	candy::ActionSet<CherryTreeAction> notes{0};
+	std::wstring startStr = L"c ";
+	// 影响索引的设置项变化后需要重新索引（主程序保存设置后不会自动刷新插件）
+	// 设置了激活命令时，笔记只通过激活命令显示，不参与全局搜索
+	uint32_t NoteSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
+	}
+
+	// 支持 CherryTree SQLite 数据库和多文件目录两种存储格式
+	void LoadNotes(std::vector<std::shared_ptr<CherryTreeAction>>& items) const {
+		const std::wstring dbPath = GetHost().GetString(L"com.candytek.cherrytreeplugin.db_path");
+		const std::filesystem::path storagePath(dbPath);
+		Logi(L"CherryTree", L"Storage path: ", storagePath.wstring());
+
+		std::error_code pathError;
+		if (std::filesystem::is_directory(storagePath, pathError)) {
+			Logi(L"CherryTree", L"Multi-file directory opened successfully");
+			folder_parse(storagePath, items);
+			Logi(L"CherryTree", L"Loaded ", items.size(), L" actions");
+			return;
+		}
+
+		if (!std::filesystem::is_regular_file(storagePath, pathError)) {
+			Loge(L"CherryTree", L"Storage path does not exist: ", storagePath.wstring());
+			return;
+		}
+
+		const std::string dbPathUtf8 = wide_to_utf8(dbPath);
+		sqlite3* db = nullptr;
+		int rc = sqlite3_open(dbPathUtf8.c_str(), &db);
+		if (rc == SQLITE_OK) {
+			Logi(L"CherryTree", L"Database opened successfully");
+			// 调用 db_parse，传入 items 引用
+			db_parse(db, items);
+			sqlite3_close(db);
+			Logi(L"CherryTree", L"Loaded ", items.size(), L" actions");
+		} else {
+			// 数据库打开失败
+			Loge(L"CherryTree", L"Failed to open database: ", dbPathUtf8, L", error: ", sqlite3_errmsg(db));
+			if (db) sqlite3_close(db);
+		}
+	}
 
 public:
-    CherryTreePlugin() = default;
-    ~CherryTreePlugin() override = default;
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
+	}
 
-    std::wstring GetPluginName() const override {
-        return L"CherryTree 笔记";
-    }
+	void RefreshActions() override {
+		Logi(L"CherryTree", L"RefreshActions start");
+		std::vector<std::shared_ptr<CherryTreeAction>> items;
+		LoadNotes(items);
+		notes.SetFlags(GetHost(), NoteSetFlags());
+		notes.Publish(GetHost(), std::move(items));
+	}
 
-    std::wstring GetPluginPackageName() const override {
-        return L"com.candytek.cherrytreeplugin";
-    }
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.cherrytreeplugin.start_str", L"c ");
+		isMatchTextContent = host.GetBool(L"com.candytek.cherrytreeplugin.matchtext_content", false);
+		notes.SetFlags(host, NoteSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
+		// 设置保存后主程序会在工作线程上重新调用 RefreshActions，这里不用自己重建索引
+	}
 
-    std::wstring GetPluginVersion() const override {
-        return L"1.2.0";
-    }
+	void Shutdown() override {
+		notes.ClearLocal();
+		m_host = nullptr;
+	}
 
-    std::wstring GetPluginDescription() const override {
-        return L"CherryTree 数据库及多文件目录索引";
-    }
-
-    bool Initialize(IPluginHost* host) override {
-        m_host = host;
-        return m_host != nullptr;
-    }
-
-    void OnPluginIdChange(const uint16_t pluginId) override {
-        m_pluginId = pluginId;
-    }
-
-    void RefreshAllActions() override {
-        if (!m_host) {
-            Loge(L"CherryTree", L"RefreshAllActions: m_host is null");
-            return;
-        }
-
-        Logi(L"CherryTree", L"RefreshAllActions start");
-        allPluginActions.clear();
-
-        // 支持 CherryTree SQLite 数据库和多文件目录两种存储格式
-        std::string db_path = m_host->GetSettingsMap().at("com.candytek.cherrytreeplugin.db_path").stringValue;
-        std::filesystem::path storagePath = std::filesystem::u8path(db_path);
-        Logi(L"CherryTree", L"Storage path: ", storagePath.wstring());
-
-        std::error_code pathError;
-        if (std::filesystem::is_directory(storagePath, pathError)) {
-            Logi(L"CherryTree", L"Multi-file directory opened successfully");
-            folder_parse(storagePath, allPluginActions);
-            Logi(L"CherryTree", L"Loaded ", allPluginActions.size(), L" actions");
-            return;
-        }
-
-        if (!std::filesystem::is_regular_file(storagePath, pathError)) {
-            Loge(L"CherryTree", L"Storage path does not exist: ", storagePath.wstring());
-            return;
-        }
-
-        sqlite3* db = nullptr;
-        int rc = sqlite3_open(db_path.c_str(), &db);
-        if (rc == SQLITE_OK) {
-            Logi(L"CherryTree", L"Database opened successfully");
-            // 调用 db_parse，传入 allPluginActions 引用
-            db_parse(db, allPluginActions);
-            sqlite3_close(db);
-            Logi(L"CherryTree", L"Loaded ", allPluginActions.size(), L" actions");
-        } else {
-            // 数据库打开失败
-            Loge(L"CherryTree", L"Failed to open database: ", db_path, L", error: ", sqlite3_errmsg(db));
-            if (db) sqlite3_close(db);
-        }
-    }
-
-    std::wstring DefaultSettingJson() override {
-        return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.cherrytreeplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "c "
-		},
-		{
-			"key": "com.candytek.cherrytreeplugin.db_path",
-			"title": "CherryTree 数据库文件或多文件目录路径",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "E:\\GitHub\\CherrySnippet\\CherryCode"
-		},
-		{
-			"key": "com.candytek.cherrytreeplugin.matchtext_content",
-			"title": "搜索匹配笔记内容",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": false
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
+		if (!startStr.empty() && StartsWith(input, startStr)) {
+			// 单独显示本插件actions
+			sink.AddMatches(notes.Id(), input.substr(startStr.size()));
 		}
-	]
-}
+	}
 
-   )";
-    }
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto action1 = notes.Find(userData);
+		if (!action1 || action1->text.empty()) return false;
+		text = action1->text;
+		return true;
+	}
 
-    void OnUserSettingsLoadDone() override {
-        startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.cherrytreeplugin.start_str").stringValue);
-        isMatchTextContent = m_host->GetSettingsMap().at("com.candytek.cherrytreeplugin.matchtext_content").boolValue;
-    }
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = notes.Find(userData);
+		if (!action1) return false;
 
-    void Shutdown() override {
-        if (m_host) {
-            allPluginActions.clear();
-        }
-        m_host = nullptr;
-    }
+		std::wstring text = action1->text;
 
-    std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-        if (!m_host || !startStr.empty()) return {};
-        return allPluginActions;
-    }
+		std::thread([text = std::move(text)]() {
+			if (!CopyTextToClipboard(nullptr, text)) {
+				Loge(L"CherryTree Plugin", L"Failed to copy action text to clipboard");
+				return;
+			}
 
-    std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-        if (!startStr.empty() && StartsWith(input, startStr)) {
-            // 单独显示本插件actions
-            return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()), allPluginActions);
-        }
-        // 由插件系统管理
-        return {};
-    }
+			// Give the clipboard time to lock/settle
+			std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
+			// Release any physical Shift/Ctrl keys the user might still be holding down
+			// to prevent modifier clashing
+			INPUT releaseModifiers[2]{};
+			releaseModifiers[0].type = INPUT_KEYBOARD;
+			releaseModifiers[0].ki.wVk = VK_SHIFT;
+			releaseModifiers[0].ki.dwFlags = KEYEVENTF_KEYUP;
+			releaseModifiers[1].type = INPUT_KEYBOARD;
+			releaseModifiers[1].ki.wVk = VK_CONTROL;
+			releaseModifiers[1].ki.dwFlags = KEYEVENTF_KEYUP;
+			SendInput(2, releaseModifiers, sizeof(INPUT));
 
-    bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-        if (!m_host) return false;
-        auto action1 = std::dynamic_pointer_cast<CherryTreeAction>(action);
-        if (!action1) return false;
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        std::wstring text = action1->text;
+			// Send Shift + Insert cleanly
+			INPUT inputs[4]{};
 
-        std::thread([text = std::move(text)]() {
-            if (!CopyTextToClipboard(nullptr, text)) {
-                Loge(L"CherryTree Plugin", L"Failed to copy action text to clipboard");
-                return;
-            }
+			// 1. Shift Down
+			inputs[0].type = INPUT_KEYBOARD;
+			inputs[0].ki.wVk = VK_SHIFT;
 
-            // Give the clipboard time to lock/settle
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+			// 2. Insert Down (extended key flag added)
+			inputs[1].type = INPUT_KEYBOARD;
+			inputs[1].ki.wVk = VK_INSERT;
+			inputs[1].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
 
-            // Release any physical Shift/Ctrl keys the user might still be holding down
-            // to prevent modifier clashing
-            INPUT releaseModifiers[2]{};
-            releaseModifiers[0].type = INPUT_KEYBOARD;
-            releaseModifiers[0].ki.wVk = VK_SHIFT;
-            releaseModifiers[0].ki.dwFlags = KEYEVENTF_KEYUP;
-            releaseModifiers[1].type = INPUT_KEYBOARD;
-            releaseModifiers[1].ki.wVk = VK_CONTROL;
-            releaseModifiers[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(2, releaseModifiers, sizeof(INPUT));
+			// 3. Insert Up
+			inputs[2].type = INPUT_KEYBOARD;
+			inputs[2].ki.wVk = VK_INSERT;
+			inputs[2].ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			// 4. Shift Up
+			inputs[3].type = INPUT_KEYBOARD;
+			inputs[3].ki.wVk = VK_SHIFT;
+			inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
 
-            // Send Shift + Insert cleanly
-            INPUT inputs[4]{};
-
-            // 1. Shift Down
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = VK_SHIFT;
-
-            // 2. Insert Down (extended key flag added)
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = VK_INSERT;
-            inputs[1].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
-
-            // 3. Insert Up
-            inputs[2].type = INPUT_KEYBOARD;
-            inputs[2].ki.wVk = VK_INSERT;
-            inputs[2].ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
-
-            // 4. Shift Up
-            inputs[3].type = INPUT_KEYBOARD;
-            inputs[3].ki.wVk = VK_SHIFT;
-            inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-
-            UINT sent = SendInput(4, inputs, sizeof(INPUT));
-            if (sent < 4) {
-                Loge(L"CherryTree", L"SendInput failed. Sent: ", sent);
-            }
-            keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
-            keybd_event(VK_LSHIFT, 0, KEYEVENTF_KEYUP, 0);
-            keybd_event(VK_RSHIFT, 0, KEYEVENTF_KEYUP, 0);
-        }).detach();
-        // std::thread([text = std::move(text)]() {
-        // 	if (!CopyTextToClipboard(nullptr, text)) {
-        // 		std::wcerr << L"[CherryTree Plugin] Failed to copy action text to clipboard" << std::endl;
-        // 		return;
-        // 	}
-        //
-        // 	std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        //
-        // 	INPUT inputs[4]{};
-        // 	inputs[0].type = INPUT_KEYBOARD;
-        // 	inputs[0].ki.wVk = VK_SHIFT;
-        // 	inputs[1].type = INPUT_KEYBOARD;
-        // 	inputs[1].ki.wVk = VK_INSERT;
-        // 	inputs[2].type = INPUT_KEYBOARD;
-        // 	inputs[2].ki.wVk = VK_INSERT;
-        // 	inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-        // 	inputs[3].type = INPUT_KEYBOARD;
-        // 	inputs[3].ki.wVk = VK_SHIFT;
-        // 	inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-        // 	SendInput(4, inputs, sizeof(INPUT));
-        //
-        // 	// 强制弹起所有 Shift 虚拟键，避免模拟粘贴后修饰键卡住。
-        // 	keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
-        // 	keybd_event(VK_LSHIFT, 0, KEYEVENTF_KEYUP, 0);
-        // 	keybd_event(VK_RSHIFT, 0, KEYEVENTF_KEYUP, 0);
-        // }).detach();
-        return true;
-    }
+			UINT sent = SendInput(4, inputs, sizeof(INPUT));
+			if (sent < 4) {
+				Loge(L"CherryTree", L"SendInput failed. Sent: ", sent);
+			}
+			keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
+			keybd_event(VK_LSHIFT, 0, KEYEVENTF_KEYUP, 0);
+			keybd_event(VK_RSHIFT, 0, KEYEVENTF_KEYUP, 0);
+		}).detach();
+		return true;
+	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-    return new CherryTreePlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-    delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-    return 1;
-}
+// 读取数据库 / 目录只用到 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(CherryTreePlugin, L"CherryTree Notes", L"Index CherryTree databases and multi-file folders", L"1.2.0",
+						L"com.candytek.cherrytreeplugin", nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

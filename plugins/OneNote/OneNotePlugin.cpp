@@ -1,77 +1,33 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
+﻿#include <memory>
 
+#include "OneNotePluginData.hpp"
 #include "FindOneNoteUtil.hpp"
 #include "OneNoteAction.hpp"
-#include "OneNotePluginData.hpp"
 #include "OneNoteSimple.hpp"  // New #import-based implementation
 #include "OneNoteUtil.hpp"    // For ParseOneNoteHierarchyXML function
 #include "../../util/StringUtil.hpp"
 
-class OneNotePlugin : public IPlugin {
+class OneNotePlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	candy::ActionSet<OneNoteAction> allPluginActions{0};
 	std::wstring startStr = L"one ";
 	std::wstring iconPath;
 
-public:
-	OneNotePlugin() = default;
-	~OneNotePlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"OneNote笔记";
+	// 有激活命令时不参与全局搜索，只在 OnInterceptInput 里显示
+	uint32_t OneNoteSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.onenoteplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"索引本地OneNote笔记";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			Loge(L"OneNote", L"RefreshAllActions: m_host is null");
-			return;
-		}
-		Logi(L"OneNote", L"RefreshAllActions start");
-
-		if (const std::string path = m_host->GetSettingsMap().at("com.candytek.onenoteplugin.icon_path").stringValue;path.empty()) {
-			iconPath = FindOneNotePathEnhanced();
-			if (!iconPath.empty()) {
-				Logi(L"OneNote", L"Found OneNote: ", iconPath);
-			} else {
-				Logw(L"OneNote", L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).");
-				iconPath = LR"(C:\Program Files\Microsoft Office\root\Office16\ONENOTE.EXE)";
-			}
-		}else {
-			iconPath = utf8_to_wide(path);
-		}
-		
-		
-		allPluginActions.clear();
-
+	// 通过 COM 读取全部页面及其内容，失败时返回空列表
+	std::vector<std::shared_ptr<OneNoteAction>> LoadPages() {
+		std::vector<std::shared_ptr<OneNoteAction>> pages;
 		try {
 			// 使用新的 #import 实现
 			SimpleOneNoteHelper oneNote;
 
 			if (!oneNote.IsInitialized()) {
 				Logw(L"OneNote", L"OneNote is not available");
-				return;
+				return pages;
 			}
 
 			// 获取所有页面的 XML
@@ -79,117 +35,112 @@ public:
 
 			if (xml.empty()) {
 				Logw(L"OneNote", L"Failed to get OneNote hierarchy");
-				return;
+				return pages;
 			}
 
 			// 解析 XML
 			int iconIndex = GetSysImageIndex(iconPath);
-			allPluginActions = ParseOneNoteHierarchyXML(xml, iconPath, iconIndex, maxResults);
+			pages = ParseOneNoteHierarchyXML(xml, iconPath, iconIndex, maxResults);
 
 			// 获取页面内容并处理匹配文本
 			Logi(L"OneNote", L"Fetching page contents...");
 			int contentCount = 0;
-			for (auto& action : allPluginActions) {
-				auto oneNoteAction = std::dynamic_pointer_cast<OneNoteAction>(action);
-				if (oneNoteAction) {
-					// 获取页面内容
-					std::wstring pageXml = oneNote.GetPageContent(oneNoteAction->pageId);
-					if (!pageXml.empty()) {
-						oneNoteAction->pageContent = ExtractTextFromPageXML(pageXml);
-						// 限制内容长度，避免过长
-						// if (oneNoteAction->pageContent.length() > 1000) {
-						// 	oneNoteAction->pageContent = oneNoteAction->pageContent.substr(0, 1000);
-						// }
-						if (!oneNoteAction->pageContent.empty()) {
-							contentCount++;
-						}
-					}
-
-					// 设置匹配文本：标题 + 内容
-					try {
-						if (oneNoteAction->pageContent.length()<500) {
-							action->matchText = m_host->GetTheProcessedMatchingText(action->getTitle() + oneNoteAction->pageContent);
-						}else {
-							action->matchText = m_host->GetTheProcessedMatchingText(action->getTitle()) + oneNoteAction->pageContent;
-						}
-					} catch (...) {
-						action->matchText = action->getTitle() + oneNoteAction->pageContent;
+			for (auto& oneNoteAction : pages) {
+				// 获取页面内容
+				std::wstring pageXml = oneNote.GetPageContent(oneNoteAction->pageId);
+				if (!pageXml.empty()) {
+					oneNoteAction->pageContent = ExtractTextFromPageXML(pageXml);
+					// 限制内容长度，避免过长
+					// if (oneNoteAction->pageContent.length() > 1000) {
+					// 	oneNoteAction->pageContent = oneNoteAction->pageContent.substr(0, 1000);
+					// }
+					if (!oneNoteAction->pageContent.empty()) {
+						contentCount++;
 					}
 				}
-			}
-			Logi(L"OneNote", L"Successfully fetched content for ", contentCount, L" / ", allPluginActions.size(), L" pages");
 
-			Logi(L"OneNote", L"Loaded ", allPluginActions.size(), L" OneNote pages");
+				// 刷新后主程序仍能认出同一个页面
+				oneNoteAction->stableKey = oneNoteAction->pageId;
+
+				// 设置匹配文本：标题 + 内容（插件自己处理，主程序原样使用）
+				oneNoteAction->matchTextVerbatim = true;
+				try {
+					if (oneNoteAction->pageContent.length() < 500) {
+						oneNoteAction->matchText = GetHost().ProcessMatchText(oneNoteAction->title + oneNoteAction->pageContent);
+					} else {
+						oneNoteAction->matchText = GetHost().ProcessMatchText(oneNoteAction->title) + oneNoteAction->pageContent;
+					}
+				} catch (...) {
+					oneNoteAction->matchText = oneNoteAction->title + oneNoteAction->pageContent;
+				}
+			}
+			Logi(L"OneNote", L"Successfully fetched content for ", contentCount, L" / ", pages.size(), L" pages");
+
+			Logi(L"OneNote", L"Loaded ", pages.size(), L" OneNote pages");
 
 		} catch (const std::exception& e) {
-			Loge(L"OneNote", L"Exception in RefreshAllActions: ", e.what());
+			Loge(L"OneNote", L"Exception in RefreshActions: ", e.what());
 		} catch (...) {
-			Loge(L"OneNote", L"Unknown exception in RefreshAllActions");
+			Loge(L"OneNote", L"Unknown exception in RefreshActions");
 		}
+		return pages;
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.onenoteplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "one "
-		},
-		{
-			"key": "com.candytek.onenoteplugin.icon_path",
-			"type": "string",
-			"title": "OneNote图标路径",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.onenoteplugin.max_results",
-			"type": "long",
-			"title": "最大笔记数量（0为不限制）",
-			"subPage": "plugin",
-			"defValue": 0
-		}
-	]
-}
+public:
+	OneNotePlugin() = default;
+	~OneNotePlugin() override = default;
 
-   )";
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.onenoteplugin.start_str").stringValue);
-		iconPath = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.onenoteplugin.icon_path").stringValue);
-		maxResults = static_cast<int>(m_host->GetSettingsMap().at("com.candytek.onenoteplugin.max_results").intValue);
+	void RefreshActions() override {
+		Logi(L"OneNote", L"RefreshActions start");
+
+		if (const std::wstring path = GetHost().GetString(L"com.candytek.onenoteplugin.icon_path"); path.empty()) {
+			iconPath = FindOneNotePathEnhanced();
+			if (!iconPath.empty()) {
+				Logi(L"OneNote", L"Found OneNote: ", iconPath);
+			} else {
+				Logw(L"OneNote", L"OneNote not found (desktop Office 2013/2016/2019 checks attempted).");
+				iconPath = LR"(C:\Program Files\Microsoft Office\root\Office16\ONENOTE.EXE)";
+			}
+		} else {
+			iconPath = path;
+		}
+
+		allPluginActions.SetFlags(GetHost(), OneNoteSetFlags());
+		allPluginActions.Publish(GetHost(), LoadPages());
+	}
+
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.onenoteplugin.start_str", L"one ");
+		iconPath = host.GetString(L"com.candytek.onenoteplugin.icon_path");
+		maxResults = static_cast<int>(host.GetInt(L"com.candytek.onenoteplugin.max_results", 0));
+
+		allPluginActions.SetFlags(host, OneNoteSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		allPluginActions.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()), allPluginActions);
+			sink.AddMatches(allPluginActions.Id(), input.substr(startStr.size()));
 		}
-		// 由插件系统管理
-		return {};
+		// 否则由插件系统管理
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<OneNoteAction>(action);
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = allPluginActions.Find(userData);
 		if (!action1) return false;
 
 		try {
@@ -220,14 +171,5 @@ public:
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new OneNotePlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(OneNotePlugin, L"OneNote Notes", L"Index local OneNote notebooks", L"1.0.0", L"com.candytek.onenoteplugin",
+					nullptr)

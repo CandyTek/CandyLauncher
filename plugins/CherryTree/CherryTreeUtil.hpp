@@ -13,7 +13,6 @@
 #include <pugixml.hpp>
 #include "CherryTreeAction.hpp"
 #include "../../util/StringUtil.hpp"
-#include "util/BitmapUtil.hpp"
 #include "util/ParallelUtil.hpp"
 #include "util/LogUtil.hpp"
 
@@ -36,7 +35,7 @@ struct NodePath {
 inline void CreateActionsFromNodes(
 	const std::unordered_map<int, int>& map_father,
 	const std::unordered_map<int, NodeRow>& map_node,
-	std::vector<std::shared_ptr<BaseAction>>& allActions) {
+	std::vector<std::shared_ptr<CherryTreeAction>>& allActions) {
 	std::unordered_map<int, NodePath> id_path;
 
 	Logi(L"CherryTree", L"Generating path mappings for ", map_father.size(), L" nodes...");
@@ -103,20 +102,19 @@ inline void CreateActionsFromNodes(
 	}
 
 	Logi(L"CherryTree", L"Creating ", id_path.size(), L" CherryTreeAction objects...");
-	// 图标按语法类型共享，首次显示时才解析，避免每个节点都调用 SHGetFileInfo
-	std::unordered_map<std::string, std::shared_ptr<LazySysImageIndex>> iconBySyntax;
+	// 图标按语法类型共享：相同 iconPath 的条目主程序只解析一次系统图标，且首次显示时才解析
+	std::unordered_map<std::string, std::wstring> iconBySyntax;
 	std::vector<std::pair<int, const NodePath*>> items;
-	std::vector<std::shared_ptr<LazySysImageIndex>> itemIcons;
+	std::vector<std::wstring> itemIcons;
 	items.reserve(id_path.size());
 	itemIcons.reserve(id_path.size());
 	for (const auto& [id, np] : id_path) {
 		auto& icon = iconBySyntax[np.syntax];
-		if (!icon) {
-			std::wstring iconPath = ICON_FOLDER_PATH + utf8_to_wide(np.syntax) + L".ico";
-			if (GetFileAttributesW(iconPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-				Logi(L"CherryTree", L"icon not found: ", iconPath);
+		if (icon.empty()) {
+			icon = ICON_FOLDER_PATH + utf8_to_wide(np.syntax) + L".ico";
+			if (GetFileAttributesW(icon.c_str()) == INVALID_FILE_ATTRIBUTES) {
+				Logi(L"CherryTree", L"icon not found: ", icon);
 			}
-			icon = std::make_shared<LazySysImageIndex>(std::move(iconPath));
 		}
 		items.emplace_back(id, &np);
 		itemIcons.push_back(icon);
@@ -130,13 +128,16 @@ inline void CreateActionsFromNodes(
 			const NodePath& np = *items[i].second;
 			auto action = std::make_shared<CherryTreeAction>();
 			Utf8ToWideFast(np.path, action->title);
-			Utf8ToWideFast(np.path_file, action->subTitle);
+			Utf8ToWideFast(np.path_file, action->subtitle);
 			action->nodeId = id;
 			action->url = L"cherrytree://node/" + std::to_wstring(id);
+			action->stableKey = action->url;
 			Utf8ToWideFast(map_node.at(id).text, action->text);
-			action->icon = itemIcons[i];
+			action->iconPath = itemIcons[i];
+			// 在插件内并行处理匹配文本，主程序原样使用
+			action->matchTextVerbatim = true;
 			try {
-				action->matchText = m_host->GetTheProcessedMatchingText(action->title);
+				action->matchText = m_host->ProcessMatchText(action->title);
 			} catch (...) {
 				action->matchText = action->title;
 			}
@@ -170,7 +171,7 @@ inline bool GetTable(sqlite3* db, const std::string& sql, std::vector<std::vecto
 }
 
 // 主函数：解析数据库
-inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<BaseAction>>& allActions) {
+inline void db_parse(sqlite3* db, std::vector<std::shared_ptr<CherryTreeAction>>& allActions) {
 	Logi(L"CherryTree", L"db_parse start");
 	std::unordered_map<int, int> map_father; // 子 -> 父
 	std::unordered_map<int, NodeRow> map_node;
@@ -287,7 +288,7 @@ inline bool ParseNodeXml(const std::filesystem::path& xmlPath, const std::filesy
 // 解析 CherryTree 多文件存储目录。每个节点目录包含 node.xml，父目录即父节点。
 inline void folder_parse(
 	const std::filesystem::path& directoryPath,
-	std::vector<std::shared_ptr<BaseAction>>& allActions) {
+	std::vector<std::shared_ptr<CherryTreeAction>>& allActions) {
 	Logi(L"CherryTree", L"folder_parse start");
 	std::error_code pathError;
 	std::filesystem::path rootPath = std::filesystem::weakly_canonical(directoryPath, pathError);

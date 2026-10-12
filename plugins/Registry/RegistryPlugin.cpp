@@ -1,4 +1,4 @@
-﻿#include "../Plugin.hpp"
+﻿#include <windows.h>
 #include <memory>
 #include <vector>
 
@@ -6,112 +6,79 @@
 #include "RegistryPluginData.hpp"
 #include "RegistryUtil.hpp"
 #include "../../util/StringUtil.hpp"
-#include "../../util/BitmapUtil.hpp"
 
-class RegistryPlugin : public IPlugin {
+class RegistryPlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	// 注册表条目随输入动态生成，只为本次输入存在，不进入任何集合
+	candy::TransientSet<RegistryAction> results{0};
 	std::wstring startStr = L": ";
 	std::wstring iconPath;
 
 public:
-	RegistryPlugin() = default;
-	~RegistryPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"注册表导航";
-	}
-
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.registryplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"Windows 注册表导航";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
+	bool Initialize() override {
+		m_host = &GetHost();
 		iconPath = LR"(C:\Windows\regedit.exe)";
-		return m_host != nullptr;
+		return true;
 	}
 
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			Loge(L"Registry", L"RefreshAllActions: m_host is null");
-			return;
-		}
-
-		Logi(L"Registry", L"RefreshAllActions start");
-		allPluginActions.clear();
-
+	void RefreshActions() override {
 		// 注册表插件不需要在启动时预加载所有内容
 		// 只在用户输入时动态搜索
-
 		Logi(L"Registry", L"Registry plugin initialized");
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.registryplugin.start_str",
-			"title": "直接激活命令（默认使用 ': ' 前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": ": "
-		},
-		{
-			"key": "com.candytek.registryplugin.max_results",
-			"type": "long",
-			"title": "最大结果数",
-			"subPage": "plugin",
-			"defValue": 2000
-		}
-	]
-}
-
-   )";
-	}
-
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.registryplugin.start_str").stringValue);
-		maxResults = static_cast<int>(m_host->GetSettingsMap().at("com.candytek.registryplugin.max_results").intValue);
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.registryplugin.start_str", L": ");
+		maxResults = static_cast<int>(host.GetInt(L"com.candytek.registryplugin.max_results", 2000));
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		results.Begin();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		// 注册表插件需要前缀触发，不参与全局匹配
-		return {};
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if (!m_host || startStr.empty()) return {};
-
-		if (!StartsWith(input, startStr)) {
-			return {};
-		}
-		MethodTimerStart();
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
+		if (startStr.empty() || !StartsWith(input, startStr)) return;
+		MethodTimerStart(L"Registry OnInterceptInput");
 
 		// 移除前缀
-		std::wstring query = input.substr(startStr.size());
+		const std::wstring query = input.substr(startStr.size());
+		sink.AddTransient(results, BuildResults(query));
 
+		MethodTimerEnd(L"Registry OnInterceptInput");
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = results.Find(userData);
+		if (!action1) return false;
+
+		try {
+			// 打开注册表编辑器并跳转到该键
+			if (!OpenRegistryEditor(action1->keyPath)) {
+				Logw(L"Registry", L"Failed to open registry editor");
+				return false;
+			}
+		} catch (...) {
+			return false;
+		}
+
+		return true;
+	}
+
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto action1 = results.Find(userData);
+		if (!action1 || action1->keyPath.empty()) return false;
+		text = action1->valueName.empty() ? action1->keyPath : action1->keyPath + L"\\" + action1->valueName;
+		return true;
+	}
+
+private:
+	// 根据输入生成本次要显示的条目
+	std::vector<std::shared_ptr<RegistryAction>> BuildResults(const std::wstring& query) {
 		// 如果查询为空，显示所有根键
 		if (query.empty()) {
 			return ConvertRegistryEntriesToActions(GetAllBaseKeys());
@@ -119,7 +86,7 @@ public:
 
 		// 解析查询
 		std::wstring keyPart, valuePart;
-		bool searchForValue = ParseQuery(query, keyPart, valuePart);
+		const bool searchForValue = ParseQuery(query, keyPart, valuePart);
 
 		// 获取根键
 		auto [baseKeys, subKey] = GetRegistryBaseKey(keyPart);
@@ -138,43 +105,22 @@ public:
 				auto valueEntries = GetValuesFromKey(entries[0].key, entries[0].keyPath, valuePart);
 				return ConvertRegistryEntriesToActions(valueEntries, true);
 			}
-			MethodTimerEnd(L"InterceptInputShowResultsDirectly");
 
 			return ConvertRegistryEntriesToActions(entries);
-		} else {
-			// 找到多个根键，显示它们
-			std::vector<RegistryEntry> entries;
-			for (HKEY key : baseKeys) {
-				entries.push_back(RegistryEntry(key, GetBaseKeyName(key), 0, 0));
-			}
-			return ConvertRegistryEntriesToActions(entries);
-		}
-	}
-
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<RegistryAction>(action);
-		if (!action1) return false;
-
-		try {
-			// 打开注册表编辑器并跳转到该键
-			if (!OpenRegistryEditor(action1->keyPath)) {
-				Logw(L"Registry", L"Failed to open registry editor");
-				return false;
-			}
-		} catch (...) {
-			return false;
 		}
 
-		return true;
+		// 找到多个根键，显示它们
+		std::vector<RegistryEntry> entries;
+		for (HKEY key : baseKeys) {
+			entries.push_back(RegistryEntry(key, GetBaseKeyName(key), 0, 0));
+		}
+		return ConvertRegistryEntriesToActions(entries);
 	}
 
-private:
 	// 将 RegistryEntry 转换为 RegistryAction
-	std::vector<std::shared_ptr<BaseAction>> ConvertRegistryEntriesToActions(
+	std::vector<std::shared_ptr<RegistryAction>> ConvertRegistryEntriesToActions(
 		const std::vector<RegistryEntry>& entries, bool isValue = false) {
-		std::vector<std::shared_ptr<BaseAction>> result;
-		int iconIndex = GetSysImageIndex(iconPath);
+		std::vector<std::shared_ptr<RegistryAction>> result;
 		Logi(L"Registry", L"列表数量：", entries.size());
 
 		for (const auto& entry : entries) {
@@ -189,8 +135,9 @@ private:
 			action->subKeyCount = entry.subKeyCount;
 			action->valueCount = entry.valueCount;
 
-			action->iconFilePath = iconPath;
-			action->iconFilePathIndex = iconIndex;
+			// 所有条目共用 regedit 图标，由主程序延迟解析
+			action->iconPath = iconPath;
+			action->stableKey = entry.GetValueNameWithKey();
 
 			if (isValue) {
 				// 这是一个注册表值
@@ -213,36 +160,24 @@ private:
 																? REG_MULTI_SZ
 																: REG_NONE, 50);
 
-				action->subTitle = L"Type: " + entry.valueType + L" - Value: " + valuePreview;
+				action->subtitle = L"Type: " + entry.valueType + L" - Value: " + valuePreview;
 			} else if (entry.hasException) {
 				// 有异常的键
 				action->title = TruncateText(entry.keyPath, 100, true);
-				action->subTitle = TruncateText(entry.exceptionMsg, 150, false);
+				action->subtitle = TruncateText(entry.exceptionMsg, 150, false);
 			} else {
 				// 普通注册表键
 				action->title = TruncateText(entry.keyPath, 100, true);
-				action->subTitle = L"子键: " + std::to_wstring(entry.subKeyCount) +
+				action->subtitle = L"子键: " + std::to_wstring(entry.subKeyCount) +
 					L" - 值: " + std::to_wstring(entry.valueCount);
 			}
 
-			// 设置匹配文本
-			action->matchText = action->title;
-			// action->matchText = m_host->GetTheProcessedMatchingText(action->title);
-
+			// 临时条目不参与匹配，不需要匹配文本
 			result.push_back(action);
 		}
 		return result;
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new RegistryPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(RegistryPlugin, L"Registry Navigator", L"Navigate the Windows registry", L"1.1.0", L"com.candytek.registryplugin",
+					nullptr)

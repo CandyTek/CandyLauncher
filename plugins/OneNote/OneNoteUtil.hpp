@@ -453,13 +453,13 @@ static std::wstring ExtractTextFromPageXML(const std::wstring& pageXml) {
 }
 
 // 解析 XML 并提取页面信息
-static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
+static std::vector<std::shared_ptr<OneNoteAction>> ParseOneNoteHierarchyXML(
 	const std::wstring& xml,
 	const std::wstring& iconPath,
 	int iconIndex,
 	int maxResults) {
 
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<OneNoteAction>> result;
 	int filteredCount = 0;
 
 	try {
@@ -653,14 +653,14 @@ static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
 				}
 
 				// 设置副标题
-				action->subTitle = action->notebookName;
+				action->subtitle = action->notebookName;
 				if (!action->sectionName.empty()) {
-					action->subTitle += L"\\" + action->sectionName;
+					action->subtitle += L"\\" + action->sectionName;
 				}
 
 				// 设置图标
-				action->iconFilePath = iconPath;
-				action->iconFilePathIndex = iconIndex;
+				action->iconPath = iconPath;
+				action->iconIndex = iconIndex;
 				action->matchText = action->title;
 				result.push_back(action);
 
@@ -691,8 +691,8 @@ static std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
 }
 
 // 获取所有 OneNote 页面
-static std::vector<std::shared_ptr<BaseAction>> GetAllOneNotePages(const std::wstring& iconPath) {
-	std::vector<std::shared_ptr<BaseAction>> result;
+static std::vector<std::shared_ptr<OneNoteAction>> GetAllOneNotePages(const std::wstring& iconPath) {
+	std::vector<std::shared_ptr<OneNoteAction>> result;
 
 	try {
 		OneNoteHelper oneNote;

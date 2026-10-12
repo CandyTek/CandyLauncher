@@ -1,0 +1,99 @@
+{
+	"package_name": "com.candytek.calc",
+	"name": "Calculator",
+	"description": "Scientific calculator with variables, custom functions, derivatives and integrals, root finding, base conversion and more",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.calc.start_str",
+				"title": "直接激活命令（留空则自动识别输入的算式）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "="
+			},
+			{
+				"key": "com.candytek.calc.autoreplace",
+				"title": "如果查询以 “=” 结尾，则替换输入",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.show_formats",
+				"title": "显示其他格式的结果（进制、分数、千分位、科学计数法）",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.show_functions_section",
+				"title": "只输入前缀时显示 “函数用法” 分组",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.show_examples_section",
+				"title": "只输入前缀时显示 “计算示例” 分组",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.show_variables_section",
+				"title": "只输入前缀时显示 “当前变量” 分组",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.show_angle_unit_action",
+				"title": "显示切换三角学单位的选项",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.show_history",
+				"title": "记录并显示计算历史",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.calc.trigonometric.units",
+				"title": "三角学单位",
+				"type": "list",
+				"subPage": "plugin",
+				"entries": [
+					"弧度",
+					"度",
+					"百分度"
+				],
+				"entryValues": [
+					"radian",
+					"degree",
+					"gradian"
+				],
+				"defValue": "radian"
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Calculator",
+				"description": "Scientific calculator with variables, custom functions, derivatives and integrals, root finding, base conversion and more"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "计算器",
+				"description": "科学计算器，支持变量、自定义函数、求导积分、方程求根、进制转换等"
+			}
+		}
+	}
+}

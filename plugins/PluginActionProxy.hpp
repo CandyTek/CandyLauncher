@@ -95,9 +95,14 @@ struct CL_PluginContext {
 	bool keywordsConfigured = false;
 	// 2.2 icon_key -> shared bitmap; weak so icons vanish with the last proxy using them.
 	std::unordered_map<std::wstring, std::weak_ptr<SharedIconBitmap>> iconCache;
+	// 2.3 key -> text for the current UI language (PluginStringTable::Resolve). Replaced as a whole on language
+	// change; read with std::atomic_load so get_string works from any thread.
+	std::shared_ptr<const std::unordered_map<std::wstring, std::wstring>> strings;
 };
 
 // Completes the opaque CL_ResultSinkHandle type.
 struct CL_ResultSink {
 	std::vector<std::shared_ptr<BaseAction>> actions;
+	// sink_take_over: show these actions (even none) instead of running the normal search.
+	bool takeOver = false;
 };

@@ -1,8 +1,151 @@
-﻿{
+{
 	"package_name": "com.example.plugin",
 	"name": "ExamplePlugin",
-	"description": "简单示例插件",
+	"description": "Simple example plugin",
 	"version": "1.0.0",
-	"keywords": ["ex "],
-	"min_host_api_minor": 0
+	"keywords": [
+		"ex "
+	],
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "example_key_1",
+				"type": "expand",
+				"title": "我的设置项",
+				"title_en": "My settings",
+				"subPage": "plugin",
+				"children": [
+					{
+						"key": "example_key_2",
+						"type": "expand",
+						"title": "我的设置项2",
+						"title_en": "My settings 2",
+						"subPage": "plugin",
+						"children": [
+							{
+								"key": "example_key_3",
+								"title": "开关",
+								"title_en": "Switch",
+								"type": "bool",
+								"subPage": "plugin",
+								"defValue": true
+							},
+							{
+								"key": "example_acknowledgements2",
+								"title": "开源许可 & 致谢: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
+								"title_en": "Open source licenses & credits: \nCLion\n(For non-commercial use only)(https://www.jetbrains.com/clion/)\nHakeQuick\n(https://github.com/lzl1918/HakeQuick)\nrapidfuzz-cpp\n(https://github.com/rapidfuzz/rapidfuzz-cpp)\nnlohmann-json\n(https://github.com/nlohmann/json)\n",
+								"type": "text",
+								"subPage": "plugin",
+								"defValue": ""
+							}
+						]
+					}
+				]
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Example Plugin",
+				"description": "Simple example plugin"
+			},
+			"action": {
+				"hello": {
+					"title": "Hello World",
+					"subtitle": "Show a Hello World message"
+				},
+				"time": {
+					"title": "Show Time",
+					"subtitle": "Show the current system time"
+				},
+				"date": {
+					"title": "Show Date",
+					"subtitle": "Show today's date"
+				},
+				"test": {
+					"title": "Test feature",
+					"subtitle": "Run the test feature (input contains \"test\")"
+				},
+				"calc": {
+					"title": "Calculator",
+					"subtitle": "Open the system calculator (input contains \"calc\")"
+				},
+				"echo": {
+					"subtitle": "Transient result, Enter shows a message"
+				},
+				"async": {
+					"title": "Async result"
+				}
+			},
+			"msg": {
+				"title": "Example Plugin",
+				"hello": "Hello World from Plugin!",
+				"time": {
+					"title": "Time",
+					"text": "Current time: {0} UTC"
+				},
+				"date": {
+					"title": "Date",
+					"text": "Today is {0} (UTC)"
+				},
+				"test": {
+					"title": "Test",
+					"text": "The dynamically generated test action ran!"
+				}
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "示例插件",
+				"description": "简单示例插件"
+			},
+			"action": {
+				"hello": {
+					"title": "Hello World",
+					"subtitle": "显示 Hello World 消息"
+				},
+				"time": {
+					"title": "显示时间",
+					"subtitle": "显示当前系统时间"
+				},
+				"date": {
+					"title": "显示日期",
+					"subtitle": "显示今天的日期"
+				},
+				"test": {
+					"title": "测试功能",
+					"subtitle": "执行测试功能 (输入包含test)"
+				},
+				"calc": {
+					"title": "计算器",
+					"subtitle": "打开系统计算器 (输入包含calc)"
+				},
+				"echo": {
+					"subtitle": "临时结果，回车显示消息"
+				},
+				"async": {
+					"title": "异步结果"
+				}
+			},
+			"msg": {
+				"title": "示例插件",
+				"hello": "来自插件的 Hello World！",
+				"time": {
+					"title": "时间",
+					"text": "当前时间: {0} UTC"
+				},
+				"date": {
+					"title": "日期",
+					"text": "今天是 {0} (UTC)"
+				},
+				"test": {
+					"title": "测试",
+					"text": "这是动态生成的测试动作被执行了！"
+				}
+			}
+		}
+	}
 }

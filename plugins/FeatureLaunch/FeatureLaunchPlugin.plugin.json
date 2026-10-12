@@ -1,0 +1,33 @@
+{
+	"package_name": "com.candytek.featurelaunchplugin",
+	"name": "CandyLauncher Shortcuts",
+	"description": "Quick access to CandyLauncher settings and features",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.featurelaunchplugin.moreitem",
+				"type": "bool",
+				"title": "索引更多跳转项",
+				"subPage": "plugin",
+				"defValue": false
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "CandyLauncher Shortcuts",
+				"description": "Quick access to CandyLauncher settings and features"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "CandyLauncher 常用跳转",
+				"description": "CandyLauncher 的常用跳转项"
+			}
+		}
+	}
+}

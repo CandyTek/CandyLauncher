@@ -1,8 +1,7 @@
-﻿#include "../Plugin.hpp"
-#include <windows.h>
+﻿#include <windows.h>
 #include <memory>
 
-
+#include "FolderPluginData.hpp"
 #include "../../util/MainTools.hpp"
 #include <thread>
 #include <queue>
@@ -28,7 +27,6 @@
 #include "../../util/BitmapUtil.hpp"
 #include "../../util/FileSystemTraverser.hpp"
 #include "../../util/FileUtil.hpp"
-#include "util/ThreadPool.hpp"
 #include <mutex>
 #include <atomic>
 
@@ -36,8 +34,9 @@
 
 inline bool IS_SHOW_INDEX_MANAGER_WINDOW = false;
 
+// 注册给主程序的应用命令，常用跳转插件通过 InvokeAppCommand 打开索引管理器
+constexpr const wchar_t* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = L"openFolderIndexedManager";
 // 任务队列系统
-constexpr const char* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = "openFolderIndexedManager";
 inline std::queue<std::function<void()>> g_taskQueue;
 inline std::mutex g_taskQueueMutex;
 inline std::condition_variable g_taskQueueCV;
@@ -163,10 +162,11 @@ static std::wstring NormalizeActionTitleForDedup(const std::wstring& title) {
 	return normalized;
 }
 
-class FolderPlugin : public IPlugin {
+class FolderPlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-	std::shared_ptr<AutomationEditorAction> automationEditorAction;
+	// 0 号集合：全部索引项（文件、UWP、%PATH%、系统设置）；1 号集合：自动化动作组编辑器入口。都参与全局搜索
+	candy::ActionSet<FileAction> fileActions{0};
+	candy::ActionSet<AutomationEditorAction> automationEditor{1};
 	struct DirectorySnapshot {
 		std::filesystem::file_time_type modified;
 		std::vector<std::wstring> children;
@@ -209,172 +209,56 @@ private:
 	ParsedHotkey hkOpenWithClipboard;
 	ParsedHotkey hkRunAsAdmin;
 
+	// 应用命令回调：C 函数指针 + ctx，由主程序在插件卸载时自动移除
+	static void CL_CALL OpenIndexedManagerCommand(void*) {
+		ShowIndexedManagerWindow(nullptr);
+	}
+
 public:
 	FolderPlugin() = default;
 	~FolderPlugin() override = default;
 
-	std::wstring GetPluginName() const override {
-		return L"文件夹";
-	}
-
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.folderplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"文件夹";
-	}
-
-
-	bool Initialize(IPluginHost* host) override {
-		g_host = host;
-		if (!g_host) return false;
+	bool Initialize() override {
+		m_host = &GetHost();
 		EnsureAutomationActionIndex();
-		g_host->RegisterAppLaunchActionCallback(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY, []() {
-			ShowIndexedManagerWindow(nullptr);
-		});
+		GetHost().RegisterAppCommand(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY, OpenIndexedManagerCommand, nullptr);
+		// 索引管理器 / 自动化编辑器保存后在它们自己的线程上调用：发布集合后通知主程序重建可见列表
 		g_refreshFolderPlugin = [this]() {
-			RefreshAllActions();
+			RefreshActions();
+			GetHost().NotifyActionsChanged();
 		};
 		g_workerShouldStop = false;
 		g_pluginIndexedRunningAppsThread = std::thread(WorkerThreadFunction);
 		return true;
 	}
 
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-		if (automationEditorAction) automationEditorAction->pluginId = pluginId;
-	}
-
 
 	void Shutdown() override {
-		if (g_host) {
-			g_host->UnregisterAppLaunchActionCallback(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY);
+		if (m_host) {
+			GetHost().UnregisterAppCommand(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY);
 			stopThreadPluginRunningApps();
 		}
-		g_host = nullptr;
+		g_refreshFolderPlugin = nullptr;
+		fileActions.ClearLocal();
+		automationEditor.ClearLocal();
+		m_host = nullptr;
 	}
 
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!g_host) return {};
-		auto actions = allPluginActions;
-		if (automationEditorAction) actions.push_back(automationEditorAction);
-		return actions;
-	}
-
-	static void doActionAddIconIndex(std::vector<std::shared_ptr<FileAction>>& shareds) {
-		if (shareds.empty()) {
-			return;
-		}
-		// 普通扩展名共享系统图标；只为有独立图标的文件访问 Shell。
-		std::unordered_map<std::wstring, int> sharedIcons;
-		std::vector<std::shared_ptr<FileAction>> individualIcons;
-		individualIcons.reserve(shareds.size());
-		for (const auto& action : shareds) {
-			if (action->iconFilePathIndex >= 0) continue;
-			const std::wstring extension = std::filesystem::path(action->getIconFilePath()).extension().wstring();
-			if (extension.empty() || _wcsicmp(extension.c_str(), L".exe") == 0 ||
-				_wcsicmp(extension.c_str(), L".lnk") == 0 ||
-				_wcsicmp(extension.c_str(), L".ico") == 0 ||
-				_wcsicmp(extension.c_str(), L".url") == 0) {
-				individualIcons.push_back(action);
-				continue;
-			}
-			std::wstring key = extension;
-			std::transform(key.begin(), key.end(), key.begin(), towlower);
-			auto [it, inserted] = sharedIcons.try_emplace(key, -1);
-			if (inserted) it->second = GetSysImageIndex2(L"candylauncher_file" + key);
-			action->iconFilePathIndex = it->second;
-		}
-		if (individualIcons.empty()) return;
-		// 确定要使用的线程数，通常基于硬件核心数
-		// hardware_concurrency() 可能返回0，所以至少保证1个线程
-		size_t numThreads = std::min<size_t>(std::thread::hardware_concurrency(), individualIcons.size());
-		if (numThreads == 0) {
-			numThreads = 1;
-		}
-		ThreadPool poolThread(numThreads);
-
-		std::vector<std::future<void>> futures;
-		std::atomic<ULONGLONG> shortcutMs{0}, executableMs{0}, otherMs{0};
-		std::atomic<size_t> shortcutCount{0}, executableCount{0}, otherCount{0};
-		const ULONGLONG iconStart = GetTickCount64();
-		const size_t totalSize = individualIcons.size();
-		const size_t chunkSize = (totalSize + numThreads - 1) / numThreads;
-
-		// 创建并分发任务给多个线程
-		for (unsigned int i = 0; i < numThreads; ++i) {
-			const size_t start_index = i * chunkSize;
-			if (start_index >= totalSize) break;
-			const size_t end_index = std::min(start_index + chunkSize, totalSize);
-
-			// 获取该分块的起始和结束迭代器
-			auto start_it = individualIcons.begin() + start_index;
-			auto end_it = individualIcons.begin() + end_index;
-
-			// 注意：按值捕获迭代器，按引用捕获 shareds (如果只是读写成员，甚至不需要捕获整个容器)
-			futures.push_back(poolThread.enqueue([start_it, end_it, &shortcutMs, &executableMs, &otherMs,
-				&shortcutCount, &executableCount, &otherCount]() {
-				for (auto it = start_it; it != end_it; ++it) {
-					auto& action = *it;
-					const ULONGLONG begin = GetTickCount64();
-					action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-					const ULONGLONG elapsed = GetTickCount64() - begin;
-					const auto& path = action->getIconFilePath();
-					if (EndsWithIgnoreCase(path, L".lnk")) { shortcutMs += elapsed; ++shortcutCount; }
-					else if (EndsWithIgnoreCase(path, L".exe")) { executableMs += elapsed; ++executableCount; }
-					else { otherMs += elapsed; ++otherCount; }
-				}
-			}));
-		}
-		for (auto& f : futures) {
-			f.get();
-		}
-		// 必须做一轮查询，做一个兜底，因为多线程调用GetSysImageIndex ，会有几率得到 index 为0的图标
-		for (const std::shared_ptr<FileAction>& action : individualIcons) {
-			if (action->iconFilePathIndex == 0) {
-				action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-			}
-		}
-		Logi(L"FolderPlugin", L"icon timing wall=", GetTickCount64() - iconStart,
-			L"ms shortcut=", shortcutCount.load(), L"/", shortcutMs.load(),
-			L"ms exe=", executableCount.load(), L"/", executableMs.load(),
-			L"ms other=", otherCount.load(), L"/", otherMs.load(), L"ms");
-	}
-
-	static void doActionAddIconIndexWithoutMultithreading(const std::vector<std::shared_ptr<FileAction>>& shareds) {
-		if (shareds.empty()) {
-			return;
-		}
-		for (const std::shared_ptr<FileAction>& action : shareds) {
-			if (action->iconFilePathIndex >= 0) continue;
-			action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-		}
-	}
-
-
+	// 系统图标由主程序按 iconPath 延迟解析，这里不再预先查询 Shell
 	void RefreshAllActionsBackup() {
-		allPluginActions.clear();
-		const bool allowDuplicateItems = g_host->GetSettingsMap().at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
+		const candy::Host& host = GetHost();
+		std::vector<std::shared_ptr<FileAction>> allPluginActions;
+		const bool allowDuplicateItems = host.GetBool(L"com.candytek.folderplugin.allow_duplicate_items", true);
+		const bool everythingEnabled = host.GetBool(L"pref_use_everything_sdk_index", false);
+		const bool indexRoot = host.GetBool(L"com.candytek.folderplugin.index_folderpath_itself", true);
+		const bool uwpEnabled = host.GetBool(L"com.candytek.folderplugin.uwp_apps", true);
+		const bool pathEnabled = host.GetBool(L"com.candytek.folderplugin.envpath_apps", false);
 		std::unordered_set<std::wstring> indexedNames;
 		auto pushAction = [&](std::vector<std::shared_ptr<FileAction>>& actions, const std::shared_ptr<FileAction>& action) {
 			if (!action) return;
 			if (!allowDuplicateItems) {
-				const std::wstring normalizedTitle = NormalizeActionTitleForDedup(action->getTitle());
-				if (indexedNames.find(normalizedTitle) != indexedNames.end()) return;
-				indexedNames.insert(normalizedTitle);
-			}
-			actions.push_back(action);
-		};
-		auto pushAction2 = [&](std::vector<std::shared_ptr<BaseAction>>& actions, const std::shared_ptr<FileAction>& action) {
-			if (!action) return;
-			if (!allowDuplicateItems) {
-				const std::wstring normalizedTitle = NormalizeActionTitleForDedup(action->getTitle());
+				const std::wstring normalizedTitle = NormalizeActionTitleForDedup(action->title);
 				if (indexedNames.find(normalizedTitle) != indexedNames.end()) return;
 				indexedNames.insert(normalizedTitle);
 			}
@@ -391,14 +275,15 @@ public:
 		for (TraverseOptions traverseOptions1 : runnerConfigs) {
 			if (traverseOptions1.type == L"folder" || traverseOptions1.type.empty()) {
 				traverseOptions1.folder = GetCurrentFolderPath(traverseOptions1);
-				if (g_host->GetSettingsMap().at("pref_use_everything_sdk_index").boolValue) {
-					g_host->TraverseFilesForEverythingSDK(traverseOptions1.folder, traverseOptions1, [&](const std::wstring& name,
-														const std::wstring& fullPath,
-														const std::wstring& parent,
-														const std::wstring& ext) {
-															const auto action = std::make_shared<FileAction>(name, fullPath, false, parent);
-															pushAction(tempActions, action);
-														});
+				if (everythingEnabled) {
+					host.TraverseFiles(MakeHostTraverseOptions(traverseOptions1, traverseOptions1.folder),
+						[&](const std::wstring& name,
+							const std::wstring& fullPath,
+							const std::wstring& parent,
+							const std::wstring& ext) {
+							const auto action = std::make_shared<FileAction>(name, fullPath, false, parent);
+							pushAction(tempActions, action);
+						});
 				} else {
 					TraverseFiles(traverseOptions1.folder, traverseOptions1, EXE_FOLDER_PATH2, [&](const std::wstring& name,
 								const std::wstring& fullPath,
@@ -408,14 +293,13 @@ public:
 									pushAction(tempActions, action);
 								});
 				}
-				if (g_host->GetSettingsMap().at("com.candytek.folderplugin.index_folderpath_itself").boolValue) {
+				if (indexRoot) {
 					std::wstring folderPath = ShortToLongPathWithEnvironment(
 						ExpandEnvironmentVariables(traverseOptions1.folder, EXE_FOLDER_PATH2));
 					const auto action = std::make_shared<FileAction>(traverseOptions1.name, folderPath, false, folderPath);
 					pushAction(tempActions, action);
 				}
-			} else if (traverseOptions1.type == L"path" && !isPathAdded &&
-				g_host->GetSettingsMap().at("com.candytek.folderplugin.envpath_apps").boolValue) {
+			} else if (traverseOptions1.type == L"path" && !isPathAdded && pathEnabled) {
 				TraversePATHExecutables2([&](const std::wstring& name,
 											const std::wstring& fullPath,
 											const std::wstring& parent,
@@ -425,38 +309,31 @@ public:
 				}, traverseOptions1, EXE_FOLDER_PATH2);
 
 				isPathAdded = true;
-			} else if (traverseOptions1.type == L"uwp" && !isUwpAdded &&
-				g_host->GetSettingsMap().at("com.candytek.folderplugin.uwp_apps").boolValue) {
-				std::vector<std::shared_ptr<BaseAction>> uwpActions;
+			} else if (traverseOptions1.type == L"uwp" && !isUwpAdded && uwpEnabled) {
+				std::vector<std::shared_ptr<FileAction>> uwpActions;
 				traverseUwpApps(uwpActions, traverseOptions1);
-				for (const auto& baseAction : uwpActions) {
-					if (auto fileAction = std::dynamic_pointer_cast<FileAction>(baseAction)) pushAction2(allPluginActions, fileAction);
-				}
+				for (const auto& fileAction : uwpActions) pushAction(allPluginActions, fileAction);
 				isUwpAdded = true;
 			} else if (traverseOptions1.type == L"control_panel" || traverseOptions1.type == L"windows_settings") {
 				for (const auto& item : GetSystemSettingsItems(traverseOptions1)) {
 					auto action = std::make_shared<FileAction>(item.name, item.target);
-					action->iconFilePathIndex = item.iconIndex;
+					action->iconIndex = item.iconIndex;
 					pushAction(tempActions, action);
 				}
 			}
 		}
 
-		doActionAddIconIndex(tempActions);
 		allPluginActions.insert(allPluginActions.end(),
 								std::make_move_iterator(tempActions.begin()),
 								std::make_move_iterator(tempActions.end()));
 
 		TraverseOptions emptyTraverseOptions;
 		TraverseOptions defaultOptions = CreateDefaultPathTraverseOptions();
-		if (!isUwpAdded && g_host->GetSettingsMap().at("com.candytek.folderplugin.uwp_apps").boolValue) {
-			std::vector<std::shared_ptr<BaseAction>> uwpActions;
+		if (!isUwpAdded && uwpEnabled) {
+			std::vector<std::shared_ptr<FileAction>> uwpActions;
 			traverseUwpApps(uwpActions, emptyTraverseOptions);
-			for (const auto& baseAction : uwpActions) {
-				auto fileAction = std::dynamic_pointer_cast<FileAction>(baseAction);
-				if (fileAction) pushAction2(allPluginActions, fileAction);
-			}
-		} else if (!isPathAdded && g_host->GetSettingsMap().at("com.candytek.folderplugin.envpath_apps").boolValue) {
+			for (const auto& fileAction : uwpActions) pushAction(allPluginActions, fileAction);
+		} else if (!isPathAdded && pathEnabled) {
 			// TODO: 解决这个崩溃问题
 			TraversePATHExecutables2([&](const std::wstring& name,
 										const std::wstring& fullPath,
@@ -465,10 +342,10 @@ public:
 				const auto action = std::make_shared<FileAction>(
 					name, fullPath, false, parent
 				);
-				action->iconFilePathIndex = GetSysImageIndex(action->getIconFilePath());
-				pushAction2(allPluginActions, action);
+				pushAction(allPluginActions, action);
 			}, defaultOptions, EXE_FOLDER_PATH2);
 		}
+		fileActions.Publish(host, std::move(allPluginActions));
 	}
 
 	// 目录修改时间只反映直接子项的增删；递归配置需要逐个检查已知子目录。
@@ -521,7 +398,7 @@ public:
 				if (const auto renamed = source.options.renameMap.find(title); renamed != source.options.renameMap.end())
 					title = renamed->second;
 				const auto previousAction = previous.find(CachePathKey(entryPath.wstring()));
-				if (previousAction != previous.end() && previousAction->second->getTitle() == title) {
+				if (previousAction != previous.end() && previousAction->second->title == title) {
 					snapshot.actions.push_back(previousAction->second);
 				} else {
 					auto action = std::make_shared<FileAction>(title, entryPath.wstring(), false, entryPath.parent_path().wstring());
@@ -536,13 +413,13 @@ public:
 		for (const auto& child : children) RefreshDirectory(source, child, next, newActions);
 	}
 
-	static std::vector<std::shared_ptr<BaseAction>> MergeVisibleActions(const std::vector<CachedSource>& sources,
+	static std::vector<std::shared_ptr<FileAction>> MergeVisibleActions(const std::vector<CachedSource>& sources,
 		bool allowDuplicates) {
-		std::vector<std::shared_ptr<BaseAction>> result;
+		std::vector<std::shared_ptr<FileAction>> result;
 		std::unordered_set<std::wstring> titles;
 		auto addSource = [&](const CachedSource& source) {
 			for (const auto& action : source.actions) {
-				if (allowDuplicates || titles.insert(NormalizeActionTitleForDedup(action->getTitle())).second)
+				if (allowDuplicates || titles.insert(NormalizeActionTitleForDedup(action->title)).second)
 					result.push_back(action);
 			}
 		};
@@ -565,7 +442,7 @@ public:
 
 	// 与各遍历器保持一致：文件按完整文件名排除，按不含扩展名的文件名重命名
 	static std::wstring IndexKeyOf(const CachedSource& source, FileAction& action, IndexEditKind kind) {
-		if (source.isUwp || source.isSystemSettings) return OriginalDisplayName(source.options, action.getTitle());
+		if (source.isUwp || source.isSystemSettings) return OriginalDisplayName(source.options, action.title);
 		const std::filesystem::path path(action.GetTargetPath());
 		return kind == IndexEditKind::Exclude ? path.filename().wstring() : path.stem().wstring();
 	}
@@ -711,22 +588,25 @@ public:
 		} else {
 			for (auto* candidate : affected) candidate->SetTitle(newTitle);
 		}
-		allPluginActions = MergeVisibleActions(cachedSources, cachedAllowDuplicates);
+		// 主程序持有的是副本，排除/重命名后必须重新发布
+		fileActions.Publish(GetHost(), MergeVisibleActions(cachedSources, cachedAllowDuplicates));
 		Logi(L"FolderPlugin", kind == IndexEditKind::Exclude ? L"index excluded key=" : L"index renamed key=", key,
 			L" title=", newTitle, L" config=", configIndex, L" affected=", affected.size());
 		return true;
 	}
 
-	void RefreshAllActions() override {
-		if (!g_host) return;
+	// 带 CL_PLUGIN_REFRESH_ANY_THREAD，由主程序在工作线程上调用；这里只用 "Any thread" 的主程序服务
+	void RefreshActions() override {
+		if (!m_host) return;
 		std::lock_guard<std::mutex> lock(cacheMutex);
+		const candy::Host& host = GetHost();
+		automationEditor.Publish(host, {std::make_shared<AutomationEditorAction>()});
 		const ULONGLONG refreshStart = GetTickCount64();
-		const auto& settings = g_host->GetSettingsMap();
-		const bool allowDuplicates = settings.at("com.candytek.folderplugin.allow_duplicate_items").boolValue;
-		const bool indexRoot = settings.at("com.candytek.folderplugin.index_folderpath_itself").boolValue;
-		const bool uwpEnabled = settings.at("com.candytek.folderplugin.uwp_apps").boolValue;
-		const bool pathEnabled = settings.at("com.candytek.folderplugin.envpath_apps").boolValue;
-		const bool everythingEnabled = settings.at("pref_use_everything_sdk_index").boolValue;
+		const bool allowDuplicates = host.GetBool(L"com.candytek.folderplugin.allow_duplicate_items", true);
+		const bool indexRoot = host.GetBool(L"com.candytek.folderplugin.index_folderpath_itself", true);
+		const bool uwpEnabled = host.GetBool(L"com.candytek.folderplugin.uwp_apps", true);
+		const bool pathEnabled = host.GetBool(L"com.candytek.folderplugin.envpath_apps", false);
+		const bool everythingEnabled = host.GetBool(L"pref_use_everything_sdk_index", false);
 		const std::string config = ReadUtf8File(RUNNER_CONFIG_PATH2);
 		DWORD pathLength = GetEnvironmentVariableW(L"PATH", nullptr, 0);
 		std::wstring environmentPath(pathLength ? pathLength : 1, L'\0');
@@ -797,14 +677,10 @@ public:
 				for (const auto& source : sources) {
 					if (!source.isUwp) continue;
 					const TraverseOptions options = source.options;
-					// UWP 条目及拼音匹配文本在工作线程构造，与文件索引并发执行。
+					// UWP 条目（含图标位图）在工作线程构造，与文件索引并发执行。
 					uwpFuture = std::async(std::launch::async, [options]() {
-						std::vector<std::shared_ptr<BaseAction>> loaded;
-						traverseUwpApps(loaded, options);
 						std::vector<std::shared_ptr<FileAction>> actions;
-						actions.reserve(loaded.size());
-						for (auto& action : loaded)
-							actions.push_back(std::static_pointer_cast<FileAction>(action));
+						traverseUwpApps(actions, options);
 						return actions;
 					});
 					break;
@@ -821,7 +697,7 @@ public:
 						std::vector<std::shared_ptr<FileAction>> actions;
 						for (const auto& item : GetSystemSettingsItems(options)) {
 							auto action = std::make_shared<FileAction>(item.name, item.target);
-							action->iconFilePathIndex = item.iconIndex;
+							action->iconIndex = item.iconIndex;
 							actions.push_back(std::move(action));
 						}
 						Logi(L"FolderPlugin", L"index source=", options.type, L" ms=", GetTickCount64() - start,
@@ -847,11 +723,11 @@ public:
 						previous.emplace(CachePathKey(action->GetTargetPath()), action);
 					std::vector<std::shared_ptr<FileAction>> actions;
 					for (const auto& root : source.roots) {
-						g_host->TraverseFilesForEverythingSDK(root, source.options,
+						host.TraverseFiles(MakeHostTraverseOptions(source.options, root),
 							[&](const std::wstring& title, const std::wstring& fullPath,
 								const std::wstring&, const std::wstring&) {
 								const auto old = previous.find(CachePathKey(fullPath));
-								if (old != previous.end() && old->second->getTitle() == title) {
+								if (old != previous.end() && old->second->title == title) {
 									actions.push_back(old->second);
 								} else {
 									auto action = std::make_shared<FileAction>(title, fullPath);
@@ -906,9 +782,7 @@ public:
 				newActions.insert(newActions.end(), sources[index].actions.begin(), sources[index].actions.end());
 			}
 			const ULONGLONG sourceDone = GetTickCount64();
-			// 系统图标按需提取，避免启动时对全部快捷方式执行 Shell 查询。
-			for (const auto& action : newActions)
-				if (action->iconFilePathIndex < 0) action->iconIndexOnDemand = true;
+			// 系统图标由主程序按 iconPath 按需提取，避免启动时对全部快捷方式执行 Shell 查询。
 			const ULONGLONG iconsDone = GetTickCount64();
 			if (uwpFuture.valid()) {
 				const ULONGLONG waitStart = GetTickCount64();
@@ -921,13 +795,16 @@ public:
 				}
 			}
 			const ULONGLONG uwpDone = GetTickCount64();
-			allPluginActions = MergeVisibleActions(sources, allowDuplicates);
+			auto visible = MergeVisibleActions(sources, allowDuplicates);
+			const size_t visibleCount = visible.size();
+			// 发布后主程序复制条目并处理匹配文本（可在任意线程调用）
+			fileActions.Publish(host, std::move(visible));
 			const ULONGLONG mergeDone = GetTickCount64();
 			Logi(L"FolderPlugin", L"index timing config=", configDone - refreshStart,
 				L"ms sources=", sourceDone - sourceStart, L"ms icon setup=", iconsDone - sourceDone,
-				L"ms UWP wait=", uwpDone - iconsDone, L"ms merge=", mergeDone - uwpDone,
+				L"ms UWP wait=", uwpDone - iconsDone, L"ms merge+publish=", mergeDone - uwpDone,
 				L"ms total=", mergeDone - refreshStart,
-				L"ms new=", newActions.size(), L" visible=", allPluginActions.size());
+				L"ms new=", newActions.size(), L" visible=", visibleCount);
 			cachedSources = std::move(sources);
 			cachedConfig = config;
 			cachedPath = std::move(environmentPath);
@@ -944,141 +821,12 @@ public:
 		}
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.folderplugin.uwp_apps",
-			"title": "索引UWP应用",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.folderplugin.regedit_apps",
-			"title": "索引注册表中注册的应用",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": false
-		},
-		{
-			"key": "com.candytek.folderplugin.envpath_apps",
-			"title": "索引 %PATH% 中的可执行文件",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": false
-		},
-		{
-			"key": "com.candytek.folderplugin.show_sendto_shortcut",
-			"title": "在右键 \"发送到\" 菜单中显示 \"CandyLauncher 索引文件夹\"",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.folderplugin.allow_duplicate_items",
-			"title": "允许项目重复",
-			"title_en": "Allow duplicate items",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.folderplugin.run_item_as_admin",
-			"title": "以管理员身份运行项目",
-			"title_en": "Run item as administrator",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": false
-		},
-		{
-			"key": "com.candytek.folderplugin.index_folderpath_itself",
-			"title": "索引路径本身",
-			"title_en": "The index path itself",
-			"type": "bool",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.folderplugin.indexed_manager",
-			"title": "索引查看器",
-			"type": "button",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.create_automation_action",
-			"title": "创建或编辑自动化动作组",
-			"type": "button",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.hotkey_open_file_location",
-			"title": "打开项目文件所在位置",
-			"title_en": "Open item file location",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.hotkey_open_target_location",
-			"title": "打开项目目标所在位置",
-			"title_en": "Open item target location",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.hotkey_copy_file_path",
-			"title": "复制项目文件路径",
-			"title_en": "Copy item file path",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.hotkey_copy_target_path",
-			"title": "复制快捷方式目标路径",
-			"title_en": "Copy shortcut target path",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.open_with_clipboard_params",
-			"title": "打开附带剪贴板参数",
-			"title_en": "Open with clipboard parameters",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.folderplugin.hotkey_run_item_as_admin",
-			"title": "以管理员身份运行项目",
-			"title_en": "Run item as administrator",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		}
+	void OnUserSettingsLoaded() override {
+		if (!m_host) return;
+		const candy::Host& host = GetHost();
+		host.RegisterAppCommand(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY, OpenIndexedManagerCommand, nullptr);
 
-	]
-}
-
-   )";
-	}
-
-
-	void OnUserSettingsLoadDone() override {
-		if (!g_host) return;
-		g_host->RegisterAppLaunchActionCallback(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY, []() {
-			ShowIndexedManagerWindow(nullptr);
-		});
-
-		bool pref_indexed_apps_show_sendto_shortcut = g_host->GetSettingsMap().at("com.candytek.folderplugin.show_sendto_shortcut").
-															boolValue;
+		bool pref_indexed_apps_show_sendto_shortcut = host.GetBool(L"com.candytek.folderplugin.show_sendto_shortcut", true);
 
 		PWSTR sendto = nullptr;
 		if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_SendTo, 0, nullptr, &sendto))) {
@@ -1101,18 +849,17 @@ public:
 					// ShowErrorMsgBox(L"删除快捷方式" + result);
 				}
 			}
+			CoTaskMemFree(sendto);
 		}
 
-		const auto& settings = g_host->GetSettingsMap();
-		hkOpenFileLocation = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_file_location").stringValue);
-		hkOpenTargetLocation = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_open_target_location").stringValue);
-		hkCopyFilePath = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_copy_file_path").stringValue);
-		hkCopyTargetPath = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_copy_target_path").stringValue);
-		hkOpenWithClipboard = ParseHotkeyString(settings.at("com.candytek.folderplugin.open_with_clipboard_params").stringValue);
-		hkRunAsAdmin = ParseHotkeyString(settings.at("com.candytek.folderplugin.hotkey_run_item_as_admin").stringValue);
-		automationEditorAction = std::make_shared<AutomationEditorAction>();
+		hkOpenFileLocation = ParseHotkeyString(host.GetString(L"com.candytek.folderplugin.hotkey_open_file_location"));
+		hkOpenTargetLocation = ParseHotkeyString(host.GetString(L"com.candytek.folderplugin.hotkey_open_target_location"));
+		hkCopyFilePath = ParseHotkeyString(host.GetString(L"com.candytek.folderplugin.hotkey_copy_file_path"));
+		hkCopyTargetPath = ParseHotkeyString(host.GetString(L"com.candytek.folderplugin.hotkey_copy_target_path"));
+		hkOpenWithClipboard = ParseHotkeyString(host.GetString(L"com.candytek.folderplugin.open_with_clipboard_params"));
+		hkRunAsAdmin = ParseHotkeyString(host.GetString(L"com.candytek.folderplugin.hotkey_run_item_as_admin"));
 
-#if defined(DEBUG) || defined(_DEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
+#if defined(DEBUG) || defined(_DEBUG) || defined(REL_WITH_DEB_INFO_DEBUG)
 		if (IS_SHOW_INDEX_MANAGER_WINDOW)
 		{
 			ShowIndexedManagerWindow(nullptr);
@@ -1122,14 +869,14 @@ public:
 	}
 
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!g_host) return false;
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		if (!m_host) return false;
 		// 执行自定义行为
-		if (std::dynamic_pointer_cast<AutomationEditorAction>(action)) {
+		if (automationEditor.Find(userData)) {
 			ShowAutomationActionWindow(nullptr);
 			return true;
 		}
-		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
+		const auto fileAction = fileActions.Find(userData);
 		if (!fileAction) return false;
 		// 执行自动化功能
 		const std::filesystem::path target(fileAction->GetTargetPath());
@@ -1144,52 +891,60 @@ public:
 		return true;
 	}
 
-	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
-		auto it = std::dynamic_pointer_cast<FileAction>(action);
-		if (!it) return 0;
+	bool OnHotKey(const uint64_t userData, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+		const auto it = fileActions.Find(userData);
+		if (!it) return false;
 
 		if (hkOpenFileLocation.matches(vk, currentModifiers)) {
 			it->InvokeOpenFolder();
-			return 1;
+			return true;
 		}
 		if (hkOpenTargetLocation.matches(vk, currentModifiers)) {
 			it->InvokeOpenGoalFolder();
-			return 1;
+			return true;
 		}
 		if (hkCopyFilePath.matches(vk, currentModifiers)) {
 			const std::wstring& path = it->GetTargetPath();
-			if (!path.empty()) CopyTextToClipboard(nullptr, path);
-			return 1;
+			if (!path.empty()) GetHost().SetClipboardText(path);
+			return true;
 		}
 		if (hkCopyTargetPath.matches(vk, currentModifiers)) {
 			const std::wstring path = SaveGetShortcutTarget(it->GetTargetPath());
-			if (!path.empty()) CopyTextToClipboard(nullptr, path);
-			return 1;
+			if (!path.empty()) GetHost().SetClipboardText(path);
+			return true;
 		}
 		if (hkOpenWithClipboard.matches(vk, currentModifiers)) {
 			it->InvokeWithTargetClipBoard();
-			return 1;
+			return true;
 		}
 		if (hkRunAsAdmin.matches(vk, currentModifiers)) {
 			it->InvokeWithTarget(nullptr, true);
-			return 1;
+			return true;
 		}
 
-		return 0;
+		return false;
+	}
+
+	// 输入框无选中文本时 Ctrl+C 复制条目路径
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto fileAction = fileActions.Find(userData);
+		if (!fileAction || fileAction->GetTargetPath().empty()) return false;
+		text = fileAction->GetTargetPath();
+		return true;
 	}
 
 
-	void OnSettingItemExecute(const SettingItem* setting, HWND parentHwnd) override {
-		if (setting->key == "com.candytek.folderplugin.indexed_manager") {
+	void OnSettingItemExecute(const std::wstring& key, HWND parentHwnd) override {
+		if (key == L"com.candytek.folderplugin.indexed_manager") {
 			ShowIndexedManagerWindow(parentHwnd);
-		} else if (setting->key == "com.candytek.folderplugin.create_automation_action") {
+		} else if (key == L"com.candytek.folderplugin.create_automation_action") {
 			ShowAutomationActionWindow(parentHwnd);
 		}
 	}
 
-	bool OnItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
+	bool OnItemRightClick(const uint64_t userData, HWND parentHwnd, POINT screenPt) override {
 		Logi(L"FolderPlugin", L"OnItemRightClick entered");
-		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
+		const auto fileAction = fileActions.Find(userData);
 		if (!fileAction) {
 			Logw(L"FolderPlugin", L"OnItemRightClick skipped: action is not FileAction");
 			return false;
@@ -1201,8 +956,8 @@ public:
 	}
 
 	// 重新按当前输入筛选，让主列表立即反映排除/重命名结果
-	static void RefreshVisibleList(const std::wstring& inputText) {
-		g_host->ChangeEditTextText(inputText);
+	void RefreshVisibleList(const std::wstring& inputText) const {
+		GetHost().SetEditText(inputText);
 	}
 
 	void ExcludeIndexItem(const std::shared_ptr<FileAction>& action, HWND parentHwnd) {
@@ -1212,19 +967,19 @@ public:
 			MessageBoxW(parentHwnd, error.c_str(), L"排除该索引", MB_OK | MB_ICONWARNING);
 			return;
 		}
-		RefreshVisibleList(std::wstring(g_host->GetEditTextText()));
+		RefreshVisibleList(GetHost().GetEditText());
 	}
 
 	void RenameIndexItem(const std::shared_ptr<FileAction>& action, HWND parentHwnd) {
 		const std::wstring renameKey = GetIndexRenameKey(action);
 		if (renameKey.empty()) return;
 		// 对话框获得焦点时主窗口可能随失焦隐藏并清空输入，先保存输入，结束后恢复
-		const std::wstring inputText = g_host->GetEditTextText();
+		const std::wstring inputText = GetHost().GetEditText();
 		std::wstring newTitle;
 		const std::wstring caption = L"重命名该索引 (原名: " + renameKey + L")";
-		const bool confirmed = ShowRenameDialog(parentHwnd, action->getTitle(), newTitle, caption.c_str());
-		g_host->MyShowWindow(SW_SHOW, true);
-		if (!confirmed || newTitle == action->getTitle()) {
+		const bool confirmed = ShowRenameDialog(parentHwnd, action->title, newTitle, caption.c_str());
+		GetHost().ShowMainWindow(SW_SHOW, true);
+		if (!confirmed || newTitle == action->title) {
 			RefreshVisibleList(inputText);
 			return;
 		}
@@ -1236,9 +991,9 @@ public:
 		RefreshVisibleList(inputText);
 	}
 
-	bool OnItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) override {
+	bool OnItemShiftRightClick(const uint64_t userData, HWND parentHwnd, POINT screenPt) override {
 		Logi(L"FolderPlugin", L"OnItemShiftRightClick entered");
-		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
+		const auto fileAction = fileActions.Find(userData);
 		if (!fileAction) {
 			Logw(L"FolderPlugin", L"OnItemShiftRightClick skipped: action is not FileAction");
 			return false;
@@ -1257,18 +1012,18 @@ public:
 			break;
 		case IDM_KILL_PROCESS: KillProcessByImagePath(SaveGetShortcutTargetAndReturn(fileAction->GetTargetPath()));
 			break;
-		case IDM_COPY_PATH: CopyTextToClipboard(parentHwnd, fileAction->GetTargetPath());
+		case IDM_COPY_PATH: GetHost().SetClipboardText(fileAction->GetTargetPath());
 			break;
-		case IDM_COPY_TARGET_PATH: CopyTextToClipboard(parentHwnd, SaveGetShortcutTargetAndReturn(fileAction->GetTargetPath()));
+		case IDM_COPY_TARGET_PATH: GetHost().SetClipboardText(SaveGetShortcutTargetAndReturn(fileAction->GetTargetPath()));
 			break;
 		default: break;
 		}
 		return true;
 	}
 
-	bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) override {
-		auto fileAction = std::dynamic_pointer_cast<FileAction>(action);
-		if (!g_host || !fileAction) {
+	bool OnItemBeginDrag(const uint64_t userData, const HWND sourceHwnd, const POINT screenPt) override {
+		const auto fileAction = fileActions.Find(userData);
+		if (!m_host || !fileAction) {
 			return false;
 		}
 
@@ -1278,21 +1033,16 @@ public:
 		}
 
 		Logi(L"FolderPlugin", L"Begin OLE drag drop path=", targetPath);
-		return g_host->BeginOleDragDropFiles({targetPath}, sourceHwnd);
+		candy::DragData dragData;
+		dragData.filePaths = {targetPath};
+		return GetHost().BeginDrag(dragData, sourceHwnd);
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new FolderPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 索引刷新只用 "Any thread" 的主程序服务（集合发布、设置读取、traverse_files、日志），
+// 所以允许主程序在工作线程上调用 RefreshActions，启动时不再串行等待文件夹索引
+CANDY_PLUGIN_EXPORT_EX(FolderPlugin, L"Folders", L"Index configured folders, %PATH% and UWP apps", L"1.1.0", L"com.candytek.folderplugin",
+						nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)
 
 
 // case TRAY_MENU_ID_EDIT_CONFIG: // 编辑 JSON 配置文件

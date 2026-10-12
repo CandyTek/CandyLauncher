@@ -13,7 +13,9 @@
 #include <windows.h>
 
 #include "PluginActionProxy.hpp"
+#include "PluginI18n.hpp"
 #include "BaseLaunchAction.hpp"
+#include "common/I18n.hpp"
 #include "Everything.h"
 #include "../util/BaseTools.hpp"
 #include "util/FileUtil.hpp"
@@ -77,6 +79,14 @@ struct PluginCatalogInfo {
 	bool enabled = true;
 	bool fromManifest = false;
 	std::filesystem::file_time_type fileTime{};
+	// 2.3 string tables (lang/<stem>/*.json + manifest "strings"), all languages; null when the plugin has none.
+	std::shared_ptr<const PluginStringTable> strings;
+
+	// name / description in the current UI language ("plugin.name" / "plugin.description" keys), else the raw ones.
+	std::wstring DisplayName() const { return PluginI18n::Localize(strings, PluginI18n::KEY_PLUGIN_NAME, name); }
+	std::wstring DisplayDescription() const {
+		return PluginI18n::Localize(strings, PluginI18n::KEY_PLUGIN_DESCRIPTION, description);
+	}
 };
 
 inline std::unordered_map<uint16_t, PluginInfo> m_plugins = {};
@@ -96,8 +106,8 @@ class PluginManager {
 private:
 	std::function<void()> m_onActionsChanged;
 	std::function<void()> m_beforePluginUnload;
-	// (queryId, actions, isFinal) on the UI thread, see HandleQueryResultsMessage.
-	std::function<void(uint64_t, std::vector<std::shared_ptr<BaseAction>>&&, bool)> m_onQueryResults;
+	// (queryId, actions, CL_RESULTS_* flags) on the UI thread, see HandleQueryResultsMessage.
+	std::function<void(uint64_t, std::vector<std::shared_ptr<BaseAction>>&&, int32_t)> m_onQueryResults;
 	// Plugins appeared / disappeared / were replaced on disk; the settings list must be rebuilt.
 	std::function<void()> m_onCatalogChanged;
 	bool m_suppressNotifications = false;
@@ -110,8 +120,18 @@ private:
 	struct PendingResults {
 		uint64_t queryId = 0;
 		std::vector<std::shared_ptr<BaseAction>> actions;
-		bool isFinal = false;
+		int32_t flags = 0; // CL_RESULTS_*
 	};
+
+public:
+	// What on_intercept_input produced for one input.
+	struct InterceptResult {
+		std::vector<std::shared_ptr<BaseAction>> actions;
+		// A plugin asked to show `actions` (even none) instead of running the normal search.
+		bool tookOver = false;
+	};
+
+private:
 
 	std::mutex m_resultsMutex;
 	std::vector<PendingResults> m_pendingResults;
@@ -124,6 +144,9 @@ private:
 	uint64_t m_combinedVersion = 0;
 
 	std::wstring m_pluginDir;
+	// UI language the string tables were last resolved for (SyncLanguageFromSettings).
+	std::wstring m_language;
+	bool m_languageSynced = false;
 	bool m_shadowCopy = false;
 	uint16_t m_nextPluginId = 0;
 
@@ -336,6 +359,11 @@ public:
 		Logi(TAG, L"LoadAllPlugins start");
 		g_pluginCatalog.clear();
 		m_pluginDir = pluginDir;
+		// InitializeI18n runs in the settings pass after the plugins are loaded; the first
+		// SyncLanguageFromSettings corrects this initial value before anything is published.
+		m_language = g_uiLanguageCode;
+		m_languageSynced = false;
+		PluginI18n::SetLanguage(m_language);
 
 		if (!std::filesystem::exists(pluginDir)) {
 			Logw(TAG, L"Plugin directory does not exist: ", pluginDir);
@@ -435,9 +463,10 @@ public:
 		return queryId;
 	}
 
-	// Items plugins want shown instead of the normal search for this input (empty = no plugin took over).
-	std::vector<std::shared_ptr<BaseAction>> DispatchInterceptInput(const std::wstring& input) {
-		std::vector<std::shared_ptr<BaseAction>> all_actions;
+	// Items plugins want shown instead of the normal search for this input.
+	// Not intercepted = no items and no take-over.
+	InterceptResult DispatchInterceptInput(const std::wstring& input) {
+		InterceptResult result;
 		const std::wstring lowerInput = MyToLower(input);
 
 		for (const uint16_t pluginId : m_dispatchOrder) {
@@ -447,17 +476,18 @@ public:
 			const uint64_t start = GetTickCount64();
 			info.api->on_intercept_input(info.self, input.c_str(), &sink);
 			WarnIfSlow(info, L"on_intercept_input", start);
+			result.tookOver |= sink.takeOver;
 			if (!sink.actions.empty()) {
 				// 使用 std::make_move_iterator 避免共享指针不必要的引用计数原子操作
-				all_actions.insert(
-					all_actions.end(),
+				result.actions.insert(
+					result.actions.end(),
 					std::make_move_iterator(sink.actions.begin()),
 					std::make_move_iterator(sink.actions.end())
 				);
 			}
 		}
 
-		return all_actions;
+		return result;
 	}
 
 	// Asynchronous search (2.2): plugins answer later through post_results with this query id.
@@ -667,7 +697,60 @@ public:
 		}
 	}
 
+	// ---- 2.3 localization ----
+
+	const PluginCatalogInfo* FindCatalogByFilePath(const std::wstring& filePath) const {
+		for (const auto& catalogInfo : g_pluginCatalog) {
+			if (catalogInfo.filePath == filePath) return &catalogInfo;
+		}
+		return nullptr;
+	}
+
+	// Builds the flat key -> text view the plugin's get_string reads, for the current language.
+	void ResolvePluginStrings(PluginInfo& info) const {
+		if (!info.context) return;
+		const PluginCatalogInfo* catalogInfo = FindCatalogByFilePath(info.filePath);
+		std::shared_ptr<const PluginStringMap> resolved;
+		if (catalogInfo && catalogInfo->strings && !catalogInfo->strings->Empty()) {
+			resolved = catalogInfo->strings->Resolve(PluginI18n::Language());
+			Logi(TAG, L"Strings for ", info.name, L": ", resolved->size(), L" keys, ", catalogInfo->strings->languages.size(),
+				L" languages, ui ", PluginI18n::Language(), L", name \"", catalogInfo->DisplayName(), L"\"");
+		}
+		std::atomic_store(&info.context->strings, resolved);
+	}
+
+	// pref_ui_language changed (the settings window re-ran InitializeI18n): re-read every string table so edited
+	// translations show up, rebuild each loaded plugin's view, then tell the plugins. The caller refreshes all
+	// actions afterwards, which republishes titles in the new language.
+	void SyncLanguageFromSettings() {
+		const std::wstring language = g_uiLanguageCode;
+		// Plugins are loaded before the settings pass that runs InitializeI18n, so the first sync only corrects
+		// the language the tables were resolved with; nothing is published yet, so no plugin needs telling.
+		const bool firstSync = !m_languageSynced;
+		m_languageSynced = true;
+		if (language == m_language) return;
+		Logi(TAG, firstSync ? L"UI language for plugins: " : L"UI language changed: ", m_language, L" -> ", language);
+		m_language = language;
+		PluginI18n::SetLanguage(language);
+		if (!firstSync) {
+			for (auto& catalogInfo : g_pluginCatalog) {
+				catalogInfo.strings = PluginI18n::Load(catalogInfo.filePath, ManifestPathFor(catalogInfo.filePath));
+			}
+		}
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (!info.loaded) continue;
+			ResolvePluginStrings(info);
+			if (!firstSync && CL_PLUGIN_HAS(info, on_language_changed)) {
+				const uint64_t start = GetTickCount64();
+				info.api->on_language_changed(info.self, language.c_str());
+				WarnIfSlow(info, L"on_language_changed", start);
+			}
+		}
+	}
+
 	void NotifyUserSettingsLoadDone() {
+		SyncLanguageFromSettings();
 		SyncPluginPrioritiesFromSettings();
 		for (const uint16_t pluginId : m_dispatchOrder) {
 			PluginInfo& info = m_plugins[pluginId];
@@ -783,7 +866,7 @@ public:
 		m_beforePluginUnload = callback;
 	}
 
-	void SetQueryResultsCallback(std::function<void(uint64_t, std::vector<std::shared_ptr<BaseAction>>&&, bool)> callback) {
+	void SetQueryResultsCallback(std::function<void(uint64_t, std::vector<std::shared_ptr<BaseAction>>&&, int32_t)> callback) {
 		m_onQueryResults = std::move(callback);
 	}
 
@@ -794,11 +877,11 @@ public:
 	// ---- cross-thread requests (any thread) and their UI-thread handlers ----
 
 	// post_results: the batch is queued and one WM_PLUGIN_QUERY_RESULTS is posted per burst.
-	bool QueueQueryResults(const uint64_t queryId, std::vector<std::shared_ptr<BaseAction>>&& actions, const bool isFinal) {
+	bool QueueQueryResults(const uint64_t queryId, std::vector<std::shared_ptr<BaseAction>>&& actions, const int32_t flags) {
 		if (queryId != CurrentQueryId()) return false;
 		{
 			std::lock_guard<std::mutex> lock(m_resultsMutex);
-			m_pendingResults.push_back({queryId, std::move(actions), isFinal});
+			m_pendingResults.push_back({queryId, std::move(actions), flags});
 		}
 		if (g_mainHwnd && !m_resultsPosted.exchange(true)) {
 			PostMessageW(g_mainHwnd, WM_PLUGIN_QUERY_RESULTS, 0, 0);
@@ -816,8 +899,22 @@ public:
 		const uint64_t current = CurrentQueryId();
 		for (auto& batch : batches) {
 			if (batch.queryId != current || !m_onQueryResults) continue;
-			m_onQueryResults(batch.queryId, std::move(batch.actions), batch.isFinal);
+			m_onQueryResults(batch.queryId, std::move(batch.actions), batch.flags);
 		}
+	}
+
+	// request_refresh: the plugin wants refresh_actions run again; marshalled to the UI thread, which
+	// starts the worker (CL_PLUGIN_REFRESH_ANY_THREAD) or refreshes inline.
+	void RequestPluginRefresh(const uint16_t pluginId) {
+		if (g_mainHwnd) PostMessageW(g_mainHwnd, WM_PLUGIN_REFRESH_REQUEST, pluginId, 0);
+	}
+
+	void HandleRefreshRequestMessage(const uint16_t pluginId) {
+		const auto it = m_plugins.find(pluginId);
+		if (it == m_plugins.end() || !it->second.loaded) return;
+		RefreshPlugin(it->second);
+		// The worker path reports back through RequestActionsChanged when it is done.
+		if (!(it->second.apiFlags & CL_PLUGIN_REFRESH_ANY_THREAD)) NotifyActionsChanged();
 	}
 
 	// notify_actions_changed and the refresh workers: coalesced into one WM_PLUGIN_ACTIONS_CHANGED.
@@ -1310,10 +1407,15 @@ private:
 		catalogInfo.name = GetPluginNameFromPathW(dllPath);
 		std::error_code ec;
 		catalogInfo.fileTime = std::filesystem::last_write_time(dllPath, ec);
-		if (!ReadPluginManifest(dllPath, catalogInfo) && !ProbePluginCatalogInfo(dllPath, catalogInfo)) {
-			// 不是有效的插件（旧版 C++ 接口或 API 主版本不兼容），不加入目录
-			return;
+		if (!ReadPluginManifest(dllPath, catalogInfo)) {
+			// 清单是必需的：没有清单时退回加载 DLL 探测元数据（没有默认设置以外的本地化信息）
+			Logw(TAG, L"Plugin has no manifest (", ManifestPathFor(dllPath), L"), probing the DLL instead");
+			if (!ProbePluginCatalogInfo(dllPath, catalogInfo)) {
+				// 不是有效的插件（旧版 C++ 接口或 API 主版本不兼容），不加入目录
+				return;
+			}
 		}
+		catalogInfo.strings = PluginI18n::Load(dllPath, ManifestPathFor(dllPath));
 		if (IsPackageInCatalog(catalogInfo.pkgName)) {
 			Logw(TAG, L"Duplicate package_name ", catalogInfo.pkgName, L", skipped: ", dllPath);
 			return;
@@ -1343,6 +1445,9 @@ private:
 			stored.pkgName = info.pkgName;
 		}
 		if (stored.defaultSettingJson.empty()) stored.defaultSettingJson = info.defaultSettingJson;
+		if (stored.fromManifest && !info.version.empty() && stored.version != info.version) {
+			Logw(TAG, L"Manifest version ", stored.version, L" differs from DLL ", info.version, L": ", dllPath);
+		}
 		if (refreshNow) RefreshPlugin(info);
 	}
 
@@ -1421,6 +1526,7 @@ private:
 		info.context->pluginId = info.pluginId;
 		info.context->pkgName = info.pkgName;
 		info.context->logTag = info.name;
+		ResolvePluginStrings(info);
 
 		info.self = info.api->create(info.context.get(), GetHostApi());
 		if (!info.self) {

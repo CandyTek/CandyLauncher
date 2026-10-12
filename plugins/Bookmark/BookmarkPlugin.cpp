@@ -77,50 +77,6 @@ static bool LaunchBookmarkUrl(const std::wstring& url, const bool useSubBrowser)
 }
 }
 
-static const wchar_t* BOOKMARK_DEFAULT_SETTING_JSON = LR"json(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.bookmarkplugin.start_str",
-			"title": "直接激活命令",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "bm "
-		},
-		{
-			"key": "com.candytek.bookmarkplugin.matchtext_url",
-			"type": "bool",
-			"title": "搜索匹配书签URL",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.bookmarkplugin.browser_list",
-			"type": "stringArr",
-			"title": "浏览器书签文件路径",
-			"subPage": "plugin",
-			"defValue": "chrome"
-		},
-		{
-			"key": "com.candytek.bookmarkplugin.mainbrowser",
-			"title": "指定主浏览器路径",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.bookmarkplugin.subbrowser",
-			"title": "指定副浏览器路径 (Alt+Enter)",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": ""
-		}
-	]
-}
-
-   )json";
-
 class BookmarkPlugin : public candy::Plugin {
 private:
 	candy::ActionSet<BookmarkAction> bookmarks{0};
@@ -225,5 +181,5 @@ public:
 };
 
 // 读取书签文件只用到 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
-CANDY_PLUGIN_EXPORT_EX(BookmarkPlugin, L"书签", L"索引浏览器书签", L"1.2.0", L"com.candytek.bookmarkplugin",
-						BOOKMARK_DEFAULT_SETTING_JSON, CL_PLUGIN_REFRESH_ANY_THREAD)
+CANDY_PLUGIN_EXPORT_EX(BookmarkPlugin, L"Bookmarks", L"Index browser bookmarks", L"1.2.0", L"com.candytek.bookmarkplugin",
+						nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

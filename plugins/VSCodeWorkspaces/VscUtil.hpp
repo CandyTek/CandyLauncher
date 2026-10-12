@@ -12,8 +12,8 @@
 #include <ShlObj.h>
 #include <regex>
 #include <map>
+#include <unordered_set>
 
-#include "util/BitmapUtil.hpp"
 #include "util/LogUtil.hpp"
 #include "util/StringUtil.hpp"
 #include "util/json.hpp"
@@ -144,7 +144,7 @@ inline std::shared_ptr<VscAction> ParseVSCodeUri(
 	const std::string& uri,
 	const std::string& authority,
 	const VSCodeInstance& instance,
-	const std::shared_ptr<LazySysImageIndex>& icon,
+	const std::wstring& iconPath,
 	bool isWorkspace = false) {
 	if (uri.empty()) {
 		return nullptr;
@@ -226,17 +226,19 @@ inline std::shared_ptr<VscAction> ParseVSCodeUri(
 	}
 
 	action->title = title;
-	action->subTitle = widePath;
-	action->icon = icon;
+	action->subtitle = widePath;
+	action->iconPath = iconPath;
 	action->projectPath = widePath;
 
 	// Store original URI for launching
 	action->originalUri = utf8_to_wide(uri);
 	action->isWorkspaceFile = isWorkspace;
+	action->stableKey = action->originalUri;
 
 	// Build match text
 	std::wstring matchText = title + L" " + widePath;
-	action->matchText = m_host->GetTheProcessedMatchingText(matchText);
+	action->matchTextVerbatim = true;
+	action->matchText = m_host->ProcessMatchText(matchText);
 
 	return action;
 }
@@ -248,8 +250,8 @@ inline std::vector<std::shared_ptr<VscAction>> ParseStorageJson(
 	std::vector<std::shared_ptr<VscAction>> results;
 
 	try {
-		// 所有条目共享 VSCode 图标，显示时再获取
-		const auto icon = std::make_shared<LazySysImageIndex>(instance.executablePath);
+		// 所有条目共享 VSCode 图标（相同 iconPath 主程序只解析一次，显示时再获取）
+		const std::wstring& icon = instance.executablePath;
 		std::filesystem::path p(jsonPath);
 		std::ifstream file(p, std::ios::binary);
 		if (!file.is_open()) {
@@ -484,8 +486,8 @@ inline std::vector<VSCodeInstance> FindVSCodeInstances() {
 }
 
 // Get all VSCode workspace actions
-inline std::vector<std::shared_ptr<BaseAction>> GetAllVSCodeWorkspaces() {
-	std::vector<std::shared_ptr<BaseAction>> results;
+inline std::vector<std::shared_ptr<VscAction>> GetAllVSCodeWorkspaces() {
+	std::vector<std::shared_ptr<VscAction>> results;
 
 	if (!m_host) {
 		return results;

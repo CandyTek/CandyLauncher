@@ -1,0 +1,40 @@
+{
+	"package_name": "com.candytek.registryplugin",
+	"name": "Registry Navigator",
+	"description": "Navigate the Windows registry",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.registryplugin.start_str",
+				"title": "直接激活命令（默认使用 ': ' 前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ": "
+			},
+			{
+				"key": "com.candytek.registryplugin.max_results",
+				"type": "long",
+				"title": "最大结果数",
+				"subPage": "plugin",
+				"defValue": 2000
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Registry Navigator",
+				"description": "Navigate the Windows registry"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "注册表导航",
+				"description": "Windows 注册表导航"
+			}
+		}
+	}
+}

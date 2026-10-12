@@ -24,7 +24,7 @@ static const IID IID_ISearchManager = {0xAB310581, 0xAC80, 0x11D1, {0x8D, 0xF3, 
 
 #endif
 
-#include "util/BitmapUtil.hpp"
+#include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
 
 // Windows Search API 搜索帮助类
@@ -231,8 +231,8 @@ private:
 	}
 
 	// 简化的 OLE DB 查询执行
-	static std::vector<std::shared_ptr<BaseAction>> ExecuteOleDbQuery(const std::wstring& connectionString, const std::wstring& sqlQuery) {
-		std::vector<std::shared_ptr<BaseAction>> results;
+	static std::vector<std::shared_ptr<WindowsSearchAction>> ExecuteOleDbQuery(const std::wstring& connectionString, const std::wstring& sqlQuery) {
+		std::vector<std::shared_ptr<WindowsSearchAction>> results;
 
 		try {
 			// 初始化 OLE DB，使用数据初始化器
@@ -416,21 +416,10 @@ private:
 																action->path = path;
 																action->fileName = fileName;
 																action->title = fileName;
-																action->subTitle = path;
-																action->iconFilePath = path;
-																action->iconFilePathIndex = GetSysImageIndex(path);
-
-																// 设置匹配文本
-																// try {
-																// 	if (isMatchTextUrl) {
-																// 		action->matchText = m_host->GetTheProcessedMatchingText(fileName) +
-																// 			path;
-																// 	} else {
-																// 		action->matchText = m_host->GetTheProcessedMatchingText(fileName);
-																// 	}
-																// } catch (...) {
-																// 	action->matchText = fileName;
-																// }
+																action->subtitle = path;
+																// 文件图标由主程序延迟解析
+																action->iconPath = path;
+																action->stableKey = path;
 
 																results.push_back(action);
 															}
@@ -480,10 +469,10 @@ private:
 
 public:
 	// 执行搜索查询
-	static std::vector<std::shared_ptr<BaseAction>> Search(const std::wstring& keyword, int maxCount = 30, bool displayHiddenFiles = false,
+	static std::vector<std::shared_ptr<WindowsSearchAction>> Search(const std::wstring& keyword, int maxCount = 30, bool displayHiddenFiles = false,
 															const std::wstring& pattern = L"*",
 															const std::vector<std::wstring>& excludedPatterns = {}) {
-		std::vector<std::shared_ptr<BaseAction>> results;
+		std::vector<std::shared_ptr<WindowsSearchAction>> results;
 
 		if (keyword.empty()) {
 			return results;
@@ -550,11 +539,12 @@ public:
 				if (comInitialized) CoUninitialize();
 				const auto action = std::make_shared<WindowsSearchAction>();
 				action->title = L"WindowsSearch 服务运行异常";
-				action->subTitle = L"转到 Windows Search 设置进行修复";
+				action->subtitle = L"转到 Windows Search 设置进行修复";
 				action->path = L"OpenSettingsAction";
+				action->stableKey = action->path;
 				// 使用系统设置图标
-				action->iconFilePath = L"shell32.dll";
-				action->iconFilePathIndex = 21; // 设置图标索引
+				action->iconPath = L"shell32.dll";
+				action->iconIndex = 21; // 设置图标索引
 				results.push_back(action);
 				return results;
 			}

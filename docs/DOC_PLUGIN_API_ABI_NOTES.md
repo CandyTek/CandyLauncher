@@ -13,6 +13,7 @@
 | `plugins/PluginActionProxy.hpp` | 主程序侧：`PluginActionProxy`（插件条目的副本）、`CL_PluginContext`（不透明句柄的实现） |
 | `plugins/PluginHostApi.hpp` | 主程序侧：`CL_HostApi` 每个函数的实现 |
 | `plugins/PluginManager.hpp` | 加载、校验、分发 |
+| `plugins/PluginI18n.hpp` | 主程序侧：插件字符串表（2.3 本地化），见 [DOC_PLUGIN_I18N.md](DOC_PLUGIN_I18N.md) |
 
 ## 加载流程
 
@@ -42,7 +43,8 @@
 |---|---|
 | 2.0 | 初始纯 C ABI |
 | 2.1 | `CL_HostApi::set_clipboard_text`（SDK `Host::SetClipboardText`，旧主程序上返回 false）；`CL_PluginApi::get_item_copy_text`（SDK `Plugin::GetItemCopyText`，输入框无选中文本时 Ctrl+C 复制插件提供的文本） |
-| 2.2 | `CL_ActionDesc::stable_key / icon_key`；`CL_HostApi::set_trigger_keywords / sink_add_descs / post_results / notify_actions_changed / get_current_query_id`；`CL_PluginApi::flags / on_query / on_query_cancel / on_setting_changed`；详见下文 "2.2 机制" |
+| 2.2 | `CL_ActionDesc::stable_key / icon_key`；`CL_HostApi::set_trigger_keywords / sink_add_descs / post_results / notify_actions_changed / get_current_query_id / sink_take_over / request_refresh`；`CL_PluginApi::flags / on_query / on_query_cancel / on_setting_changed`；详见下文 "2.2 机制" |
+| 2.3 | 本地化：`CL_HostApi::get_ui_language / get_string`；`CL_PluginApi::on_language_changed`；`CL_CatalogEntry::description`；SDK `Host::GetUiLanguage / Tr`、`Plugin::Tr / OnLanguageChanged`、`candy::Format`。字符串表在 `plugins/lang/<DLL 名>/<语言>.json`，详见 [DOC_PLUGIN_I18N.md](DOC_PLUGIN_I18N.md) |
 
 ## 2.2 机制
 
@@ -68,8 +70,19 @@ SDK 的 `candy::TransientSet<T>` 负责这一点（`ResultSink::AddTransient(set
 每次按键是一个查询，主程序先 `on_query_cancel(上一个 id)` 再 `on_query(self, query_id, input, arg)`
 （同样受触发关键字约束，在 `on_intercept_input` 之后调用）。插件在任意线程完成后调用
 `post_results(h, query_id, descs, count, is_final)`：主程序在调用线程上复制条目，投递到 UI 线程追加到当前列表；
-`query_id` 已过期时返回 0 并丢弃。可以分多批投递。SDK：`TransientSet::PostResults(host, queryId, items, isFinal, restart)`。
+`query_id` 已过期时返回 0 并丢弃。可以分多批投递；最后一个参数是 `CL_RESULTS_FINAL | CL_RESULTS_REPLACE` 组合，
+`CL_RESULTS_REPLACE` 让这批结果替换当前列表（例如先显示 "搜索中" 占位项，结果到了再整体替换）而不是追加。
+SDK：`TransientSet::PostResults(host, queryId, items, isFinal, restart, replaceList)`。
 `get_current_query_id` 可用于工作线程中途检查是否该放弃。
+纯异步插件在 `on_intercept_input` 里调用 `sink_take_over`（SDK `ResultSink::TakeOver()`）即可在没有条目的情况下接管列表，
+主程序不再跑常规搜索，之后的 `post_results` 填充它。
+
+### 插件主动请求刷新
+
+`request_refresh(h)`（SDK `Host::RequestRefresh()`，任意线程）：主程序再次调用该插件的 `refresh_actions`
+（带 `CL_PLUGIN_REFRESH_ANY_THREAD` 时在它的工作线程上）并刷新可见列表。设置保存后主程序本来就会刷新所有插件，
+这个接口用于插件自己发现数据变化（文件监视、服务状态变化等）的场合。
+`ActionSet::Entries()` / `UserDataAt(i)` 给出当前发布的 `user_data`，配合 `ResultSink::AddItems` 可以只显示集合的一个子集。
 
 ### 工作线程刷新
 
@@ -104,21 +117,25 @@ SDK 的 `candy::TransientSet<T>` 负责这一点（`ResultSink::AddTransient(set
 
 ### 清单文件
 
-DLL 旁边的 `<文件名>.plugin.json` 让主程序不加载 DLL 就能把插件列入目录（禁用的插件完全不执行代码）：
+每个插件必须在 DLL 旁边提供 `<文件名>.plugin.json`（源码里放在插件目录下，`PluginCommon.cmake` 自动复制），
+主程序不加载 DLL 就能把插件列入目录（禁用的插件完全不执行代码）、生成设置页并显示本地化的名称：
 
 ```json
 {
 	"package_name": "com.example.plugin",
 	"name": "ExamplePlugin",
-	"description": "简单示例插件",
+	"description": "Simple example plugin",
 	"version": "1.0.0",
 	"default_setting_json": { "...": "也可以是字符串" },
 	"keywords": ["ex "],
-	"min_host_api_minor": 2
+	"min_host_api_minor": 3,
+	"strings": { "zh-CN": { "plugin": { "name": "示例插件", "description": "简单示例插件" } }, "en-US": { "...": "" } }
 }
 ```
 
-`package_name` 必填；DLL 加载后以 DLL 表为准，不一致时记录警告。没有清单时仍然探测 DLL。
+`package_name` 必填；DLL 加载后以 DLL 表为准，包名 / 版本不一致时记录警告。内置插件的默认设置项都在清单里
+（`CANDY_PLUGIN_EXPORT` 传 `nullptr`）。没有清单时记录警告并退回探测 DLL。
+`strings` 的格式和用法见 [DOC_PLUGIN_I18N.md](DOC_PLUGIN_I18N.md)。
 
 ### 热安装 / 热更新
 

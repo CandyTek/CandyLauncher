@@ -13,14 +13,12 @@
 #include "3rdparty/pugixml/src/pugixml.hpp"
 #include "util/LogUtil.hpp"
 #include "util/StringUtil.hpp"
-#include "util/BitmapUtil.hpp"
 
 // Structure to hold JetBrains IDE information
 struct JetBrainsIDE {
 	std::wstring name; // e.g., "IntelliJ IDEA", "PyCharm", "Android Studio"
 	// std::wstring productCode; // e.g., "AI", "PY", "IU"
-	std::wstring exePath; // Full path to the IDE executable
-	int iconIndex = -1; // exePath 在系统图像列表中的索引
+	std::wstring exePath; // Full path to the IDE executable, 同时作为条目图标（主程序延迟解析系统图标）
 	std::wstring recentProjectsXmlPath;
 };
 
@@ -103,17 +101,18 @@ inline std::vector<std::shared_ptr<JbAction>> ParseRecentProjectsXml(
 		// Create action
 		auto action = std::make_shared<JbAction>();
 		action->title = ide.name + L" - " + projectName;
-		action->subTitle = projectPath;
-		action->iconFilePath = ide.exePath;
-		action->iconFilePathIndex = ide.iconIndex;
+		action->subtitle = projectPath;
+		action->iconPath = ide.exePath;
 
 		// Store additional data
 		action->projectPath = ExpandIdePathMacros(projectPath, configDir);
 		action->ideName = ide.name;
+		action->stableKey = action->projectPath;
 
 		// Match text includes IDE name, project name, and path for better searching
 		std::wstring matchText = ide.name + L" " + projectName + L" " + projectPath;
-		action->matchText = m_host->GetTheProcessedMatchingText(matchText);
+		action->matchTextVerbatim = true;
+		action->matchText = m_host->ProcessMatchText(matchText);
 
 		result.push_back(action);
 	}
@@ -312,13 +311,12 @@ inline std::vector<JetBrainsIDE> FindJetBrainsIDEs() {
 		});
 	});
 
-	// Convert map to vector, 并获取每个 IDE 的启动程序及其系统图标索引
+	// Convert map to vector, 并获取每个 IDE 的启动程序
 	const std::wstring localAppData = GetKnownFolder(FOLDERID_LocalAppData);
 	ides.reserve(ideMap.size());
 	for (auto& pair : ideMap) {
 		Candidate& candidate = pair.second;
 		candidate.ide.exePath = ResolveIdeExecutable(localAppData, candidate.vendor, candidate.dirName, candidate.ide.name);
-		candidate.ide.iconIndex = GetSysImageIndex(candidate.ide.exePath);
 		ides.push_back(std::move(candidate.ide));
 	}
 

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "../Plugin.hpp"
+#include "util/LogUtil.hpp"
+#include "plugins/sdk/CandyPluginSdk.hpp"
 
-inline IPluginHost* g_airPodsHost = nullptr;
-inline uint16_t g_airPodsPluginId = 65535;
+inline const candy::Host* m_host = nullptr;

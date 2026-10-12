@@ -369,7 +369,7 @@ static void LoadSettingList() {
 				SettingItem setting;
 				setting.key = wide_to_utf8(pluginCatalog.pkgName);
 				setting.type = "expandswitch";
-				setting.title = wide_to_utf8(pluginCatalog.name);
+				setting.title = wide_to_utf8(pluginCatalog.DisplayName());
 				setting.subPageIndex = GetTabIndexForSetting("plugin");
 				setting.setValue(nlohmann::json(pluginCatalog.enabled));
 

@@ -179,7 +179,8 @@ static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 			g_searchEngines = wsm_engines;
 			SaveWebSearchConfig();
 			InitWebSearchHotkeys();
-			MessageBoxW(hwnd, L"Saved. Hotkeys are active; reindex to update search actions.", L"Saved", MB_ICONINFORMATION);
+			if (g_onSearchEnginesSaved) g_onSearchEnginesSaved();
+			MessageBoxW(hwnd, L"Saved. Hotkeys and search actions are active.", L"Saved", MB_ICONINFORMATION);
 		}
 		break;
 	}

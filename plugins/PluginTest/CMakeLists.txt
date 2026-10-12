@@ -95,6 +95,11 @@ if (TARGET BookmarkPlugin)
 	add_test(NAME PluginTestBookmarkDllHost20 COMMAND PluginTest $<TARGET_FILE:BookmarkPlugin> --host-minor=0)
 	add_test(NAME PluginTestBookmarkDllHost21 COMMAND PluginTest $<TARGET_FILE:BookmarkPlugin> --host-minor=1)
 endif ()
-# 示例插件在 2.1 主程序上：2.2 的 SDK 封装必须静默退化
+# 示例插件在 2.1 / 2.2 主程序上：2.2 / 2.3 的 SDK 封装必须静默退化
 add_test(NAME PluginTestHost21 COMMAND PluginTest --host-minor=1)
+add_test(NAME PluginTestHost22 COMMAND PluginTest --host-minor=2)
 
+
+# 内置编译的示例插件没有 default_setting_json（设置在清单里），告诉测试程序清单的位置
+target_compile_definitions(PluginTest PRIVATE
+	PLUGIN_TEST_EXAMPLE_MANIFEST=L"${CMAKE_SOURCE_DIR}/plugins/Example/ExamplePlugin.plugin.json")

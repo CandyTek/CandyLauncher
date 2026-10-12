@@ -1,0 +1,21 @@
+{
+	"package_name": "com.gemini.nodejsplugin",
+	"name": "Node.js Plugin Bridge",
+	"description": "Run script plugins through Node.js",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Node.js Plugin Bridge",
+				"description": "Run script plugins through Node.js"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "Node.js 插件桥",
+				"description": "通过 Node.js 运行脚本插件"
+			}
+		}
+	}
+}

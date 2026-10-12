@@ -1,0 +1,40 @@
+{
+	"package_name": "com.candytek.jetbrainsworkspacesplugin",
+	"name": "JetBrains Workspaces",
+	"description": "Search recent projects of JetBrains IDEs",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.jetbrainsworkspacesplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "jb "
+			},
+			{
+				"key": "com.candytek.jetbrainsworkspacesplugin.edit_config_ide_paths",
+				"title": "编辑 IDE 路径配置",
+				"type": "button",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "JetBrains Workspaces",
+				"description": "Search recent projects of JetBrains IDEs"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "JetBrains 工作区",
+				"description": "JetBrains 家族历史项目搜索插件"
+			}
+		}
+	}
+}

@@ -10,7 +10,6 @@
 #include <unordered_set>
 
 class FileAction;
-class BaseAction;
 
 enum MenuCommand : UINT {
 	// 防止和弹出菜单的esc 0 值冲突

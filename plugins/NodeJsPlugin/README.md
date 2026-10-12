@@ -102,6 +102,13 @@ if (request.method === "query") {
 }
 ```
 
+## 与主程序的查询流程（插件 ABI 2.2）
+
+- 输入以某个脚本关键字开头时，C++ 桥接插件在 `OnInterceptInput` 里立即接管列表（显示 "查询中" 占位，或同一脚本上次的结果以避免闪烁），随后在 `OnQuery` 里把 `{ query, pluginId, queryId }` 发给 `node-host.js`，脚本回复后整表替换列表。
+- 关键字为 `*` 的脚本不接管列表，结果通过 `post_results` 追加到当前输入的列表末尾。
+- 输入变化时主程序回调 `OnQueryCancel`，桥接插件向 `node-host.js` 发送 `cancel` 通知（`{ queryId }`，无 `id`）：CLI 模式会直接杀掉该查询的子进程；模块模式无法中断，过期结果由主程序按 `queryId` 丢弃。
+- 脚本通过 Mock API 的 `ShowResults` / `RenderResponse` 主动推送的结果按当前输入投递；`ChangeQuery` 会修改主程序输入框。
+
 ## 调试与日志
 
 - 插件内部使用 `console.log` 或 `console.error` 打印的内容会被桥接器捕获。

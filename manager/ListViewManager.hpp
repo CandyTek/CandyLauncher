@@ -614,13 +614,19 @@ inline void actionFilter(const std::wstring& keyword) {
 }
 
 // Results a plugin delivered through post_results for the query currently shown (UI thread).
-inline void appendQueryResults(const uint64_t queryId, std::vector<std::shared_ptr<BaseAction>>&& results, const bool isFinal) {
-	if (queryId != PluginManager::CurrentQueryId() || results.empty() || !g_listViewHwnd) return;
-	const bool wasEmpty = filteredActions.empty();
-	filteredActions.insert(filteredActions.end(), std::make_move_iterator(results.begin()),
-							std::make_move_iterator(results.end()));
+// CL_RESULTS_REPLACE swaps the whole list (e.g. a "searching..." placeholder), otherwise the batch is appended.
+inline void appendQueryResults(const uint64_t queryId, std::vector<std::shared_ptr<BaseAction>>&& results, const int32_t flags) {
+	if (queryId != PluginManager::CurrentQueryId() || !g_listViewHwnd) return;
+	const bool replace = (flags & CL_RESULTS_REPLACE) != 0;
+	if (results.empty() && !replace) return;
+	const bool wasEmpty = filteredActions.empty() || replace;
+	if (replace) filteredActions = std::move(results);
+	else {
+		filteredActions.insert(filteredActions.end(), std::make_move_iterator(results.begin()),
+								std::make_move_iterator(results.end()));
+	}
 	ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
-	if (wasEmpty) {
+	if (wasEmpty && !filteredActions.empty()) {
 		ListView_SetItemState(g_listViewHwnd, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 		ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
 	}
@@ -1030,8 +1036,9 @@ inline void textMatching() {
 	if (g_pluginManager) {
 		// 每次按键是一个新的查询；之前的异步查询被取消，其迟到的结果会被丢弃
 		const uint64_t queryId = g_pluginManager->BeginQuery();
-		if (auto list = g_pluginManager->DispatchInterceptInput(editTextBuffer2); !list.empty()) {
-			filteredActions = std::move(list);
+		if (auto intercept = g_pluginManager->DispatchInterceptInput(editTextBuffer2);
+			intercept.tookOver || !intercept.actions.empty()) {
+			filteredActions = std::move(intercept.actions);
 			addActionDone();
 			g_pluginManager->DispatchQuery(queryId, editTextBuffer2, currectActionArg);
 			return;

@@ -8,7 +8,6 @@
 #include <shellapi.h>
 
 #include "FolderPluginData.hpp"
-#include "plugins/BaseAction.hpp"
 #include "util/BaseTools.hpp"
 #include "util/BitmapUtil.hpp"
 #include "util/ClipboardUtil.hpp"
@@ -45,7 +44,7 @@ static auto ReportShellExecuteError = [](INT_PTR code, const std::wstring& path)
 };
 
 
-class FileAction : public BaseAction {
+class FileAction final : public candy::ActionBase {
 public:
 	// 被委托的构造函数（原构造函数）会完全执行完毕，才会执行第二个
 	FileAction(
@@ -60,12 +59,14 @@ public:
 			(targetFilePath.rfind(L"ms-settings:", 0) == 0 || targetFilePath.rfind(L"::{", 0) == 0)
 			? L"" : (workingDir.empty() ? GetDirectory(targetFilePath) : workingDir)),
 		arguments(std::move(args)) {
-		matchText = g_host->GetTheProcessedMatchingText(justName);
+		// matchText 留空，由主程序根据 title 生成（小写 + 拼音）
 		title = (justName);
-		pluginId = m_pluginId;
+		// 系统图标由主程序按 iconPath 延迟解析；刷新后同一路径视为同一条目
+		iconPath = targetFilePath;
+		stableKey = targetFilePath;
 
-		if (!targetFilePath.empty()) subTitle = (targetFilePath + L" " + arguments);
-		else subTitle = (justName + L" " + arguments);
+		if (!targetFilePath.empty()) subtitle = (targetFilePath + L" " + arguments);
+		else subtitle = (justName + L" " + arguments);
 	}
 
 	// RunCommandAction(
@@ -81,12 +82,15 @@ public:
 
 	// 运行命令
 	void InvokeWithTarget(const wchar_t* target, bool isForceAdmin) {
-		const std::wstring arg = g_host->GetCurrectArgText().empty() ? L"" : g_host->GetCurrectArgText();
+		const std::wstring arg = m_host ? m_host->GetActionArg() : L"";
 		std::wstring safeTarget = target == nullptr ? arg : std::wstring(target) + L" " + arg;
-		std::thread([this, target = std::move(safeTarget), isForceAdmin]() {
+		// 设置项在主线程读取；条目可能在刷新后被释放，线程里只用拷贝的字符串
+		const bool runAsAdmin = (m_host && m_host->GetBool(L"pref_run_item_as_admin", false)) || isForceAdmin;
+		std::thread([targetFilePath = targetFilePath, workingDirectory = workingDirectory,
+					target = std::move(safeTarget), runAsAdmin]() {
 			// open 使用 nullptr 走默认动词：部分类型（如 .cpl 只有 cplopen/runas）没有 "open" 动词，会返回 1155
 			HINSTANCE hInst = ShellExecuteW(
-				nullptr, (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) ? L"runas" : nullptr,
+				nullptr, runAsAdmin ? L"runas" : nullptr,
 				targetFilePath.c_str(), target.c_str(),
 				workingDirectory.empty() ? nullptr : workingDirectory.c_str(), SW_SHOWNORMAL);
 			//char const* temp=WStringToConstChar(targetFilePath);
@@ -94,7 +98,7 @@ public:
 			INT_PTR result = reinterpret_cast<INT_PTR>(hInst);
 			if (result <= 32) {
 				// 当使用管理员模式打开失败后，回退到正常模式打开
-				if (g_host->GetSettingsMap().at("pref_run_item_as_admin").boolValue || isForceAdmin) {
+				if (runAsAdmin) {
 					if (result == SE_ERR_NOASSOC) // 1155
 					{
 						// 再尝试用 open 打开
@@ -152,60 +156,16 @@ public:
 		return targetFilePath;
 	}
 
-
-	std::wstring& getTitle() override {
-		return title;
-	}
-
-	// 索引重命名后同步更新显示名与匹配文本
+	// 索引重命名后同步更新显示名；匹配文本由主程序在重新发布时根据新标题生成
 	void SetTitle(const std::wstring& newTitle) {
 		title = newTitle;
-		matchText = g_host->GetTheProcessedMatchingText(newTitle);
-		if (targetFilePath.empty()) subTitle = newTitle + L" " + arguments;
+		if (targetFilePath.empty()) subtitle = newTitle + L" " + arguments;
 	}
 
-	std::wstring& getSubTitle() override {
-		return subTitle;
-	}
-
-	HBITMAP getIconBitmap() override {
-		return iconBitmap;
-	}
-
-
-	std::wstring& getIconFilePath() override {
-		return targetFilePath;
-	}
-
-	int iconFilePathIndex = -1;
-	bool iconIndexOnDemand = false;
-
-	int getIconFilePathIndex() override {
-		if (iconIndexOnDemand) {
-			iconIndexOnDemand = false;
-			const ULONGLONG start = GetTickCount64();
-			iconFilePathIndex = GetSysImageIndex(targetFilePath);
-			const ULONGLONG elapsed = GetTickCount64() - start;
-			if (elapsed >= 100) Logi(L"FolderPlugin", L"lazy icon ms=", elapsed, L" path=", targetFilePath);
-		}
-		return iconFilePathIndex;
-	}
-
-
-	~FileAction() override {
-		if (iconBitmap) {
-			DeleteObject(iconBitmap);
-			iconBitmap = nullptr;
-		}
-	}
-
-	HBITMAP iconBitmap = nullptr;
 	std::wstring uwpSource;
 
 protected:
 	std::wstring targetFilePath;
-	std::wstring title;
-	std::wstring subTitle;
 
 private:
 	bool defaultAsAdmin;

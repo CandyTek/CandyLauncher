@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include "../Plugin.hpp"
 #include "AutomationActionModel.hpp"
 #include "FolderPluginData.hpp"
 #include <shellapi.h>

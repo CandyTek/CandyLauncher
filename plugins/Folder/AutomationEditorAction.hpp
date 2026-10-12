@@ -1,24 +1,14 @@
 ﻿#pragma once
-#include "plugins/BaseAction.hpp"
+#include "FolderPluginData.hpp"
 
-class AutomationEditorAction : public BaseAction {
-    public:
-        AutomationEditorAction() {
-            matchText = g_host->GetTheProcessedMatchingText(title);
-            pluginId = m_pluginId;
-            iconPath = EXE_FOLDER_PATH2 + L"\\CandyLauncher.exe";
-            iconIndex = GetSysImageIndex(iconPath);
-        }
-        std::wstring& getTitle() override { return title; }
-        std::wstring& getSubTitle() override { return subtitle; }
-        std::wstring& getIconFilePath() override { return iconPath; }
-        int getIconFilePathIndex() override {
-            return iconIndex;
-        }
-        HBITMAP getIconBitmap() override { return nullptr; }
-    private:
-        std::wstring title = L"创建或编辑自动化动作组";
-        std::wstring subtitle = L"打开自动化动作组 JSON 编辑器";
-        std::wstring iconPath;
-        int iconIndex = -1;
+// 主列表里的 "创建或编辑自动化动作组" 入口
+class AutomationEditorAction final : public candy::ActionBase {
+public:
+	AutomationEditorAction() {
+		title = L"创建或编辑自动化动作组";
+		subtitle = L"打开自动化动作组 JSON 编辑器";
+		// 图标由主程序按 iconPath 延迟解析
+		iconPath = EXE_FOLDER_PATH2 + L"\\CandyLauncher.exe";
+		stableKey = L"FolderPlugin_automation_editor";
+	}
 };

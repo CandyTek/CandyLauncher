@@ -28,7 +28,7 @@ static void TraverseUWPApps(
 
 
 static void LoadUwpApps(
-	std::vector<std::shared_ptr<BaseAction>>& outActions,
+	std::vector<std::shared_ptr<FileAction>>& outActions,
 	const TraverseOptions& options) {
 	LoadUwpApps([&](const std::wstring& name,
 					const std::wstring& fullPath,
@@ -45,7 +45,7 @@ static void LoadUwpApps(
 
 
 static void traverseUwpApps(
-	std::vector<std::shared_ptr<BaseAction>>& outActions, const TraverseOptions& options
+	std::vector<std::shared_ptr<FileAction>>& outActions, const TraverseOptions& options
 ) {
 	// *** UWP应用程序加载逻辑 ***
 	if (IsWindows8OrGreater())

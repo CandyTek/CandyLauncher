@@ -1,5 +1,4 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
+﻿#include <memory>
 #include <fstream>
 
 #include "EverNoteAction.hpp"
@@ -7,147 +6,94 @@
 #include "EverNoteUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
-class EverNotePlugin : public IPlugin {
+class EverNotePlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	candy::ActionSet<EverNoteAction> notes{0};
 	std::wstring startStr = L"en ";
-
-public:
-	EverNotePlugin() = default;
-	~EverNotePlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"EverNote 笔记";
+	// 影响索引的设置项变化后需要重新索引（主程序保存设置后不会自动刷新插件）
+	// 设置了激活命令时，笔记只通过激活命令显示，不参与全局搜索
+	uint32_t NoteSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.evernoteplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"EverNote 数据库索引";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			Loge(L"EverNote", L"RefreshAllActions: m_host is null");
-			return;
-		}
-
-		Logi(L"EverNote", L"RefreshAllActions start");
-		allPluginActions.clear();
-
+	void LoadNotes(std::vector<std::shared_ptr<EverNoteAction>>& items) const {
 		// 从配置中读取 Evernote 数据库文件路径
-		std::string db_path = m_host->GetSettingsMap().at("com.candytek.evernoteplugin.db_path").stringValue;
-		Logi(L"EverNote", L"Database path: ", db_path);
+		const std::wstring dbPath = GetHost().GetString(L"com.candytek.evernoteplugin.db_path");
+		Logi(L"EverNote", L"Database path: ", dbPath);
 
 		// 检查文件是否存在
-		std::ifstream file_check(db_path);
+		std::ifstream file_check(dbPath);
 		if (!file_check.good()) {
-			Loge(L"EverNote", L"Database file does not exist: ", db_path);
+			Loge(L"EverNote", L"Database file does not exist: ", dbPath);
 			return;
 		}
 		file_check.close();
 
+		const std::string dbPathUtf8 = wide_to_utf8(dbPath);
 		sqlite3* db = nullptr;
-		int rc = sqlite3_open(db_path.c_str(), &db);
+		int rc = sqlite3_open(dbPathUtf8.c_str(), &db);
 		if (rc == SQLITE_OK) {
 			Logi(L"EverNote", L"Database opened successfully");
-			// 调用 db_parse，传入 allPluginActions 引用
-			db_parse(db, allPluginActions);
+			// 调用 db_parse，传入 items 引用
+			db_parse(db, items);
 			sqlite3_close(db);
-			Logi(L"EverNote", L"Loaded ", allPluginActions.size(), L" actions");
+			Logi(L"EverNote", L"Loaded ", items.size(), L" actions");
 		} else {
 			// 数据库打开失败
-			Loge(L"EverNote", L"Failed to open database: ", db_path, L", error: ", sqlite3_errmsg(db));
+			Loge(L"EverNote", L"Failed to open database: ", dbPathUtf8, L", error: ", sqlite3_errmsg(db));
 			if (db) sqlite3_close(db);
 		}
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.evernoteplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "en "
-		},
-		{
-			"key": "com.candytek.evernoteplugin.db_path",
-			"title": "Evernote 数据库文件路径",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.evernoteplugin.db_path",
-			"title": "数据库文件路径位置需要自己查找，在用户的Evernote文件夹内，比如\n C:\\Users\\用户名\\AppData\\Roaming\\Evernote\\conduit-storage\\https%3A%2F%2Fwww.evernote.com\\UDB-User12345+RemoteGraph.sql",
-			"type": "text",
-			"subPage": "plugin",
-			"defValue": ""
-		}
-	]
-}
-
-   )";
+public:
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.evernoteplugin.start_str").stringValue);
+	void RefreshActions() override {
+		Logi(L"EverNote", L"RefreshActions start");
+		std::vector<std::shared_ptr<EverNoteAction>> items;
+		LoadNotes(items);
+		notes.SetFlags(GetHost(), NoteSetFlags());
+		notes.Publish(GetHost(), std::move(items));
+	}
+
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.evernoteplugin.start_str", L"en ");
+		notes.SetFlags(host, NoteSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
+		// 设置保存后主程序会在工作线程上重新调用 RefreshActions，这里不用自己重建索引
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		notes.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()),allPluginActions);
+			sink.AddMatches(notes.Id(), input.substr(startStr.size()));
 		}
-		// 由插件系统管理
-		return {};
 	}
-	
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<EverNoteAction>(action);
+	// Ctrl+C 复制笔记的应用内链接
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto action1 = notes.Find(userData);
+		if (!action1 || action1->noteId.empty()) return false;
+		text = action1->GetNoteUrl();
+		return true;
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = notes.Find(userData);
 		if (!action1) return false;
 
-		// 构造 Evernote In-App Note Link:
-		// evernote:///view/[userId]/[shardId]/[noteGuid]/[noteGuid]/
-		// 注意：noteGuid 需要重复两次
-		std::wstring url = L"evernote:///view/" +
-		                   action1->userId + L"/" +
-		                   action1->shardId + L"/" +
-		                   action1->noteId + L"/" +
-		                   action1->noteId + L"/";
+		const std::wstring url = action1->GetNoteUrl();
 
 		Logi(L"EverNote", L"Opening note: ", action1->title);
 		Logi(L"EverNote", L"URL: ", url);
@@ -171,14 +117,6 @@ public:
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new EverNotePlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 读取数据库只用到 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(EverNotePlugin, L"Evernote Notes", L"Index the Evernote database", L"1.0.0",
+						L"com.candytek.evernoteplugin", nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

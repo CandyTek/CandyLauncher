@@ -1,125 +1,75 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
-#include <fstream>
-#include <iomanip>
-#include <sstream>
+﻿#include <memory>
 
 #include "VscAction.hpp"
 #include "VscPluginData.hpp"
 #include "VscUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
-inline std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-
-class VSCodeWorkspacesPlugin : public IPlugin {
+class VSCodeWorkspacesPlugin : public candy::Plugin {
 private:
+	candy::ActionSet<VscAction> workspaces{0};
 	std::wstring startStr = L"vsc ";
 
-public:
-	VSCodeWorkspacesPlugin() = default;
-	~VSCodeWorkspacesPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"Visual Studio Code 工作区";
+	// 设置了激活命令时，工作区只通过激活命令显示，不参与全局搜索
+	uint32_t WorkspaceSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.vscodeworkspacesplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"Visual Studio Code 历史项目搜索插件";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			return;
-		}
-		// Add to plugin actions
-		allPluginActions = GetAllVSCodeWorkspaces();
-	}
-
-
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.vscodeworkspacesplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "vsc "
-		},
-		{
-			"key": "com.candytek.vscodeworkspacesplugin.vscode_path",
-			"title": "VSCode 软件路径",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": ""
-		}
-	]
-}
-
-   )";
-	}
-
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.vscodeworkspacesplugin.start_str").stringValue);
-	}
-
-	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
-		m_host = nullptr;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
-		if (!startStr.empty() && StartsWith(input, startStr)) {
-			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()), allPluginActions);
-		}
-		// 由插件系统管理
-		return {};
-	}
-
+	// 条目图标就是对应的 VSCode 程序，存在时可直接用来启动
 	static std::wstring GetActionFileIconPath(const std::shared_ptr<VscAction>& workspaceAction) {
-		const std::wstring& exePath = workspaceAction->getIconFilePath();
+		const std::wstring& exePath = workspaceAction->iconPath;
 		if (!exePath.empty() && GetFileAttributesW(exePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
 			return exePath;
 		}
 		return L"";
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		const std::shared_ptr<VscAction> workspaceAction = std::dynamic_pointer_cast<VscAction>(action);
+public:
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
+	}
+
+	void RefreshActions() override {
+		workspaces.SetFlags(GetHost(), WorkspaceSetFlags());
+		workspaces.Publish(GetHost(), GetAllVSCodeWorkspaces());
+	}
+
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.vscodeworkspacesplugin.start_str", L"vsc ");
+		workspaces.SetFlags(host, WorkspaceSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
+	}
+
+	void Shutdown() override {
+		workspaces.ClearLocal();
+		m_host = nullptr;
+	}
+
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
+		if (!startStr.empty() && StartsWith(input, startStr)) {
+			// 单独显示本插件actions
+			sink.AddMatches(workspaces.Id(), input.substr(startStr.size()));
+		}
+	}
+
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto workspaceAction = workspaces.Find(userData);
+		if (!workspaceAction || workspaceAction->projectPath.empty()) return false;
+		text = workspaceAction->projectPath;
+		return true;
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto workspaceAction = workspaces.Find(userData);
 		if (!workspaceAction) return false;
 
 		// Determine VSCode executable path
 		std::wstring vscodePath;
-		const std::wstring configuredPath = utf8_to_wide(
-			m_host->GetSettingsMap().at("com.candytek.vscodeworkspacesplugin.vscode_path").stringValue);
+		const std::wstring configuredPath = GetHost().GetString(L"com.candytek.vscodeworkspacesplugin.vscode_path");
 
 		if (configuredPath.empty()) {
 			vscodePath = GetActionFileIconPath(workspaceAction);
@@ -137,7 +87,7 @@ public:
 		}
 
 		if (vscodePath.empty()) {
-			m_host->ShowMessage(L"Error", L"找不到 vscode 程序路径，请前往设置进行配置");
+			GetHost().ShowMessage(L"Error", L"找不到 vscode 程序路径，请前往设置进行配置");
 			return false;
 		}
 
@@ -161,20 +111,12 @@ public:
 		if ((INT_PTR)hInstance > 32) {
 			return true;
 		} else {
-			m_host->ShowMessage(L"Error", L"Failed to execute PowerShell command");
+			GetHost().ShowMessage(L"Error", L"Failed to execute PowerShell command");
 			return false;
 		}
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new VSCodeWorkspacesPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 只读取 storage.json 和 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(VSCodeWorkspacesPlugin, L"Visual Studio Code Workspaces", L"Search recent Visual Studio Code projects", L"1.0.0",
+						L"com.candytek.vscodeworkspacesplugin", nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

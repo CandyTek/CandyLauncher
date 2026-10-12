@@ -1,0 +1,40 @@
+{
+	"package_name": "com.candytek.screentools",
+	"name": "Screen Tools",
+	"description": "Scrolling screenshots and QR code recognition",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.screentools.hotkey_qrcode_scan",
+				"title": "快捷键：二维码识别",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.screentools.hotkey_long_ss",
+				"title": "快捷键：长截图",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Screen Tools",
+				"description": "Scrolling screenshots and QR code recognition"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "屏幕工具",
+				"description": "长截图与区域二维码识别"
+			}
+		}
+	}
+}

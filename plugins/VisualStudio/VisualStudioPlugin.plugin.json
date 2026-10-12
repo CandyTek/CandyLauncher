@@ -1,0 +1,47 @@
+{
+	"package_name": "com.candytek.visualstudioplugin",
+	"name": "Visual Studio Projects",
+	"description": "Index recently opened Visual Studio projects and solutions",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.visualstudioplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "vs "
+			},
+			{
+				"key": "com.candytek.visualstudioplugin.show_prerelease",
+				"type": "bool",
+				"title": "显示预发布版本的项目",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.visualstudioplugin.max_results",
+				"type": "long",
+				"title": "每个 VS 实例最大项目数",
+				"subPage": "plugin",
+				"defValue": 1000
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Visual Studio Projects",
+				"description": "Index recently opened Visual Studio projects and solutions"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "Visual Studio 项目",
+				"description": "索引 Visual Studio 历史打开的项目和解决方案"
+			}
+		}
+	}
+}

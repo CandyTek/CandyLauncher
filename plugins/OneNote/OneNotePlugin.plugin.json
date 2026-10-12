@@ -1,0 +1,47 @@
+{
+	"package_name": "com.candytek.onenoteplugin",
+	"name": "OneNote Notes",
+	"description": "Index local OneNote notebooks",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.onenoteplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "one "
+			},
+			{
+				"key": "com.candytek.onenoteplugin.icon_path",
+				"type": "string",
+				"title": "OneNote图标路径",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.onenoteplugin.max_results",
+				"type": "long",
+				"title": "最大笔记数量（0为不限制）",
+				"subPage": "plugin",
+				"defValue": 0
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "OneNote Notes",
+				"description": "Index local OneNote notebooks"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "OneNote 笔记",
+				"description": "索引本地 OneNote 笔记"
+			}
+		}
+	}
+}

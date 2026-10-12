@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <windows.h>
+#include <algorithm>
 #include <memory>
 #include <string>
 

@@ -1,0 +1,33 @@
+{
+	"package_name": "com.candytek.unitconverterplugin",
+	"name": "Unit Converter",
+	"description": "Convert length, mass, temperature, area, volume, speed and other units",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.unitconverterplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "%%"
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Unit Converter",
+				"description": "Convert length, mass, temperature, area, volume, speed and other units"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "单位转换",
+				"description": "单位转换插件，支持长度、质量、温度、面积、体积、速度等多种单位的转换"
+			}
+		}
+	}
+}

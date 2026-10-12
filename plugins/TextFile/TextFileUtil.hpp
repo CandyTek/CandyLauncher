@@ -11,8 +11,6 @@
 #include <iostream>
 #include <regex>
 
-#include "model/TraverseOptions.hpp"
-#include "util/BitmapUtil.hpp"
 #include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
 
@@ -147,8 +145,8 @@ inline std::wstring ExtractContext(const std::wstring& content, const std::wstri
 }
 
 // 获取所有文本文件
-inline std::vector<std::shared_ptr<BaseAction>> GetAllTextFile() {
-	std::vector<std::shared_ptr<BaseAction>> actions;
+inline std::vector<std::shared_ptr<TextFileAction>> GetAllTextFile() {
+	std::vector<std::shared_ptr<TextFileAction>> actions;
 
 	if (!m_host) {
 		return actions;
@@ -156,22 +154,13 @@ inline std::vector<std::shared_ptr<BaseAction>> GetAllTextFile() {
 
 	try {
 		// 获取配置
-		auto& settingsMap = m_host->GetSettingsMap();
-		auto it = settingsMap.find("com.candytek.textfileplugin.folder_list");
-		if (it == settingsMap.end()) {
+		const auto folderList = m_host->GetStringArray(L"com.candytek.textfileplugin.folder_list");
+		if (folderList.empty()) {
 			return actions;
 		}
-
-		const auto& folderListValue = it->second;
-		if (folderListValue.stringArr.empty()) {
-			return actions;
-		}
-
-		const auto& folderList = folderListValue.stringArr;
 
 		// 遍历每个配置项
-		for (const auto& configStr : folderList) {
-			std::wstring config = utf8_to_wide(configStr);
+		for (const auto& config : folderList) {
 			std::wstring folderPath;
 			std::vector<std::wstring> extensions;
 
@@ -188,17 +177,16 @@ inline std::vector<std::shared_ptr<BaseAction>> GetAllTextFile() {
 
 			Logi(L"TextFile", L"Scanning folder: ", folderPath);
 
-			// 使用 Everything SDK 遍历文件
-			TraverseOptions options;
+			// 使用主程序的 Everything SDK 遍历文件
+			candy::TraverseOptions options;
 			options.folder = folderPath;
 			options.extensions = extensions;
 			options.recursive = true;
-			options.type = L"path";
 
-			m_host->TraverseFilesForEverythingSDK(folderPath, options, [&](const std::wstring& name,
-																			const std::wstring& fullPath,
-																			const std::wstring& parent,
-																			const std::wstring& ext) {
+			m_host->TraverseFiles(options, [&](const std::wstring& name,
+												const std::wstring& fullPath,
+												const std::wstring& parent,
+												const std::wstring& ext) {
 				try {
 					// 读取文件内容
 					std::wstring content = ReadTextFileContent(fullPath);
@@ -206,12 +194,13 @@ inline std::vector<std::shared_ptr<BaseAction>> GetAllTextFile() {
 						return;
 					}
 
-					// 创建 Action
+					// 创建 Action，图标就是文件本身（主程序延迟解析系统图标）
 					auto action = std::make_shared<TextFileAction>();
 					action->title = name;
-					action->iconFilePath = fullPath;
-					action->iconFilePathIndex = GetSysImageIndex(fullPath);
-					action->matchText = m_host->GetTheProcessedMatchingText(action->title)+MyToLower(sanitizeVisible(content)); // 将全文内容用于匹配
+					action->filePath = fullPath;
+					action->iconPath = fullPath;
+					action->stableKey = fullPath;
+					action->content = m_host->ProcessMatchText(action->title) + MyToLower(sanitizeVisible(content)); // 将全文内容用于匹配
 
 					actions.push_back(action);
 				} catch (const std::exception& e) {

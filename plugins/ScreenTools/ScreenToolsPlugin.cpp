@@ -1,4 +1,5 @@
-﻿#include "../Plugin.hpp"
+﻿#include "util/LogUtil.hpp"
+#include "plugins/sdk/CandyPluginSdk.hpp"
 #include "QrDecoder.h"
 #include <windows.h>
 #include <shlobj.h>
@@ -379,7 +380,8 @@ namespace
         return result;
     }
 
-    void ReadQrCode(IPluginHost* m_host)
+    // 在工作线程上运行；set_edit_text / show_main_window 内部是 SetWindowText / ShowWindow，可跨线程调用
+    void ReadQrCode(const candy::Host* m_host)
     {
         RECT area{};
         Image frozen;
@@ -406,9 +408,10 @@ namespace
             if (!result.empty()) result += "\r\n";
             result += code;
         }
-        m_host->ChangeEditTextText(
+        if (!m_host) return;
+        m_host->SetEditText(
             utf8_to_wide(makeCompactJsonWithoutBraces(result)) + (isValidUrl(result) ? L"urlarg " : L"textarg "));
-        m_host->MyShowWindow(SW_SHOW, true);
+        m_host->ShowMainWindow(SW_SHOW, true);
     }
 
     // Compare a sparse sample of the previous frame's bottom with the new frame's top.
@@ -545,48 +548,33 @@ namespace
         MessageBoxW(nullptr, message.c_str(), L"截长图", MB_ICONINFORMATION);
     }
 
-    class ScreenAction final : public BaseAction
+    class ScreenAction final : public candy::ActionBase
     {
     public:
-        std::wstring title, subtitle, id, iconPath;
-        explicit ScreenAction(uint16_t pluginIdValue) { pluginId = pluginIdValue; }
-        std::wstring& getTitle() override { return title; }
-        std::wstring& getSubTitle() override { return subtitle; }
-        std::wstring& getIconFilePath() override { return iconPath; }
-        int getIconFilePathIndex() override { return -1; }
-        HBITMAP getIconBitmap() override { return nullptr; }
+        std::wstring id;
     };
 }
 
 inline CommonUtil::PluginHotkeyManager g_hotkeyMgr;
 
-class ScreenToolsPlugin final : public IPlugin
+class ScreenToolsPlugin final : public candy::Plugin
 {
-    IPluginHost* host = nullptr;
-    uint16_t pluginId = 0;
-    std::vector<std::shared_ptr<BaseAction>> actions;
+    const candy::Host* host = nullptr;
+    candy::ActionSet<ScreenAction> actions{0};
 
 public:
-    std::wstring GetPluginName() const override { return L"ScreenToolsPlugin"; }
-    std::wstring GetPluginPackageName() const override { return L"com.candytek.screentools"; }
-    std::wstring GetPluginVersion() const override { return L"1.0.0"; }
-    std::wstring GetPluginDescription() const override { return L"长截图与区域二维码识别"; }
-
-    bool Initialize(IPluginHost* value) override
+    bool Initialize() override
     {
-        host = value;
-        return host != nullptr;
+        host = &GetHost();
+        return true;
     }
 
-    void OnPluginIdChange(uint16_t value) override { pluginId = value; }
-
-
-    void InitWebSearchHotkeys() const
+    void InitScreenToolsHotkeys() const
     {
         g_hotkeyMgr.Clear();
 
-        std::string qrcodeHotkey = host->GetSettingsMap().at("com.candytek.screentools.hotkey_qrcode_scan").stringValue;
-        if (!g_hotkeyMgr.AddHotkey(0x2800, utf8_to_wide(qrcodeHotkey), [this](int)
+        const std::wstring qrcodeHotkey = host->GetString(L"com.candytek.screentools.hotkey_qrcode_scan");
+        if (!g_hotkeyMgr.AddHotkey(0x2800, qrcodeHotkey, [this](int)
         {
             std::thread([this]()
             {
@@ -594,11 +582,11 @@ public:
             }).detach();
         }))
         {
-            Loge(L"WebSearch", L"Invalid hotkey for search engine: ", L" (", qrcodeHotkey, L")");
+            Loge(L"ScreenTools", L"Invalid hotkey for qrcode scan: (", qrcodeHotkey, L")");
         }
 
-        std::string longHotkey = host->GetSettingsMap().at("com.candytek.screentools.hotkey_qrcode_scan").stringValue;
-        if (!g_hotkeyMgr.AddHotkey(0x2800, utf8_to_wide(longHotkey), [](int)
+        const std::wstring longHotkey = host->GetString(L"com.candytek.screentools.hotkey_long_ss");
+        if (!g_hotkeyMgr.AddHotkey(0x2801, longHotkey, [](int)
         {
             std::thread([]()
             {
@@ -606,73 +594,51 @@ public:
             }).detach();
         }))
         {
-            Loge(L"WebSearch", L"Invalid hotkey for search engine: ", L" (", longHotkey, L")");
+            Loge(L"ScreenTools", L"Invalid hotkey for long screenshot: (", longHotkey, L")");
         }
-
 
         g_hotkeyMgr.Start();
     }
 
-    void RefreshAllActions() override
+    // 只发布两个固定条目，可在工作线程上运行；matchText 留空由主程序处理
+    void RefreshActions() override
     {
-        if (!host) return;
-        actions.clear();
+        std::vector<std::shared_ptr<ScreenAction>> items;
         for (auto entry : {
                  std::tuple{L"long", L"截长图", L"框选滚动区域，自动滚动并保存 PNG"},
                  std::tuple{L"qr", L"框选识别二维码1", L"框选屏幕区域，识别并复制二维码内容"}
              })
         {
-            auto action = std::make_shared<ScreenAction>(pluginId);
+            auto action = std::make_shared<ScreenAction>();
             action->id = std::get<0>(entry);
             action->title = std::get<1>(entry);
             action->subtitle = std::get<2>(entry);
-            action->matchText = host->GetTheProcessedMatchingText(action->title);
-            actions.push_back(action);
+            action->stableKey = L"ScreenTools_" + action->id;
+            items.push_back(action);
         }
+        actions.Publish(GetHost(), std::move(items));
     }
 
-    void OnUserSettingsLoadDone() override
+    void OnUserSettingsLoaded() override
     {
-        InitWebSearchHotkeys();
+        InitScreenToolsHotkeys();
     }
 
-    std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override { return actions; }
-
-    std::wstring DefaultSettingJson() override
+    void OnSettingChanged(const std::wstring& key) override
     {
-        return LR"json(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.screentools.hotkey_qrcode_scan",
-			"title": "快捷键：二维码识别",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		},
-		{
-			"key": "com.candytek.screentools.hotkey_long_ss",
-			"title": "快捷键：长截图",
-			"type": "hotkeystring",
-			"subPage": "plugin",
-			"defValue": ""
-		}
-	]
-}
-   )json";
+        Logi(L"ScreenTools", L"setting changed: ", key);
     }
 
     void Shutdown() override
     {
         g_hotkeyMgr.Clear();
-        actions.clear();
+        actions.ClearLocal();
         host = nullptr;
     }
 
-    bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring&) override
+    bool OnActionExecute(const uint64_t userData, const std::wstring&) override
     {
-        auto selected = std::dynamic_pointer_cast<ScreenAction>(action);
+        const auto selected = actions.Find(userData);
         if (!selected) return false;
         if (selected->id == L"long")
         {
@@ -693,6 +659,5 @@ public:
     }
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() { return new ScreenToolsPlugin(); }
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) { delete plugin; }
-PLUGIN_EXPORT int GetPluginApiVersion() { return 1; }
+CANDY_PLUGIN_EXPORT_EX(ScreenToolsPlugin, L"Screen Tools", L"Scrolling screenshots and QR code recognition", L"1.0.0",
+                       L"com.candytek.screentools", nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

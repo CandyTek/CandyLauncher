@@ -1,0 +1,61 @@
+{
+	"package_name": "com.candytek.bookmarkplugin",
+	"name": "Bookmarks",
+	"description": "Index browser bookmarks",
+	"version": "1.2.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.bookmarkplugin.start_str",
+				"title": "直接激活命令",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "bm "
+			},
+			{
+				"key": "com.candytek.bookmarkplugin.matchtext_url",
+				"type": "bool",
+				"title": "搜索匹配书签URL",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.bookmarkplugin.browser_list",
+				"type": "stringArr",
+				"title": "浏览器书签文件路径",
+				"subPage": "plugin",
+				"defValue": "chrome"
+			},
+			{
+				"key": "com.candytek.bookmarkplugin.mainbrowser",
+				"title": "指定主浏览器路径",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.bookmarkplugin.subbrowser",
+				"title": "指定副浏览器路径 (Alt+Enter)",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Bookmarks",
+				"description": "Index browser bookmarks"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "书签",
+				"description": "索引浏览器书签"
+			}
+		}
+	}
+}

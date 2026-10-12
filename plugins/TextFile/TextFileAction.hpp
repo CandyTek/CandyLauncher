@@ -1,53 +1,15 @@
 ﻿#pragma once
-#include "plugins/BaseAction.hpp"
+#include <algorithm>
+#include <string>
 #include "TextFilePluginData.hpp"
 
-class TextFileAction final : public BaseAction {
+class TextFileAction final : public candy::ActionBase {
 public:
-	TextFileAction() {
-		pluginId = m_pluginId;
-	}
+	std::wstring filePath;
+	// 小写的 标题拼音 + 全文内容，插件自行做子串匹配；只保存在插件侧，不发布给主程序
+	std::wstring content;
 
-	// 图标，只要是文件就可以
-	std::wstring iconFilePath;
-	std::wstring title;
-	std::wstring subTitle;
-	int iconFilePathIndex = -1;
-
-	// 用于动态提取上下文
-	std::wstring searchKeyword;  // 当前搜索的关键词
-	bool needExtractContext = false;  // 是否需要提取上下文
-
-	std::wstring& getTitle() override {
-		return title;
-	}
-
-	std::wstring& getSubTitle() override {
-		// 如果需要提取上下文且有搜索关键词，动态生成副标题
-		if (needExtractContext && !searchKeyword.empty()) {
-			subTitle = ExtractContextLazy(matchText, searchKeyword);
-			needExtractContext = false; // 提取一次后就不再重复提取
-		}
-		return subTitle;
-	}
-
-	std::wstring& getIconFilePath() override {
-		return iconFilePath;
-	}
-
-	int getIconFilePathIndex() override {
-		return iconFilePathIndex;
-	}
-
-	HBITMAP getIconBitmap() override {
-		return nullptr;
-	}
-
-	~TextFileAction() override {
-	}
-
-private:
-	// 懒加载方式提取上下文
+	// 从内容中提取关键词前后的上下文（content 已是小写，searchText 也需传小写）
 	static std::wstring ExtractContextLazy(const std::wstring& content, const std::wstring& searchText, size_t contextLength = 50) {
 		if (content.empty() || searchText.empty()) {
 			return L"";

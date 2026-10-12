@@ -117,6 +117,7 @@ struct DragData {
 
 struct CatalogEntry {
 	std::wstring name;
+	std::wstring description; // 2.3, localized; empty on an older host
 	std::wstring version;
 	std::wstring packageName;
 	std::wstring filePath;
@@ -235,6 +236,7 @@ public:
 			auto str = [](const wchar_t* s) { return s ? std::wstring(s) : std::wstring(); };
 			CatalogEntry item;
 			item.name = str(entry->name);
+			if (CL_HAS_FIELD(entry, CL_CatalogEntry, description)) item.description = str(entry->description);
 			item.version = str(entry->version);
 			item.packageName = str(entry->package_name);
 			item.filePath = str(entry->file_path);
@@ -339,9 +341,19 @@ public:
 	}
 
 	// Delivers a batch of query results; see TransientSet::PostResults for the usual way to call it.
-	bool PostResults(const uint64_t queryId, const CL_ActionDesc* items, const size_t count, const bool isFinal) const {
+	// replaceList: the batch replaces the visible list instead of being appended.
+	bool PostResults(const uint64_t queryId, const CL_ActionDesc* items, const size_t count, const bool isFinal,
+					const bool replaceList = false) const {
 		return Has(&CL_HostApi::post_results) &&
-			m_api->post_results(m_handle, queryId, items, count, isFinal ? 1 : 0) != 0;
+			m_api->post_results(m_handle, queryId, items, count,
+								(isFinal ? CL_RESULTS_FINAL : 0) | (replaceList ? CL_RESULTS_REPLACE : 0)) != 0;
+	}
+
+	// refresh_actions runs again (worker thread when exported with CL_PLUGIN_REFRESH_ANY_THREAD).
+	bool RequestRefresh() const {
+		if (!Has(&CL_HostApi::request_refresh)) return false;
+		m_api->request_refresh(m_handle);
+		return true;
 	}
 
 	bool NotifyActionsChanged() const {
@@ -355,10 +367,42 @@ public:
 		return Has(&CL_HostApi::get_current_query_id) ? m_api->get_current_query_id(m_handle) : 0;
 	}
 
+	// ---- added in 2.3: localization (docs/DOC_PLUGIN_I18N.md) ----
+
+	// Host UI language, e.g. L"zh-CN" / L"en-US". Empty on an older host.
+	std::wstring GetUiLanguage() const {
+		std::wstring result;
+		if (Has(&CL_HostApi::get_ui_language)) m_api->get_ui_language(m_handle, detail::AppendToWString, &result);
+		return result;
+	}
+
+	// Text for `key` from the plugin's string tables in the current language; `fallback` when no table
+	// defines it (or on an older host). Any thread.
+	std::wstring Tr(const wchar_t* key, const wchar_t* fallback = L"") const {
+		std::wstring result;
+		if (Has(&CL_HostApi::get_string) && m_api->get_string(m_handle, key, detail::AppendToWString, &result)) {
+			return result;
+		}
+		return fallback ? fallback : L"";
+	}
+
+	std::wstring Tr(const wchar_t* key, const std::wstring& fallback) const { return Tr(key, fallback.c_str()); }
+
 private:
 	const CL_HostApi* m_api = nullptr;
 	CL_PluginHandle m_handle = nullptr;
 };
+
+// Replaces {0}, {1} ... in `pattern` with `args`; translations may reorder the placeholders.
+inline std::wstring Format(std::wstring pattern, const std::vector<std::wstring>& args) {
+	for (size_t i = 0; i < args.size(); ++i) {
+		const std::wstring token = L"{" + std::to_wstring(i) + L"}";
+		for (size_t pos = pattern.find(token); pos != std::wstring::npos; pos = pattern.find(token, pos + args[i].size())) {
+			pattern.replace(pos, token.size(), args[i]);
+		}
+	}
+	return pattern;
+}
 
 // A set of actions owned by the plugin and mirrored to the host.
 // user_data = set id (16 bit) | publish generation (16 bit) | index (32 bit),
@@ -422,6 +466,21 @@ public:
 		return m_items;
 	}
 
+	// (user_data, item) pairs of the current publish, e.g. to pick a subset for ResultSink::AddItems.
+	std::vector<std::pair<uint64_t, std::shared_ptr<T>>> Entries() const {
+		std::lock_guard<std::mutex> lock(m_mutex);
+		std::vector<std::pair<uint64_t, std::shared_ptr<T>>> entries;
+		entries.reserve(m_items.size());
+		for (size_t i = 0; i < m_items.size(); ++i) entries.emplace_back(MakeUserData(i), m_items[i]);
+		return entries;
+	}
+
+	// user_data of the item at `index` in the current publish; 0 when out of range.
+	uint64_t UserDataAt(const size_t index) const {
+		std::lock_guard<std::mutex> lock(m_mutex);
+		return index < m_items.size() ? MakeUserData(index) : 0;
+	}
+
 	size_t Size() const {
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_items.size();
@@ -473,11 +532,12 @@ public:
 	}
 
 	// Begin() + Append() + post_results in one call. Returns false when the query is stale.
+	// replaceList: the batch replaces the visible list instead of being appended (e.g. after a placeholder).
 	bool PostResults(const Host& host, const uint64_t queryId, const std::vector<std::shared_ptr<T>>& items,
-					const bool isFinal, const bool restart = false) {
+					const bool isFinal, const bool restart = false, const bool replaceList = false) {
 		if (restart) Begin();
 		const auto descs = Append(items);
-		return host.PostResults(queryId, descs.data(), descs.size(), isFinal);
+		return host.PostResults(queryId, descs.data(), descs.size(), isFinal, replaceList);
 	}
 
 	std::shared_ptr<T> Find(const uint64_t userData) const {
@@ -534,6 +594,13 @@ public:
 		return m_sdkHost.Api()->sink_add_descs(m_sink, m_sdkHost.Handle(), descs.data(), descs.size());
 	}
 
+	// 2.2: take over the list even without items (results follow through PostResults). False on an older host.
+	bool TakeOver() const {
+		if (!m_sdkHost.Has(&CL_HostApi::sink_take_over)) return false;
+		m_sdkHost.Api()->sink_take_over(m_sink, m_sdkHost.Handle());
+		return true;
+	}
+
 private:
 	const Host& m_sdkHost;
 	CL_ResultSinkHandle m_sink;
@@ -572,6 +639,12 @@ public:
 	virtual void OnQueryCancel(uint64_t queryId) {}
 	// 2.2: one of this plugin's settings changed (called before OnUserSettingsLoaded).
 	virtual void OnSettingChanged(const std::wstring& key) {}
+	// 2.3: the host UI language changed. RefreshActions follows automatically; override for other cached text.
+	virtual void OnLanguageChanged(const std::wstring& language) {}
+
+	// 2.3: shorthand for GetHost().Tr(key, fallback).
+	std::wstring Tr(const wchar_t* key, const wchar_t* fallback = L"") const { return m_sdkHost.Tr(key, fallback); }
+	std::wstring Tr(const wchar_t* key, const std::wstring& fallback) const { return m_sdkHost.Tr(key, fallback); }
 
 private:
 	template <class>
@@ -705,6 +778,11 @@ struct PluginBridge {
 		try { Self(self)->OnSettingChanged(key ? key : L""); } catch (...) { ReportException(self, "on_setting_changed"); }
 	}
 
+	static void CL_CALL OnLanguageChanged(void* self, const wchar_t* language) {
+		try { Self(self)->OnLanguageChanged(language ? language : L""); }
+		catch (...) { ReportException(self, "on_language_changed"); }
+	}
+
 	static CL_PluginApi MakeApi(const wchar_t* name, const wchar_t* description, const wchar_t* version,
 								const wchar_t* packageName, const wchar_t* defaultSettingJson, const uint32_t flags) {
 		CL_PluginApi api{};
@@ -734,6 +812,7 @@ struct PluginBridge {
 		api.on_query = OnQuery;
 		api.on_query_cancel = OnQueryCancel;
 		api.on_setting_changed = OnSettingChanged;
+		api.on_language_changed = OnLanguageChanged;
 		return api;
 	}
 };

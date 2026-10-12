@@ -1,0 +1,21 @@
+{
+	"package_name": "com.candytek.smalltoolbox",
+	"name": "Small Toolbox",
+	"description": "A collection of small utilities",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Small Toolbox",
+				"description": "A collection of small utilities"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "小工具箱",
+				"description": "常用小工具集合"
+			}
+		}
+	}
+}

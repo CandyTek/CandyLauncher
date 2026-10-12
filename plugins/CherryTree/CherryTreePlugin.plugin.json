@@ -1,0 +1,47 @@
+{
+	"package_name": "com.candytek.cherrytreeplugin",
+	"name": "CherryTree Notes",
+	"description": "Index CherryTree databases and multi-file folders",
+	"version": "1.2.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.cherrytreeplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "c "
+			},
+			{
+				"key": "com.candytek.cherrytreeplugin.db_path",
+				"title": "CherryTree 数据库文件或多文件目录路径",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "E:\\GitHub\\CherrySnippet\\CherryCode"
+			},
+			{
+				"key": "com.candytek.cherrytreeplugin.matchtext_content",
+				"title": "搜索匹配笔记内容",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": false
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "CherryTree Notes",
+				"description": "Index CherryTree databases and multi-file folders"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "CherryTree 笔记",
+				"description": "CherryTree 数据库及多文件目录索引"
+			}
+		}
+	}
+}

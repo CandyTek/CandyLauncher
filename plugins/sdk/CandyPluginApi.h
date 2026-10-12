@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 #define CL_API_VERSION_MAJOR 2
-#define CL_API_VERSION_MINOR 2
+#define CL_API_VERSION_MINOR 3
 
 #define CL_CALL __cdecl
 
@@ -141,6 +141,8 @@ typedef struct CL_CatalogEntry {
 	const wchar_t* file_path;
 	const wchar_t* default_setting_json;
 	int32_t enabled;
+	/* ---- added in 2.3 ---- */
+	const wchar_t* description;  /* localized, like `name` */
 } CL_CatalogEntry;
 
 typedef void (CL_CALL *CL_CatalogVisitor)(void* ctx, const CL_CatalogEntry* entry);
@@ -226,7 +228,7 @@ typedef struct CL_HostApi {
 	/* ---- drag & drop ---- */
 	int32_t (CL_CALL *begin_drag)(CL_PluginHandle h, const CL_DragData* data, HWND source_hwnd);
 
-	/* ---- images; the caller owns the returned HBITMAP ---- */
+	/* ---- images; the caller owns the returned HBITMAP. Any thread. ---- */
 	HBITMAP (CL_CALL *load_res_icon_bitmap)(CL_PluginHandle h, int32_t res_id, int32_t cx, int32_t cy);
 	HBITMAP (CL_CALL *load_svg_bitmap)(CL_PluginHandle h, const wchar_t* path, uint32_t width, uint32_t height);
 
@@ -244,17 +246,37 @@ typedef struct CL_HostApi {
 	size_t (CL_CALL *sink_add_descs)(CL_ResultSinkHandle sink, CL_PluginHandle h, const CL_ActionDesc* items,
 									size_t count);
 	/* Delivers results for the query started by on_query. The host copies the items, marshals them to the
-	 * UI thread and appends them to the visible list; results for a query that is no longer current are
-	 * dropped. May be called several times per query; is_final tells the host no more batches follow.
+	 * UI thread and appends them to the visible list (CL_RESULTS_REPLACE: replaces the list instead);
+	 * results for a query that is no longer current are dropped. May be called several times per query;
+	 * `flags` is a CL_RESULTS_* combination (plain 1 / 0 still mean final / not final).
 	 * Any thread. Returns 0 when the query is stale (stop working on it). */
 	int32_t (CL_CALL *post_results)(CL_PluginHandle h, uint64_t query_id, const CL_ActionDesc* items, size_t count,
-									int32_t is_final);
+									int32_t flags);
 	/* Tells the host that sets published from a background thread changed, so the visible list is rebuilt
 	 * from the current input. Coalesced. Any thread. */
 	void (CL_CALL *notify_actions_changed)(CL_PluginHandle h);
 	/* Current query id (the one the last on_query / on_intercept_input was called with). Any thread. */
 	uint64_t (CL_CALL *get_current_query_id)(CL_PluginHandle h);
+	/* Marks the intercept as taking over the result list even when nothing was added, so the host shows an
+	 * empty list (results then arrive through post_results) instead of running the normal search. */
+	void (CL_CALL *sink_take_over)(CL_ResultSinkHandle sink, CL_PluginHandle h);
+	/* Asks the host to call refresh_actions again (on the plugin's worker when CL_PLUGIN_REFRESH_ANY_THREAD,
+	 * otherwise on the UI thread) and to rebuild the visible list afterwards. Coalesced. Any thread. */
+	void (CL_CALL *request_refresh)(CL_PluginHandle h);
+
+	/* ---- added in 2.3: localization, see docs/DOC_PLUGIN_I18N.md ---- */
+	/* Current UI language of the host, e.g. L"zh-CN" / L"en-US". Any thread. */
+	void (CL_CALL *get_ui_language)(CL_PluginHandle h, CL_StrSink sink, void* ctx);
+	/* Looks `key` up in the plugin's string tables (plugins/lang/<dll stem>/<language>.json and the
+	 * manifest's "strings" object) for the current language, falling back to the same primary language,
+	 * then en-US, then the first table that defines the key. Returns 0 when no table has it, so the plugin
+	 * can use its own built-in text. Any thread. */
+	int32_t (CL_CALL *get_string)(CL_PluginHandle h, const wchar_t* key, CL_StrSink sink, void* ctx);
 } CL_HostApi;
+
+/* post_results flags */
+#define CL_RESULTS_FINAL 0x1      /* no more batches follow for this query */
+#define CL_RESULTS_REPLACE 0x2    /* replace the visible list instead of appending */
 
 /* ------------------------------------------------------------------------- */
 /* Plugin -> host entry points                                                */
@@ -310,6 +332,12 @@ typedef struct CL_PluginApi {
 	void (CL_CALL *on_query_cancel)(void* self, uint64_t query_id);
 	/* One of this plugin's settings ("<package_name>.*") changed. Called before on_user_settings_loaded. */
 	void (CL_CALL *on_setting_changed)(void* self, const wchar_t* key);
+
+	/* ---- added in 2.3, the host checks CL_HAS_FIELD before calling ---- */
+	/* The host UI language changed (user setting). get_string already answers in the new language; the host
+	 * calls refresh_actions afterwards, so sets republished there pick up new titles by themselves. Use this
+	 * for anything else that caches text (menus, open windows, keywords ...). */
+	void (CL_CALL *on_language_changed)(void* self, const wchar_t* language);
 } CL_PluginApi;
 
 typedef const CL_PluginApi* (CL_CALL *CL_GetPluginApiFn)(void);

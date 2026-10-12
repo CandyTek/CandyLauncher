@@ -15,7 +15,6 @@
 
 #include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
-#include "util/BitmapUtil.hpp"
 #include "util/json.hpp"
 
 using json = nlohmann::json;
@@ -385,12 +384,12 @@ static std::string ExtractCodeContainersJson(const std::wstring& xmlPath) {
 }
 
 // 从 CodeContainers JSON 中解析项目列表
-static std::vector<std::shared_ptr<BaseAction>> ParseCodeContainers(
+static std::vector<std::shared_ptr<VisualStudioAction>> ParseCodeContainers(
 	const std::string& jsonStr,
 	const VSInstance& instance,
 	int maxResults = 1000) {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<VisualStudioAction>> result;
 
 	try {
 		if (jsonStr.empty()) {
@@ -403,8 +402,8 @@ static std::vector<std::shared_ptr<BaseAction>> ParseCodeContainers(
 			return result;
 		}
 
-		// 所有项目共享 Visual Studio 图标，显示时再获取
-		const auto icon = std::make_shared<LazySysImageIndex>(instance.productPath);
+		// 所有项目共享 Visual Studio 图标（相同 iconPath 主程序只解析一次，显示时再获取）
+		const std::wstring& icon = instance.productPath;
 		int count = 0;
 
 		for (const auto& container : containersJson) {
@@ -455,14 +454,16 @@ static std::vector<std::shared_ptr<BaseAction>> ParseCodeContainers(
 				// ConsolePrintln(L"VisualStudio",action->title);
 
 				// 副标题显示完整路径
-				action->subTitle = fullPath;
+				action->subtitle = fullPath;
+				action->stableKey = fullPath;
 
 				// 设置图标为 Visual Studio 可执行文件
-				action->icon = icon;
+				action->iconPath = icon;
 
-				// 设置匹配文本
+				// 设置匹配文本，插件已处理，主程序原样使用
+				action->matchTextVerbatim = true;
 				try {
-					action->matchText = m_host->GetTheProcessedMatchingText(action->title) + fullPath;
+					action->matchText = m_host->ProcessMatchText(action->title) + fullPath;
 				} catch (...) {
 					action->matchText = action->title;
 				}
@@ -486,8 +487,8 @@ static std::vector<std::shared_ptr<BaseAction>> ParseCodeContainers(
 }
 
 // 获取所有 Visual Studio 项目
-static std::vector<std::shared_ptr<BaseAction>> GetAllVisualStudioProjects() {
-	std::vector<std::shared_ptr<BaseAction>> result;
+static std::vector<std::shared_ptr<VisualStudioAction>> GetAllVisualStudioProjects() {
+	std::vector<std::shared_ptr<VisualStudioAction>> result;
 
 	if (!m_host) {
 		Loge(L"VisualStudio", L"m_host is null");
@@ -496,8 +497,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllVisualStudioProjects() {
 
 	try {
 		// 从配置读取最大结果数
-		int maxResults = static_cast<int>(
-			m_host->GetSettingsMap().at("com.candytek.visualstudioplugin.max_results").intValue);
+		int maxResults = static_cast<int>(m_host->GetInt(L"com.candytek.visualstudioplugin.max_results", 1000));
 
 		// 获取所有 Visual Studio 实例
 		std::vector<VSInstance> instances = GetVisualStudioInstances();

@@ -393,6 +393,25 @@ inline int32_t CL_CALL GetSettingString(CL_PluginHandle, const wchar_t* key, con
 	});
 }
 
+// ---- 2.3 localization (PluginI18n.hpp). Both any thread: the language is a mutex guarded mirror and the
+// resolved table is an immutable shared_ptr swapped atomically by PluginManager. ----
+
+inline void CL_CALL GetUiLanguage(CL_PluginHandle, const CL_StrSink sink, void* ctx) {
+	GuardVoid(L"get_ui_language", [&] { Emit(sink, ctx, PluginI18n::Language()); });
+}
+
+inline int32_t CL_CALL GetString(CL_PluginHandle h, const wchar_t* key, const CL_StrSink sink, void* ctx) {
+	return Guard(L"get_string", 0, [&] {
+		if (!h || !key) return 0;
+		const auto strings = std::atomic_load(&h->strings);
+		if (!strings) return 0;
+		const auto it = strings->find(key);
+		if (it == strings->end()) return 0;
+		Emit(sink, ctx, it->second);
+		return 1;
+	});
+}
+
 inline int32_t CL_CALL GetSettingStringArray(CL_PluginHandle, const wchar_t* key, const CL_StrSink sink, void* ctx) {
 	return Guard(L"get_setting_string_array", 0, [&] {
 		std::vector<std::string> values;
@@ -432,14 +451,18 @@ inline int32_t CL_CALL EnumPluginCatalog(CL_PluginHandle h, const CL_CatalogVisi
 		}
 		const std::vector<PluginCatalogInfo> catalog = g_pluginCatalog;
 		for (const auto& info : catalog) {
+			// 2.3: name / description in the current UI language ("plugin.name" / "plugin.description" keys).
+			const std::wstring name = info.DisplayName();
+			const std::wstring description = info.DisplayDescription();
 			CL_CatalogEntry entry{};
 			entry.size = sizeof(entry);
-			entry.name = info.name.c_str();
+			entry.name = name.c_str();
 			entry.version = info.version.c_str();
 			entry.package_name = info.pkgName.c_str();
 			entry.file_path = info.filePath.c_str();
 			entry.default_setting_json = info.defaultSettingJson.c_str();
 			entry.enabled = info.enabled ? 1 : 0;
+			entry.description = description.c_str();
 			visitor(ctx, &entry);
 		}
 		return 1;
@@ -613,13 +636,25 @@ inline size_t CL_CALL SinkAddDescs(CL_ResultSinkHandle sink, CL_PluginHandle h, 
 }
 
 inline int32_t CL_CALL PostResults(CL_PluginHandle h, const uint64_t queryId, const CL_ActionDesc* items,
-									const size_t count, const int32_t isFinal) {
+									const size_t count, const int32_t flags) {
 	return Guard(L"post_results", 0, [&] {
 		if (!h || !g_pluginManager) return 0;
 		// Build the proxies on the caller's thread so the UI thread only appends.
 		if (queryId != PluginManager::CurrentQueryId()) return 0;
 		auto actions = BuildProxies(h, items, count, false);
-		return g_pluginManager->QueueQueryResults(queryId, std::move(actions), isFinal != 0) ? 1 : 0;
+		return g_pluginManager->QueueQueryResults(queryId, std::move(actions), flags) ? 1 : 0;
+	});
+}
+
+inline void CL_CALL SinkTakeOver(CL_ResultSinkHandle sink, CL_PluginHandle h) {
+	GuardVoid(L"sink_take_over", [&] {
+		if (sink && h) sink->takeOver = true;
+	});
+}
+
+inline void CL_CALL RequestRefresh(CL_PluginHandle h) {
+	GuardVoid(L"request_refresh", [&] {
+		if (h && g_pluginManager) g_pluginManager->RequestPluginRefresh(h->pluginId);
 	});
 }
 
@@ -680,6 +715,10 @@ inline const CL_HostApi* PluginManager::GetHostApi() {
 		a.post_results = PluginHostApiImpl::PostResults;
 		a.notify_actions_changed = PluginHostApiImpl::NotifyActionsChangedApi;
 		a.get_current_query_id = PluginHostApiImpl::GetCurrentQueryId;
+		a.sink_take_over = PluginHostApiImpl::SinkTakeOver;
+		a.request_refresh = PluginHostApiImpl::RequestRefresh;
+		a.get_ui_language = PluginHostApiImpl::GetUiLanguage;
+		a.get_string = PluginHostApiImpl::GetString;
 		return a;
 	}();
 	return &api;

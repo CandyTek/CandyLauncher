@@ -114,15 +114,15 @@ static void UpdateFileListIconState() {
 static void CollectIndexFileListFromConfig(TraverseOptions config, std::vector<FileInfo>& outputItems) {
 	outputItems.clear();
 	if (config.type == L"folder" || config.type.empty()) {
-		if (g_host->GetSettingsMap().at("pref_use_everything_sdk_index").boolValue) {
-			g_host->TraverseFilesForEverythingSDK(GetCurrentFolderPath(config), config,
-												[&](const std::wstring& name, const std::wstring& fullPath,
-													const std::wstring& parent, const std::wstring& ext) {
-													FileInfo fileInfo;
-													fileInfo.file_path = fullPath;
-													fileInfo.label = name;
-													outputItems.push_back(fileInfo);
-												});
+		if (m_host && m_host->GetBool(L"pref_use_everything_sdk_index", false)) {
+			m_host->TraverseFiles(MakeHostTraverseOptions(config, GetCurrentFolderPath(config)),
+								[&](const std::wstring& name, const std::wstring& fullPath,
+									const std::wstring& parent, const std::wstring& ext) {
+									FileInfo fileInfo;
+									fileInfo.file_path = fullPath;
+									fileInfo.label = name;
+									outputItems.push_back(fileInfo);
+								});
 		} else {
 			TraverseFiles(GetCurrentFolderPath(config), config, EXE_FOLDER_PATH2,
 						[&](const std::wstring& name, const std::wstring& fullPath,

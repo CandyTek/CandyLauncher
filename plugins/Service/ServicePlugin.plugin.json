@@ -1,0 +1,96 @@
+{
+	"package_name": "com.candytek.serviceplugin",
+	"name": "Windows Services",
+	"description": "Index and manage Windows services",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.serviceplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"title_en": "Activation command, leave empty for no prefix",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "service "
+			},
+			{
+				"key": "com.candytek.serviceplugin.matchtext_servicename",
+				"type": "bool",
+				"title": "搜索匹配服务内部名称",
+				"title_en": "Also match the internal service name",
+				"subPage": "plugin",
+				"defValue": true
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Windows Services",
+				"description": "Index and manage Windows services"
+			},
+			"subtitle": "Status: {0} - Startup: {1} - Name: {2}",
+			"status": {
+				"stopped": "Stopped",
+				"start_pending": "Starting",
+				"stop_pending": "Stopping",
+				"running": "Running",
+				"continue_pending": "Continuing",
+				"pause_pending": "Pausing",
+				"paused": "Paused",
+				"unknown": "Unknown"
+			},
+			"start": {
+				"boot": "Boot",
+				"system": "System",
+				"auto": "Automatic",
+				"auto_delayed": "Automatic (Delayed Start)",
+				"manual": "Manual",
+				"disabled": "Disabled",
+				"unknown": "Unknown"
+			},
+			"msg": {
+				"title": "Service",
+				"stop_ok": "Service stopped: {0}",
+				"stop_fail": "Failed to stop service: {0}",
+				"start_ok": "Service started: {0}",
+				"start_fail": "Failed to start service: {0}"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "Windows 服务",
+				"description": "索引和管理 Windows 服务"
+			},
+			"subtitle": "状态: {0} - 启动: {1} - 名称: {2}",
+			"status": {
+				"stopped": "已停止",
+				"start_pending": "正在启动",
+				"stop_pending": "正在停止",
+				"running": "运行中",
+				"continue_pending": "正在继续",
+				"pause_pending": "正在暂停",
+				"paused": "已暂停",
+				"unknown": "未知"
+			},
+			"start": {
+				"boot": "引导",
+				"system": "系统",
+				"auto": "自动",
+				"auto_delayed": "自动（延迟启动）",
+				"manual": "手动",
+				"disabled": "已禁用",
+				"unknown": "未知"
+			},
+			"msg": {
+				"title": "服务操作",
+				"stop_ok": "成功停止服务: {0}",
+				"stop_fail": "停止服务失败: {0}",
+				"start_ok": "成功启动服务: {0}",
+				"start_fail": "启动服务失败: {0}"
+			}
+		}
+	}
+}

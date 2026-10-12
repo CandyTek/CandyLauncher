@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "BrowserHistoryAction.hpp"
+#include "BrowserHistoryPluginData.hpp"
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>
@@ -12,7 +13,6 @@
 #include <sqlite3.h>
 #include <future>
 
-#include "util/BitmapUtil.hpp"
 #include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
 #include "util/ParallelUtil.hpp"
@@ -93,12 +93,12 @@ struct RawHistoryRow {
 
 // 从 Chromium 类浏览器（Chrome/Edge）的 History SQLite 数据库读取历史记录
 // 先在单线程内取出原始行（SQLite 游标不能并行），再并行转换字符串与生成匹配文本
-static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromiumHistoryFromDB(
 	const std::string& historyDbPath,
 	const std::wstring& browserIconPath,
 	int maxResults = 2000) {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
 	try {
 		// 检查文件是否存在
@@ -153,8 +153,6 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 		sqlite3_close(db);
 		const auto t1 = std::chrono::steady_clock::now();
 
-		const auto icon = std::make_shared<LazySysImageIndex>(browserIconPath);
-
 		// 每个元素按下标写入，保持按访问时间排序；转换失败的记录留空后再剔除
 		result.resize(rows.size());
 		ParallelForRange(rows.size(), 64, [&](const size_t begin, const size_t end) {
@@ -174,16 +172,20 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 					action->visitTime = ConvertWebkitTimestamp(row.lastVisitTime);
 				}
 				if (action->visitTime.empty()) {
-					action->subTitle = action->url;
+					action->subtitle = action->url;
 				} else {
-					action->subTitle = action->visitTime + L"  " + action->url;
+					action->subtitle = action->visitTime + L"  " + action->url;
 				}
-				action->icon = icon;
+				// 同一浏览器的所有条目共享图标，由主程序延迟解析
+				action->iconPath = browserIconPath;
+				action->stableKey = action->url;
+				// 在插件内并行处理匹配文本，主程序原样使用
+				action->matchTextVerbatim = true;
 				try {
 					if (isMatchTextUrl) {
-						action->matchText = m_host->GetTheProcessedMatchingText(action->title) + action->url;
+						action->matchText = m_host->ProcessMatchText(action->title) + action->url;
 					} else {
-						action->matchText = m_host->GetTheProcessedMatchingText(action->title);
+						action->matchText = m_host->ProcessMatchText(action->title);
 					}
 				} catch (...) {
 					// 如果处理失败，使用原始标题
@@ -206,9 +208,9 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromiumHistoryFromDB(
 }
 
 // 获取 Chrome 历史记录
-static std::vector<std::shared_ptr<BaseAction>> GetChromeHistory(int maxResults = 2000) {
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromeHistory(int maxResults = 2000) {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
 	const std::string localAppData = getLocalAppData();
 	if (localAppData.empty()) {
@@ -230,9 +232,9 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeHistory(int maxResults 
 }
 
 // 获取 Edge 历史记录
-static std::vector<std::shared_ptr<BaseAction>> GetEdgeHistory(int maxResults = 2000) {
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetEdgeHistory(int maxResults = 2000) {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
 	const std::string localAppData = getLocalAppData();
 	if (localAppData.empty()) {
@@ -253,11 +255,11 @@ static std::vector<std::shared_ptr<BaseAction>> GetEdgeHistory(int maxResults = 
 }
 
 // 从自定义路径获取历史记录
-static std::vector<std::shared_ptr<BaseAction>> GetHistoryFromCustomPath(
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetHistoryFromCustomPath(
 	const std::string& profilePath,
 	int maxResults = 2000) {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
 	try {
 		fs::path p(profilePath);
@@ -290,20 +292,23 @@ static std::vector<std::shared_ptr<BaseAction>> GetHistoryFromCustomPath(
 }
 
 // 获取所有配置的浏览器历史记录，各浏览器并发读取，结果按配置顺序合并
-static std::vector<std::shared_ptr<BaseAction>> GetAllBrowserHistory() {
-	std::vector<std::shared_ptr<BaseAction>> result;
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetAllBrowserHistory() {
+	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
 	// 从配置读取浏览器列表和最大结果数
-	const int maxResults = static_cast<int>(m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.max_results").intValue);
-	const std::vector<std::string> browserList = m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.browser_list").stringArr;
+	const int maxResults = static_cast<int>(m_host->GetInt(L"com.candytek.browserhistoryplugin.max_results", 2000));
+	std::vector<std::string> browserList;
+	for (const auto& item : m_host->GetStringArray(L"com.candytek.browserhistoryplugin.browser_list")) {
+		browserList.push_back(wide_to_utf8(item));
+	}
 
-	std::vector<std::future<std::vector<std::shared_ptr<BaseAction>>>> futures;
+	std::vector<std::future<std::vector<std::shared_ptr<BrowserHistoryAction>>>> futures;
 	futures.reserve(browserList.size());
 	for (const std::string& browser : browserList) {
 		std::string trimmedBrowser = MyTrim(browser);
 		if (trimmedBrowser.empty()) continue;
 
-		futures.push_back(std::async(std::launch::async, [trimmedBrowser, maxResults]() -> std::vector<std::shared_ptr<BaseAction>> {
+		futures.push_back(std::async(std::launch::async, [trimmedBrowser, maxResults]() -> std::vector<std::shared_ptr<BrowserHistoryAction>> {
 			try {
 				if (trimmedBrowser == "chrome") {
 					return GetChromeHistory(maxResults);

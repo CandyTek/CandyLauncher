@@ -1,135 +1,98 @@
-﻿#include "../Plugin.hpp"
-#include <windows.h>
+﻿#include <windows.h>
 #include <memory>
 #include <string>
 
 #include "ToolBoxAction.hpp"
 #include "ToolBoxPluginData.hpp"
 #include "ToolBoxUtil.hpp"
+#include "util/StringUtil.hpp"
 
-class SmallToolBoxPlugin : public IPlugin {
+class SmallToolBoxPlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-	std::vector<std::shared_ptr<BaseAction>> dynamicExampleActions;
+	// 0 号集合：固定工具项，参与全局搜索；1 号：输入 "qrcode xxx" 时按键生成的临时结果
+	candy::ActionSet<SmallToolBoxAction> allPluginActions{0};
+	candy::TransientSet<SmallToolBoxAction> qrcodeResults{1};
+
+	std::shared_ptr<SmallToolBoxAction> FindAction(const uint64_t userData) const {
+		if (auto action = allPluginActions.Find(userData)) return action;
+		return qrcodeResults.Find(userData);
+	}
+
+	// 生成并显示二维码窗口
+	static bool ShowQrCodeForText(const std::string& textUtf8) {
+		try {
+			using namespace qrcodegen;
+			QrCode qr = QrCode::encodeText(textUtf8.c_str(), QrCode::Ecc::MEDIUM);
+
+			// 显示二维码窗口
+			ShowQRCodeWindow(qr, textUtf8);
+			return true;
+		} catch (const std::exception& e) {
+			std::wstring errorMsg = L"生成二维码失败: " + std::wstring(e.what(), e.what() + strlen(e.what()));
+			MessageBoxW(NULL, errorMsg.c_str(), L"错误", MB_OK | MB_ICONERROR);
+			return false;
+		}
+	}
 
 public:
 	SmallToolBoxPlugin() = default;
 	~SmallToolBoxPlugin() override = default;
 
-	std::wstring GetPluginName() const override {
-		return L"SmallToolBoxPlugin";
+	// 不要在初始化里加载Actions，由主程序调用 RefreshActions
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.smalltoolbox";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"小工具箱";
-	}
-
-	// 不要在初始化里加载Actions，由主程序调用 RefreshAllActions
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-	
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-
-	void RefreshAllActions() override {
-		if (!m_host) return;
-
-		allPluginActions.clear();
+	void RefreshActions() override {
 		// 应该使用make_shared，而不是简单的ExampleAction，这样子iconBitmap 的图标才能正常显示
+		// matchText 留空，由主程序根据 title 生成（小写 + 拼音）
 		std::shared_ptr<SmallToolBoxAction> action1 = std::make_shared<SmallToolBoxAction>();
 		action1->id = L"show_qrcode";
 		action1->title = L"从剪贴板生成二维码";
-		action1->subTitle = L"";
-		action1->matchText = m_host->GetTheProcessedMatchingText(action1->title);
+		action1->subtitle = L"";
+		action1->stableKey = action1->id;
 		action1->iconBitmap = LoadShell32IconAsBitmap(15);
-		allPluginActions.push_back(action1);
 
 		std::shared_ptr<SmallToolBoxAction> action2 = std::make_shared<SmallToolBoxAction>();
 		action2->id = L"color_converter";
 		action2->title = L"颜色格式转换";
-		action2->subTitle = L"#RRGGBB <-> R,G,B";
-		action2->matchText = m_host->GetTheProcessedMatchingText(action2->title);
+		action2->subtitle = L"#RRGGBB <-> R,G,B";
+		action2->stableKey = action2->id;
 		action2->iconBitmap = LoadShell32IconAsBitmap(174);
-		allPluginActions.push_back(action2);
 
-		// std::shared_ptr<ExampleAction> action2 = std::make_shared<ExampleAction>();
-		// action2->id = L"ExamplePlugin_time";
-		// action2->title = L"显示时间";
-		// action2->subTitle = L"显示当前系统时间";
-		// action2->matchText = m_host->GetTheProcessedMatchingText(action2->title);
-		// action2->iconBitmap = LoadShell32IconAsBitmap(265);
-		// allPluginActions.push_back((action2));
-		//
-		// std::shared_ptr<ExampleAction> action3 = std::make_shared<ExampleAction>();
-		// action3->id = L"ExamplePlugin_time_en";
-		// action3->title = L"Show Time";
-		// action3->subTitle = L"Show current system time";
-		// action3->matchText = m_host->GetTheProcessedMatchingText(action3->title);
-		// action3->iconBitmap = LoadShell32IconAsBitmap(265);
-		// allPluginActions.push_back((action3));
+		allPluginActions.Publish(GetHost(), {action1, action2});
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-}
-
-   )";
-	}
-
-	void OnUserSettingsLoadDone() override {
-		// auto it = settings_map.find("pref_pinyin_mode");
-		// if (it != settings_map.end()) {
-		// 	pinyinType = it->second.stringValue;
-		// }
+	void OnUserSettingsLoaded() override {
+		// 2.2 主程序只在输入以 "qrcode " 开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		GetHost().SetTriggerKeywords({L"qrcode "});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		allPluginActions.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host) return {};
-
-		return allPluginActions;
-	}
-	
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override
+	// "qrcode xxx"：接管结果列表，显示只为本次输入生成的条目
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override
 	{
 		if (StartsWith(input, L"qrcode "))
 		{
 			size_t spacePos = input.find(L' ');
 			std::wstring query = input.substr(spacePos + 1);
 
-			std::wstring name= L"生成二维码";
 			auto action = std::make_shared<SmallToolBoxAction>();
 			action->id = L"gen_qrcode";
-			action->title = name;
-			action->subTitle = query;
-			action->matchText = m_host->GetTheProcessedMatchingText(name);
-			return {action};
+			action->title = L"生成二维码";
+			action->subtitle = query;
+			action->stableKey = action->id;
+			sink.AddTransient(qrcodeResults, {action});
 		}
-		return {};
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto exampleAction = std::dynamic_pointer_cast<SmallToolBoxAction>(action);
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto exampleAction = FindAction(userData);
 		if (!exampleAction) return false;
 
 		if (exampleAction->id == L"show_qrcode") {
@@ -141,35 +104,15 @@ public:
 			}
 
 			// 生成二维码
-			try {
-				using namespace qrcodegen;
-				QrCode qr = QrCode::encodeText(clipboardText.c_str(), QrCode::Ecc::MEDIUM);
-
-				// 显示二维码窗口
-				ShowQRCodeWindow(qr, clipboardText);
-			} catch (const std::exception& e) {
-				std::wstring errorMsg = L"生成二维码失败: " + std::wstring(e.what(), e.what() + strlen(e.what()));
-				MessageBoxW(NULL, errorMsg.c_str(), L"错误", MB_OK | MB_ICONERROR);
-				return false;
-			}
-		}else if (exampleAction->id == L"gen_qrcode") {
+			return ShowQrCodeForText(clipboardText);
+		} else if (exampleAction->id == L"gen_qrcode") {
 			// 获取文本
-			if (exampleAction->subTitle.empty()) {
+			if (exampleAction->subtitle.empty()) {
 				return false;
 			}
 
 			// 生成二维码
-			try {
-				using namespace qrcodegen;
-				QrCode qr = QrCode::encodeText(wide_to_utf8(exampleAction->subTitle).c_str(), QrCode::Ecc::MEDIUM);
-
-				// 显示二维码窗口
-				ShowQRCodeWindow(qr, wide_to_utf8(exampleAction->subTitle));
-			} catch (const std::exception& e) {
-				std::wstring errorMsg = L"生成二维码失败: " + std::wstring(e.what(), e.what() + strlen(e.what()));
-				MessageBoxW(NULL, errorMsg.c_str(), L"错误", MB_OK | MB_ICONERROR);
-				return false;
-			}
+			return ShowQrCodeForText(wide_to_utf8(exampleAction->subtitle));
 		}
 		else if (exampleAction->id == L"color_converter") {
 			// 从剪贴板获取颜色值
@@ -197,7 +140,7 @@ public:
 			}
 
 			// 写回剪贴板
-			if (SetClipboardText(converted)) {
+			if (GetHost().SetClipboardText(utf8_to_wide(converted))) {
 				std::wstring msg = L"已转换并写入剪贴板:\n" + utf8_to_wide(converted);
 				MessageBoxW(NULL, msg.c_str(), L"成功", MB_OK | MB_ICONINFORMATION);
 			} else {
@@ -207,17 +150,15 @@ public:
 		}
 		return true;
 	}
-	
+
+	// Ctrl+C 复制 "qrcode xxx" 条目的文本
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto action = FindAction(userData);
+		if (!action || action->id != L"gen_qrcode" || action->subtitle.empty()) return false;
+		text = action->subtitle;
+		return true;
+	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new SmallToolBoxPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(SmallToolBoxPlugin, L"Small Toolbox", L"A collection of small utilities", L"1.0.0", L"com.candytek.smalltoolbox",
+					nullptr)

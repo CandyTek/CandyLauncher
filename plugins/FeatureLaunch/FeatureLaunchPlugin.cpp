@@ -1,149 +1,62 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
+﻿#include <memory>
 
 #include "FeatureLaunchAction.hpp"
 #include "FeatureLaunchPluginData.hpp"
 
-constexpr const char* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = "openFolderIndexedManager";
+constexpr const wchar_t* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = L"openFolderIndexedManager";
 constexpr const wchar_t* FOLDER_PLUGIN_PACKAGE_NAME = L"com.candytek.folderplugin";
 
-class FeatureLaunchPlugin : public IPlugin {
+class FeatureLaunchPlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	candy::ActionSet<FeatureLaunchAction> actions{0};
+
+	static std::shared_ptr<FeatureLaunchAction> Make(const wchar_t* title, const wchar_t* subTitle, const int icon,
+													const wchar_t* command) {
+		return std::make_shared<FeatureLaunchAction>(title, subTitle, icon, command);
+	}
 
 public:
-	FeatureLaunchPlugin() = default;
-	~FeatureLaunchPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"CandyLauncher 常用跳转";
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.featurelaunchplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"CandyLauncher 的常用跳转项";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) return;
-		allPluginActions.clear();
-
-		allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"退出软件", L"退出本软件", BaseLaunchAction::LOADTYPE_SHELL32, 131,
-																m_host->GetAppLaunchActionCallbacks().at("quit")));
-
-		allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"重启软件", L"重启本软件", BaseLaunchAction::LOADTYPE_SHELL32, 238,
-																m_host->GetAppLaunchActionCallbacks().at("restart")));
-		allPluginActions.push_back(
-			std::make_shared<FeatureLaunchAction>(L"查看用户软件配置 JSON 文件", L"打开user_settings.json文件", BaseLaunchAction::LOADTYPE_SHELL32, 264,
-												m_host->GetAppLaunchActionCallbacks().at("editUserConfig")));
-		allPluginActions.push_back(
-			std::make_shared<FeatureLaunchAction>(L"查看所有软件配置 JSON 文件", L"打开settings.json文件", BaseLaunchAction::LOADTYPE_SHELL32, 69,
-												m_host->GetAppLaunchActionCallbacks().at("viewAllSettings")));
-		// allExampleActions.push_back(
-		// 	std::make_shared<NormalLaunchAction>(L"查看用户索引配置 JSON 文件", L"打开config_folder_plugin.json文件", IDI_CLOSE,
-		// 									m_host->GetAppLaunchActionCallbacks().at("viewIndexConfig")));
-		const auto& callbacks = m_host->GetAppLaunchActionCallbacks();
-		if (m_host->IsPluginEnabledByPackageName(FOLDER_PLUGIN_PACKAGE_NAME)) {
-			if (const auto it = callbacks.find(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY); it != callbacks.end()) {
-				allPluginActions.push_back(
-					std::make_shared<FeatureLaunchAction>(L"文件夹索引管理器", L"打开文件夹插件的索引管理器",
-														BaseLaunchAction::LOADTYPE_SHELL32, 4, it->second));
-			}
+	void RefreshActions() override {
+		const candy::Host& host = GetHost();
+		std::vector<std::shared_ptr<FeatureLaunchAction>> items;
+		items.push_back(Make(L"退出软件", L"退出本软件", 131, L"quit"));
+		items.push_back(Make(L"重启软件", L"重启本软件", 238, L"restart"));
+		items.push_back(Make(L"查看用户软件配置 JSON 文件", L"打开user_settings.json文件", 264, L"editUserConfig"));
+		items.push_back(Make(L"查看所有软件配置 JSON 文件", L"打开settings.json文件", 69, L"viewAllSettings"));
+		// 文件夹插件加载后会注册该命令
+		if (host.IsPluginEnabled(FOLDER_PLUGIN_PACKAGE_NAME) && host.HasAppCommand(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY)) {
+			items.push_back(Make(L"文件夹索引管理器", L"打开文件夹插件的索引管理器", 4, OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY));
 		}
+		items.push_back(Make(L"软件帮助文档", L"前往浏览器查看帮助文档", 154, L"openHelp"));
 
-		allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"软件帮助文档", L"前往浏览器查看帮助文档", BaseLaunchAction::LOADTYPE_SHELL32, 154,
-																m_host->GetAppLaunchActionCallbacks().at("openHelp")));
-
-		if (m_host->GetSettingsMap().at("com.candytek.featurelaunchplugin.moreitem").boolValue) {
-			allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"检查更新", L"前往浏览器检查更新", BaseLaunchAction::LOADTYPE_SHELL32, 249,
-																	m_host->GetAppLaunchActionCallbacks().at("checkUpdate")));
-			allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"反馈建议", L"前往浏览器反馈建议", BaseLaunchAction::LOADTYPE_SHELL32, 220,
-																	m_host->GetAppLaunchActionCallbacks().at("feedback")));
-			allPluginActions.push_back(std::make_shared<FeatureLaunchAction>(L"打开Github项目主页", L"前往浏览器浏览项目主页", BaseLaunchAction::LOADTYPE_SHELL32,
-																	220,
-																	m_host->GetAppLaunchActionCallbacks().at("openGithub")));
+		if (host.GetBool(L"com.candytek.featurelaunchplugin.moreitem", false)) {
+			items.push_back(Make(L"检查更新", L"前往浏览器检查更新", 249, L"checkUpdate"));
+			items.push_back(Make(L"反馈建议", L"前往浏览器反馈建议", 220, L"feedback"));
+			items.push_back(Make(L"打开Github项目主页", L"前往浏览器浏览项目主页", 220, L"openGithub"));
 		}
+		actions.Publish(host, std::move(items));
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.featurelaunchplugin.moreitem",
-			"type": "bool",
-			"title": "索引更多跳转项",
-			"subPage": "plugin",
-			"defValue": false
-		}
-	]
-}
-
-   )";
-	}
-
-	
-	
-	void OnUserSettingsLoadDone() override {
-		// auto it = settings_map.find("pref_pinyin_mode");
-		// if (it != settings_map.end()) {
-		// 	pinyinType = it->second.stringValue;
-		// }
+	void OnSettingChanged(const std::wstring& key) override {
+		if (key == L"com.candytek.featurelaunchplugin.moreitem") RefreshActions();
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			try {
-				allPluginActions.clear();
-			} catch (...) {
-			}
-		}
+		actions.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host) return {};
-		return allPluginActions;
-	}
-
-	void OnMainWindowShow(bool isShow) override {
-	}
-
-
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<FeatureLaunchAction>(action);
-		if (!action1) return false;
-		action1->Invoke();
-		return true;
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action = actions.Find(userData);
+		if (!action) return false;
+		return GetHost().InvokeAppCommand(action->commandKey.c_str());
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new FeatureLaunchPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(FeatureLaunchPlugin, L"CandyLauncher Shortcuts", L"Quick access to CandyLauncher settings and features", L"1.1.0",
+					L"com.candytek.featurelaunchplugin", nullptr)

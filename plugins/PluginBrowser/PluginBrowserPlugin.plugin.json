@@ -1,0 +1,43 @@
+{
+	"package_name": "com.candytek.pluginbrowserplugin",
+	"name": "Plugin Browser",
+	"description": "Browse installed plugins and toggle them with Enter",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Plugin Browser",
+				"description": "Browse installed plugins and toggle them with Enter"
+			},
+			"status": {
+				"enabled": "[Enabled] ",
+				"disabled": "[Disabled] "
+			},
+			"hint": {
+				"toggle": "Enter toggles the plugin",
+				"locked": "The plugin browser cannot be disabled"
+			},
+			"msg": {
+				"toggle_failed": "Failed to toggle the plugin"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "插件浏览器",
+				"description": "浏览现有插件并用回车切换启用状态"
+			},
+			"status": {
+				"enabled": "[已启用] ",
+				"disabled": "[已禁用] "
+			},
+			"hint": {
+				"toggle": "回车切换开关",
+				"locked": "当前管理插件不允许关闭"
+			},
+			"msg": {
+				"toggle_failed": "切换插件状态失败"
+			}
+		}
+	}
+}

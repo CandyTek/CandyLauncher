@@ -1,0 +1,54 @@
+{
+	"package_name": "com.candytek.windowssearchplugin",
+	"name": "Windows Search",
+	"description": "Search files and folders with the Windows indexing service",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.windowssearchplugin.start_str",
+				"title": "直接激活命令（默认 '?'）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "?"
+			},
+			{
+				"key": "com.candytek.windowssearchplugin.max_results",
+				"type": "long",
+				"title": "最大搜索结果数",
+				"subPage": "plugin",
+				"defValue": 30
+			},
+			{
+				"key": "com.candytek.windowssearchplugin.display_hidden_files",
+				"type": "bool",
+				"title": "显示隐藏文件",
+				"subPage": "plugin",
+				"defValue": false
+			},
+			{
+				"key": "com.candytek.windowssearchplugin.excluded_patterns",
+				"type": "stringArr",
+				"title": "排除模式（每行一个，支持通配符）",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Windows Search",
+				"description": "Search files and folders with the Windows indexing service"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "Windows 索引搜索",
+				"description": "使用 Windows 索引服务搜索文件和文件夹"
+			}
+		}
+	}
+}

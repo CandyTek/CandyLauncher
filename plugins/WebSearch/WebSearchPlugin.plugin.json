@@ -1,0 +1,47 @@
+{
+	"package_name": "com.candytek.websearchplugin",
+	"name": "Web Search",
+	"description": "Search the web with keyword shortcuts",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.websearchplugin.mainbrowser",
+				"title": "指定主浏览器路径",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.websearchplugin.subbrowser",
+				"title": "指定副浏览器路径 (Alt+Enter)",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.websearchplugin.manager",
+				"title": "搜索管理器",
+				"type": "button",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Web Search",
+				"description": "Search the web with keyword shortcuts"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "网络搜索",
+				"description": "使用关键词快速搜索网页"
+			}
+		}
+	}
+}

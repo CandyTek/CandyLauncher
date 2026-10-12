@@ -1,167 +1,100 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
-#include <fstream>
-#include <iomanip>
-#include <sstream>
+﻿#include <memory>
 
 #include "JbAction.hpp"
 #include "JbPluginData.hpp"
 #include "JbPluginUtil.hpp"
 #include "../../util/StringUtil.hpp"
-#include "util/MyJsonUtil.hpp"
+#include "util/json.hpp"
 
-inline std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-
-class JetbrainsWorkspacesPlugin : public IPlugin {
+class JetbrainsWorkspacesPlugin : public candy::Plugin {
 private:
+	candy::ActionSet<JbAction> workspaces{0};
 	std::wstring startStr = L"jb ";
 
+	// 设置了激活命令时，项目只通过激活命令显示，不参与全局搜索
+	uint32_t WorkspaceSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
+	}
+
 public:
-	JetbrainsWorkspacesPlugin() = default;
-	~JetbrainsWorkspacesPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"Jetbrains Workspaces";
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.jetbrainsworkspacesplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"Jetbrains 家族历史项目搜索插件";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			return;
-		}
-
-		allPluginActions.clear();
-
+	void RefreshActions() override {
 		// Get all JetBrains workspace projects
-		auto workspaces = GetAllJetBrainsWorkspaces();
-
-		// Add to plugin actions
-		allPluginActions.reserve(workspaces.size());
-		for (auto& workspace : workspaces) {
-			allPluginActions.emplace_back(std::move(workspace));
-		}
+		workspaces.SetFlags(GetHost(), WorkspaceSetFlags());
+		workspaces.Publish(GetHost(), GetAllJetBrainsWorkspaces());
 	}
 
-
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.jetbrainsworkspacesplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "jb "
-		},
-		{
-			"key": "com.candytek.jetbrainsworkspacesplugin.edit_config_ide_paths",
-			"title": "编辑 IDE 路径配置",
-			"type": "button",
-			"subPage": "plugin",
-			"defValue": ""
-		}
-	]
-}
-
-   )";
-	}
-
-	void OnSettingItemExecute(const SettingItem* setting, HWND parentHwnd) override {
-		if (setting->key == "com.candytek.jetbrainsworkspacesplugin.edit_config_ide_paths") {
+	void OnSettingItemExecute(const std::wstring& key, HWND parentHwnd) override {
+		if (key == L"com.candytek.jetbrainsworkspacesplugin.edit_config_ide_paths") {
 			wchar_t path[MAX_PATH];
 			wcsncpy_s(path, CONFIG_IDE_PATHS_PATH.c_str(), MAX_PATH - 1);
 			ShellExecute(nullptr, L"open", L"notepad.exe", path, nullptr, SW_SHOW);
 		}
 	}
 
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.jetbrainsworkspacesplugin.start_str").stringValue);
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.jetbrainsworkspacesplugin.start_str", L"jb ");
+		workspaces.SetFlags(host, WorkspaceSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		workspaces.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()),allPluginActions);
+			sink.AddMatches(workspaces.Id(), input.substr(startStr.size()));
 		}
-		// 由插件系统管理
-		return {};
-	}
-	
-	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
-		if (!m_host) return 0;
-		if (currentModifiers == MOD_ALT && vk == VK_RETURN) {
-			auto workspaceAction = std::dynamic_pointer_cast<JbAction>(action);
-			if (!workspaceAction) return 0;
-			// Alt+Enter: 直接用对应的 IDE 打开项目
-			if (workspaceAction->iconFilePath.empty() || workspaceAction->projectPath.empty()) {
-				// m_host->ShowSimpleToast(L"无法打开项目", L"未找到 " + workspaceAction->ideName + L" 的安装路径");
-				return 0;
-			}
-			ShellExecuteW(nullptr, L"open", workspaceAction->iconFilePath.c_str(),
-						(L"\"" + workspaceAction->projectPath + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
-			m_host->PluginTaskDone();
-			return 1;
-		}
-		return 0;
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto workspaceAction = std::dynamic_pointer_cast<JbAction>(action);
+	bool OnHotKey(const uint64_t userData, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+		if (currentModifiers == MOD_ALT && vk == VK_RETURN) {
+			const auto workspaceAction = workspaces.Find(userData);
+			if (!workspaceAction) return false;
+			// Alt+Enter: 直接用对应的 IDE 打开项目
+			if (workspaceAction->iconPath.empty() || workspaceAction->projectPath.empty()) {
+				// GetHost().ShowToast(L"无法打开项目", L"未找到 " + workspaceAction->ideName + L" 的安装路径");
+				return false;
+			}
+			ShellExecuteW(nullptr, L"open", workspaceAction->iconPath.c_str(),
+						(L"\"" + workspaceAction->projectPath + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+			GetHost().TaskDone();
+			return true;
+		}
+		return false;
+	}
+
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto workspaceAction = workspaces.Find(userData);
+		if (!workspaceAction || workspaceAction->projectPath.empty()) return false;
+		text = workspaceAction->projectPath;
+		return true;
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto workspaceAction = workspaces.Find(userData);
 		if (!workspaceAction) return false;
 
-		// 执行时用指定软件打开项目位置
-		// The subTitle contains the project path
-
-		if (const std::wstring projectPath = workspaceAction->subTitle; !projectPath.empty()) {
-			m_host->ChangeEditTextText(utf8_to_wide(makeCompactJsonWithoutBraces(workspaceAction->subTitle))+L" "+workspaceAction->ideName);
+		// 执行时把项目路径作为参数填入输入框，由用户再选择用哪个软件打开
+		if (const std::wstring& projectPath = workspaceAction->projectPath; !projectPath.empty()) {
+			nlohmann::json j;
+			j["arg"] = wide_to_utf8(projectPath);
+			GetHost().SetEditText(utf8_to_wide(j.dump()) + L" " + workspaceAction->ideName);
 		}
 		return false;
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new JetbrainsWorkspacesPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 只读取 Roaming / LocalAppData 下的配置文件和 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(JetbrainsWorkspacesPlugin, L"JetBrains Workspaces", L"Search recent projects of JetBrains IDEs", L"1.0.0",
+						L"com.candytek.jetbrainsworkspacesplugin", nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

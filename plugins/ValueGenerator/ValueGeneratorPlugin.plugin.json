@@ -1,0 +1,33 @@
+{
+	"package_name": "com.candytek.valuegeneratorplugin",
+	"name": "Value Generator",
+	"description": "Hashes, UUIDs and other generated values",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.valuegeneratorplugin.start_str",
+				"title": "直接激活命令",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "value "
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Value Generator",
+				"description": "Hashes, UUIDs and other generated values"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "值生成器",
+				"description": "计算哈希并生成 UUID 等值"
+			}
+		}
+	}
+}

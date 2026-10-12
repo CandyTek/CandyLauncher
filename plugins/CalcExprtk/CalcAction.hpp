@@ -5,7 +5,10 @@
 #include <string>
 #include <ShlObj.h>
 
-class CalcAction final : public BaseAction {
+// 图标，只要是文件就可以
+inline const wchar_t* const kCalcIconPath = LR"(c:\Windows\System32\calc.exe)";
+
+class CalcAction final : public candy::ActionBase {
 public:
 	enum class Kind : int8_t {
 		// 无操作，例如错误提示
@@ -28,17 +31,16 @@ public:
 		SwitchAngleUnit,
 	};
 
-	CalcAction() {
-		pluginId = m_pluginId;
+	CalcAction() = default;
+
+	CalcAction(std::wstring title, std::wstring subTitle, const Kind kind, const int iconIndex) : kind(kind) {
+		this->title = std::move(title);
+		this->subtitle = std::move(subTitle);
+		this->iconIndex = iconIndex;
+		// 系统图标索引尚未解析时由主程序按路径延迟解析
+		this->iconPath = kCalcIconPath;
 	}
 
-	CalcAction(std::wstring title, std::wstring subTitle, const Kind kind, const int iconIndex)
-		: title(std::move(title)), subTitle(std::move(subTitle)), kind(kind), iconFilePathIndex(iconIndex) {
-		pluginId = m_pluginId;
-	}
-
-	std::wstring title;
-	std::wstring subTitle;
 	Kind kind = Kind::None;
 	std::wstring copyText;
 	std::wstring fillText;
@@ -47,30 +49,4 @@ public:
 	double value = std::numeric_limits<double>::quiet_NaN();
 	// ToggleHelp 对应的分组
 	int8_t section = 0;
-	int iconFilePathIndex = -1;
-
-	std::wstring& getTitle() override {
-		return title;
-	}
-
-	std::wstring& getSubTitle() override {
-		return subTitle;
-	}
-
-	// 图标，只要是文件就可以
-	std::wstring& getIconFilePath() override {
-		static std::wstring path = LR"(c:\Windows\System32\calc.exe)";
-		return path;
-	}
-
-	int getIconFilePathIndex() override {
-		return iconFilePathIndex;
-	}
-
-	HBITMAP getIconBitmap() override {
-		return nullptr;
-	}
-
-	~CalcAction() override {
-	}
 };

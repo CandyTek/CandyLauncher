@@ -1,0 +1,47 @@
+{
+	"package_name": "com.candytek.evernoteplugin",
+	"name": "Evernote Notes",
+	"description": "Index the Evernote database",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.evernoteplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "en "
+			},
+			{
+				"key": "com.candytek.evernoteplugin.db_path",
+				"title": "Evernote 数据库文件路径",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.evernoteplugin.db_path",
+				"title": "数据库文件路径位置需要自己查找，在用户的Evernote文件夹内，比如\n C:\\Users\\用户名\\AppData\\Roaming\\Evernote\\conduit-storage\\https%3A%2F%2Fwww.evernote.com\\UDB-User12345+RemoteGraph.sql",
+				"type": "text",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Evernote Notes",
+				"description": "Index the Evernote database"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "EverNote 笔记",
+				"description": "EverNote 数据库索引"
+			}
+		}
+	}
+}

@@ -1,5 +1,4 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
+﻿#include <memory>
 #include <fstream>
 
 #include "VisualStudioAction.hpp"
@@ -7,130 +6,78 @@
 #include "VisualStudioUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
-class VisualStudioPlugin : public IPlugin {
+class VisualStudioPlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	candy::ActionSet<VisualStudioAction> projects{0};
 	std::wstring startStr = L"vs ";
+	// 影响索引的设置项变化后需要重新索引（主程序保存设置后不会自动刷新插件）
+	// 设置了激活命令时，项目只通过激活命令显示，不参与全局搜索
+	uint32_t ProjectSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
+	}
 
 public:
-	VisualStudioPlugin() = default;
-	~VisualStudioPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"Visual Studio 项目";
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.visualstudioplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"索引 Visual Studio 历史打开的项目和解决方案";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			Loge(L"VisualStudio", L"RefreshAllActions: m_host is null");
-			return;
-		}
-
-		Logi(L"VisualStudio", L"RefreshAllActions start");
-		allPluginActions.clear();
+	void RefreshActions() override {
+		Logi(L"VisualStudio", L"RefreshActions start");
 
 		// 获取所有 Visual Studio 项目
-		allPluginActions = GetAllVisualStudioProjects();
+		auto items = GetAllVisualStudioProjects();
+		Logi(L"VisualStudio", L"Loaded ", items.size(), L" projects");
 
-		Logi(L"VisualStudio", L"Loaded ", allPluginActions.size(), L" projects");
+		projects.SetFlags(GetHost(), ProjectSetFlags());
+		projects.Publish(GetHost(), std::move(items));
 	}
 
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.visualstudioplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "vs "
-		},
-		{
-			"key": "com.candytek.visualstudioplugin.show_prerelease",
-			"type": "bool",
-			"title": "显示预发布版本的项目",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.visualstudioplugin.max_results",
-			"type": "long",
-			"title": "每个 VS 实例最大项目数",
-			"subPage": "plugin",
-			"defValue": 1000
-		}
-	]
-}
-
-   )";
-	}
-
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.visualstudioplugin.start_str").stringValue);
-		showPrerelease = m_host->GetSettingsMap().at("com.candytek.visualstudioplugin.show_prerelease").boolValue;
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.visualstudioplugin.start_str", L"vs ");
+		showPrerelease = host.GetBool(L"com.candytek.visualstudioplugin.show_prerelease", true);
+		projects.SetFlags(host, ProjectSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
+		// 设置保存后主程序会在工作线程上重新调用 RefreshActions，这里不用自己重建索引
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		projects.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()), allPluginActions);
+			sink.AddMatches(projects.Id(), input.substr(startStr.size()));
 		}
-		// 由插件系统管理
-		return {};
 	}
 
-	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
-		if (!m_host) return 0;
+	bool OnHotKey(const uint64_t userData, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
 		if (currentModifiers == MOD_ALT && vk == 'A') {
-			auto action1 = std::dynamic_pointer_cast<VisualStudioAction>(action);
-			if (!action1) return 0;
+			const auto action1 = projects.Find(userData);
+			if (!action1) return false;
+			// Alt+A: 把项目路径作为参数填入输入框，由用户再选择用哪个软件打开
 			json j;
 			j["arg"] = wide_to_utf8(action1->projectPath);
-			m_host->ChangeEditTextText(utf8_to_wide(j.dump()) + m_host->GetEditTextText());
-			return 1;
+			GetHost().SetEditText(utf8_to_wide(j.dump()) + GetHost().GetEditText());
+			return true;
 		}
-		return 0;
+		return false;
 	}
 
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto action1 = projects.Find(userData);
+		if (!action1 || action1->projectPath.empty()) return false;
+		text = action1->projectPath;
+		return true;
+	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<VisualStudioAction>(action);
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = projects.Find(userData);
 		if (!action1) return false;
 
 		try {
@@ -145,14 +92,7 @@ public:
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new VisualStudioPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 刷新只读取 ApplicationPrivateSettings.xml 并调用 Setup Configuration COM（进程内，ThreadingModel=Both，
+// QueryInstancesFromSetupApi 已兼容主程序工作线程的 MTA），可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(VisualStudioPlugin, L"Visual Studio Projects", L"Index recently opened Visual Studio projects and solutions", L"1.0.0",
+						L"com.candytek.visualstudioplugin", nullptr, CL_PLUGIN_REFRESH_ANY_THREAD)

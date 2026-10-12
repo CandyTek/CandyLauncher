@@ -15,7 +15,7 @@
 #include "util/BitmapUtil.hpp"
 
 // Forward declaration - the actual implementation is in OneNoteUtil.hpp
-std::vector<std::shared_ptr<BaseAction>> ParseOneNoteHierarchyXML(
+std::vector<std::shared_ptr<OneNoteAction>> ParseOneNoteHierarchyXML(
 	const std::wstring& xml,
 	const std::wstring& iconPath,
 	int iconIndex,

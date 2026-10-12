@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "plugins/Plugin.hpp"
+#include "util/LogUtil.hpp"
+#include "plugins/sdk/CandyPluginSdk.hpp"
 
-inline IPluginHost* g_pluginBrowserHost = nullptr;
-inline uint16_t g_pluginBrowserId = 65535;
+inline const candy::Host* g_pluginBrowserHost = nullptr;

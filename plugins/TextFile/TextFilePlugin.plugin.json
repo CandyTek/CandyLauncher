@@ -1,0 +1,61 @@
+{
+	"package_name": "com.candytek.textfileplugin",
+	"name": "Text Files",
+	"description": "Index text files in configured folders",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.textfileplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "text "
+			},
+			{
+				"key": "com.candytek.textfileplugin.show_after_more_input",
+				"title": "在输入更多字符前才进行搜索",
+				"type": "long",
+				"subPage": "plugin",
+				"defValue": 1
+			},
+			{
+				"key": "com.candytek.textfileplugin.folder_list",
+				"type": "stringArr",
+				"title": "文件夹路径<.txt|.md>",
+				"subPage": "plugin",
+				"defValue": "%USERPROFILE%\\Desktop<.txt|.md>"
+			},
+			{
+				"key": "com.candytek.textfileplugin.max_results",
+				"type": "long",
+				"title": "最大结果数",
+				"subPage": "plugin",
+				"defValue": 1000
+			},
+			{
+				"key": "com.candytek.textfileplugin.help",
+				"type": "text",
+				"title": "本插件索引指定文件夹下的文本文件，可用于下面这些用途：有道云笔记 (查看有道云笔记设置>笔记 本地文件)\\nCherryTree (笔记文件夹位置)\\n代码项目文件夹",
+				"subPage": "plugin",
+				"defValue": 1000
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Text Files",
+				"description": "Index text files in configured folders"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "文件夹文本",
+				"description": "索引文件夹内的指定文本文件"
+			}
+		}
+	}
+}

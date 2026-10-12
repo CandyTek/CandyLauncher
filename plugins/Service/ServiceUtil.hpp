@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "ServiceAction.hpp"
+#include "ServicePluginData.hpp"
 #include <Windows.h>
 #include <memory>
 #include <vector>
@@ -10,52 +11,46 @@
 
 #include "util/StringUtil.hpp"
 #include "util/LogUtil.hpp"
-#include "util/BitmapUtil.hpp"
+
+// 服务图标（使用 services.msc 所在的 mmc.exe），所有条目共享，由主程序延迟解析
+static const wchar_t* SERVICE_ICON_PATH = LR"(C:\Windows\System32\mmc.exe)";
 
 // 将服务状态转换为可读字符串
 static std::wstring GetServiceStatusString(DWORD status) {
 	switch (status) {
-	case SERVICE_STOPPED: return L"已停止";
-	case SERVICE_START_PENDING: return L"正在启动";
-	case SERVICE_STOP_PENDING: return L"正在停止";
-	case SERVICE_RUNNING: return L"运行中";
-	case SERVICE_CONTINUE_PENDING: return L"正在继续";
-	case SERVICE_PAUSE_PENDING: return L"正在暂停";
-	case SERVICE_PAUSED: return L"已暂停";
-	default: return L"未知";
+	case SERVICE_STOPPED: return ServiceTr(L"status.stopped", L"Stopped");
+	case SERVICE_START_PENDING: return ServiceTr(L"status.start_pending", L"Starting");
+	case SERVICE_STOP_PENDING: return ServiceTr(L"status.stop_pending", L"Stopping");
+	case SERVICE_RUNNING: return ServiceTr(L"status.running", L"Running");
+	case SERVICE_CONTINUE_PENDING: return ServiceTr(L"status.continue_pending", L"Continuing");
+	case SERVICE_PAUSE_PENDING: return ServiceTr(L"status.pause_pending", L"Pausing");
+	case SERVICE_PAUSED: return ServiceTr(L"status.paused", L"Paused");
+	default: return ServiceTr(L"status.unknown", L"Unknown");
 	}
 }
 
 // 将服务启动类型转换为可读字符串
 static std::wstring GetServiceStartModeString(DWORD startType, bool delayedAutoStart) {
-	if (startType == SERVICE_AUTO_START && delayedAutoStart) return L"自动（延迟启动）";
-
-	std::wstring result;
-
-	switch (startType) {
-	case SERVICE_BOOT_START: result = L"引导";
-		break;
-	case SERVICE_SYSTEM_START: result = L"系统";
-		break;
-	case SERVICE_AUTO_START: result = L"自动";
-		break;
-	case SERVICE_DEMAND_START: result = L"手动";
-		break;
-	case SERVICE_DISABLED: result = L"已禁用";
-		break;
-	default: result = L"未知";
-		break;
+	if (startType == SERVICE_AUTO_START && delayedAutoStart) {
+		return ServiceTr(L"start.auto_delayed", L"Automatic (Delayed Start)");
 	}
 
-	return result;
+	switch (startType) {
+	case SERVICE_BOOT_START: return ServiceTr(L"start.boot", L"Boot");
+	case SERVICE_SYSTEM_START: return ServiceTr(L"start.system", L"System");
+	case SERVICE_AUTO_START: return ServiceTr(L"start.auto", L"Automatic");
+	case SERVICE_DEMAND_START: return ServiceTr(L"start.manual", L"Manual");
+	case SERVICE_DISABLED: return ServiceTr(L"start.disabled", L"Disabled");
+	default: return ServiceTr(L"start.unknown", L"Unknown");
+	}
 }
 
 // 通过 SCM 查询服务启动类型（较慢，每个服务都需要多次 RPC 调用）
 static std::wstring QueryServiceStartModeFromScm(SC_HANDLE hSCManager, const std::wstring& serviceName) {
 	SC_HANDLE hService = OpenServiceW(hSCManager, serviceName.c_str(), SERVICE_QUERY_CONFIG);
-	if (!hService) return L"未知";
+	std::wstring startMode = ServiceTr(L"start.unknown", L"Unknown");
+	if (!hService) return startMode;
 
-	std::wstring startMode = L"未知";
 	DWORD bytesNeeded = 0;
 	QueryServiceConfigW(hService, nullptr, 0, &bytesNeeded);
 	if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
@@ -101,8 +96,8 @@ static bool ReadServiceStartModeFromRegistry(HKEY hServicesKey, const std::wstri
 }
 
 // 获取所有 Windows 服务
-static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
-	std::vector<std::shared_ptr<BaseAction>> result;
+static std::vector<std::shared_ptr<ServiceAction>> GetAllWindowsServices() {
+	std::vector<std::shared_ptr<ServiceAction>> result;
 
 	try {
 		// 打开服务管理器
@@ -149,8 +144,6 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 			hServicesKey = nullptr;
 		}
 
-		// 服务图标（使用 services.msc），所有条目共享，显示时再获取
-		const auto icon = std::make_shared<LazySysImageIndex>(L"C:\\Windows\\System32\\mmc.exe");
 		result.reserve(servicesReturned);
 
 		// 遍历所有服务
@@ -173,20 +166,20 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 
 			// 设置标题和副标题
 			action->title = action->displayName;
-			action->subTitle = L"状态: " + action->status +
-				L" - 启动: " + action->startMode +
-				L" - 名称: " + action->serviceName;
+			action->UpdateSubtitle();
 
-			// 设置图标
-			action->icon = icon;
+			// 设置图标和稳定标识
+			action->iconPath = SERVICE_ICON_PATH;
+			action->stableKey = action->serviceName;
 
-			// 设置匹配文本
+			// 在插件内处理匹配文本，主程序原样使用
+			action->matchTextVerbatim = true;
 			try {
 				if (isMatchTextServiceName) {
-					action->matchText = m_host->GetTheProcessedMatchingText(action->displayName) +
+					action->matchText = m_host->ProcessMatchText(action->displayName) +
 						action->serviceName;
 				} else {
-					action->matchText = m_host->GetTheProcessedMatchingText(action->displayName);
+					action->matchText = m_host->ProcessMatchText(action->displayName);
 				}
 			} catch (...) {
 				action->matchText = action->displayName;
@@ -198,11 +191,10 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllWindowsServices() {
 		if (hServicesKey) RegCloseKey(hServicesKey);
 		CloseServiceHandle(hSCManager);
 
-		// 按显示名称排序（result 中全部是 ServiceAction）
+		// 按显示名称排序
 		std::sort(result.begin(), result.end(),
-				[](const std::shared_ptr<BaseAction>& a, const std::shared_ptr<BaseAction>& b) {
-					return static_cast<ServiceAction*>(a.get())->displayName <
-						static_cast<ServiceAction*>(b.get())->displayName;
+				[](const std::shared_ptr<ServiceAction>& a, const std::shared_ptr<ServiceAction>& b) {
+					return a->displayName < b->displayName;
 				});
 	} catch (const std::exception& e) {
 		Loge(L"Service", L"Exception in GetAllWindowsServices: ", e.what());
@@ -295,9 +287,7 @@ static bool UpdateSingleServiceStatus(std::shared_ptr<ServiceAction> action) {
 			action->isRunning = (status == SERVICE_RUNNING);
 
 			// 更新副标题
-			action->subTitle = L"状态: " + action->status +
-				L" - 启动: " + action->startMode +
-				L" - 名称: " + action->serviceName;
+			action->UpdateSubtitle();
 		}
 
 		CloseServiceHandle(hService);

@@ -12,6 +12,7 @@
 #include "../../util/MainTools.hpp"
 #include "../../view/ToolTipHelper.hpp"
 #include "util/ShortcutUtil.hpp"
+#include "FolderPluginData.hpp"
 
 
 // 快捷方式修复窗口相关定义
@@ -218,7 +219,15 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 					}
 					
 					// 使用Everything 搜索可能的目标文件
-					g_candidates =g_host->SearchPossibleTargets(fileName,50);
+					g_candidates.clear();
+					if (m_host) {
+						for (const auto& path : m_host->SearchFiles(fileName, 50)) {
+							FileInfo candidate;
+							candidate.file_path = path;
+							candidate.label = candidate.file_path.stem().wstring();
+							g_candidates.push_back(std::move(candidate));
+						}
+					}
 
 					// 填充右侧列表
 					for (size_t i = 0; i < g_candidates.size(); ++i) {

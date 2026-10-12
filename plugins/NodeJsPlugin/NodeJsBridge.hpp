@@ -6,6 +6,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <future>
+#include <atomic>
+#include <functional>
 #include <unordered_map>
 #include "../../util/json.hpp"
 #include "../../util/StringUtil.hpp"
@@ -18,12 +20,21 @@ private:
     HANDLE m_hStdOutRead = nullptr;
     std::thread m_readerThread;
     std::mutex m_mutex;
+    std::mutex m_writeMutex;
     std::unordered_map<int, std::promise<nlohmann::json>> m_pendingRequests;
     int m_nextRequestId = 1;
-    bool m_running = false;
+    std::atomic<bool> m_running{false};
 
     typedef std::function<void(const std::string& method, const nlohmann::json& params)> NotificationHandler;
     NotificationHandler m_notificationHandler;
+
+    void WriteLine(std::string line) {
+        line += '\n';
+        std::lock_guard<std::mutex> lock(m_writeMutex);
+        if (!m_hStdInWrite) return;
+        DWORD bytesWritten;
+        WriteFile(m_hStdInWrite, line.c_str(), (DWORD)line.size(), &bytesWritten, nullptr);
+    }
 
     void ReaderThread() {
         char buffer[8192];
@@ -151,11 +162,21 @@ public:
         request["method"] = method;
         request["params"] = params;
 
-        std::string line = request.dump() + "\n";
-        DWORD bytesWritten;
-        WriteFile(m_hStdInWrite, line.c_str(), (DWORD)line.size(), &bytesWritten, nullptr);
-
+        WriteLine(request.dump());
         return future;
+    }
+
+    // 不需要回复的通知（例如取消查询）
+    void Notify(const std::string& method, const nlohmann::json& params) {
+        nlohmann::json request;
+        request["jsonrpc"] = "2.0";
+        request["method"] = method;
+        request["params"] = params;
+        WriteLine(request.dump());
+    }
+
+    bool IsRunning() const {
+        return m_running;
     }
 
     void Stop() {
@@ -165,9 +186,12 @@ public:
             CloseHandle(m_hProcess);
             m_hProcess = nullptr;
         }
-        if (m_hStdInWrite) {
-            CloseHandle(m_hStdInWrite);
-            m_hStdInWrite = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_writeMutex);
+            if (m_hStdInWrite) {
+                CloseHandle(m_hStdInWrite);
+                m_hStdInWrite = nullptr;
+            }
         }
         if (m_hStdOutRead) {
             // Close the read handle to unblock ReadFile if needed, 

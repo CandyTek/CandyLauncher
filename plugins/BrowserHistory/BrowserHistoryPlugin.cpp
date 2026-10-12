@@ -1,130 +1,88 @@
-﻿#include "../Plugin.hpp"
+﻿#include <windows.h>
 #include <memory>
-#include <fstream>
+#include <thread>
 
 #include "BrowserHistoryAction.hpp"
 #include "BrowserHistoryPluginData.hpp"
 #include "BrowserHistoryUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
-class BrowserHistoryPlugin : public IPlugin {
+class BrowserHistoryPlugin : public candy::Plugin {
 private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
+	candy::ActionSet<BrowserHistoryAction> history{0};
 	std::wstring startStr = L"h ";
+	// 设置项变化后在这个线程上重建索引
+	std::thread refreshThread;
+
+	// 设置了激活命令时，历史记录只通过激活命令显示，不参与全局搜索
+	uint32_t HistorySetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
+	}
+
+	// 读取全部浏览器历史并发布，可在工作线程调用
+	void RefreshHistory() {
+		auto items = GetAllBrowserHistory();
+		Logi(L"BrowserHistory", L"Loaded ", items.size(), L" history items");
+		history.Publish(GetHost(), std::move(items));
+	}
+
+	void JoinRefreshThread() {
+		if (refreshThread.joinable()) refreshThread.join();
+	}
 
 public:
-	BrowserHistoryPlugin() = default;
-	~BrowserHistoryPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"浏览器历史";
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
 	}
 
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.browserhistoryplugin";
+	void RefreshActions() override {
+		Logi(L"BrowserHistory", L"RefreshActions start");
+		history.SetFlags(GetHost(), HistorySetFlags());
+		RefreshHistory();
 	}
 
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.browserhistoryplugin.start_str", L"h ");
+		isMatchTextUrl = host.GetBool(L"com.candytek.browserhistoryplugin.matchtext_url", true);
+		history.SetFlags(host, HistorySetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
 	}
 
-	std::wstring GetPluginDescription() const override {
-		return L"索引浏览器历史记录";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) {
-			Loge(L"BrowserHistory", L"RefreshAllActions: m_host is null");
+	// 影响索引内容的设置变化后在后台重建索引，再通知主程序刷新列表
+	void OnSettingChanged(const std::wstring& key) override {
+		if (key != L"com.candytek.browserhistoryplugin.matchtext_url" &&
+			key != L"com.candytek.browserhistoryplugin.browser_list" &&
+			key != L"com.candytek.browserhistoryplugin.max_results") {
 			return;
 		}
-
-		Logi(L"BrowserHistory", L"RefreshAllActions start");
-		allPluginActions.clear();
-
-		// 获取所有浏览器历史记录
-		allPluginActions = GetAllBrowserHistory();
-
-		Logi(L"BrowserHistory", L"Loaded ", allPluginActions.size(), L" history items");
-	}
-
-	std::wstring DefaultSettingJson() override {
-		return LR"(
-{
-	"version": 1,
-	"prefList": [
-		{
-			"key": "com.candytek.browserhistoryplugin.start_str",
-			"title": "直接激活命令（留空表示不需要前缀）",
-			"type": "string",
-			"subPage": "plugin",
-			"defValue": "h "
-		},
-		{
-			"key": "com.candytek.browserhistoryplugin.matchtext_url",
-			"type": "bool",
-			"title": "搜索匹配历史记录URL",
-			"subPage": "plugin",
-			"defValue": true
-		},
-		{
-			"key": "com.candytek.browserhistoryplugin.browser_list",
-			"type": "stringArr",
-			"title": "浏览器历史文件路径",
-			"subPage": "plugin",
-			"defValue": "edge"
-		},
-		{
-			"key": "com.candytek.browserhistoryplugin.max_results",
-			"type": "long",
-			"title": "每个浏览器最大历史记录数",
-			"subPage": "plugin",
-			"defValue": 2000
-		}
-	]
-}
-
-   )";
-	}
-
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.start_str").stringValue);
-		isMatchTextUrl = m_host->GetSettingsMap().at("com.candytek.browserhistoryplugin.matchtext_url").boolValue;
+		isMatchTextUrl = GetHost().GetBool(L"com.candytek.browserhistoryplugin.matchtext_url", true);
+		JoinRefreshThread();
+		refreshThread = std::thread([this] {
+			RefreshHistory();
+			GetHost().NotifyActionsChanged();
+		});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		JoinRefreshThread();
+		history.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()), allPluginActions);
+			sink.AddMatches(history.Id(), input.substr(startStr.size()));
 		}
-		// 由插件系统管理
-		return {};
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<BrowserHistoryAction>(action);
-		if (!action1) return false;
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = history.Find(userData);
+		if (!action1 || action1->url.empty()) return false;
 
 		try {
 			// 打开浏览器访问该 URL
@@ -135,16 +93,16 @@ public:
 
 		return true;
 	}
+
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto action1 = history.Find(userData);
+		if (!action1 || action1->url.empty()) return false;
+		text = action1->url;
+		return true;
+	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new BrowserHistoryPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 读取 SQLite 历史库只用到 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(BrowserHistoryPlugin, L"Browser History", L"Index browser history", L"1.1.0",
+						L"com.candytek.browserhistoryplugin", nullptr,
+						CL_PLUGIN_REFRESH_ANY_THREAD)

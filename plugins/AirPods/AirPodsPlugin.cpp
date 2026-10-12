@@ -1,4 +1,4 @@
-﻿#include "../Plugin.hpp"
+﻿#include "AirPodsPluginData.hpp"
 #include "../../util/BitmapUtil.hpp"
 
 #include <algorithm>
@@ -9,7 +9,6 @@
 
 #include "AirPodsAction.hpp"
 #include "AirPodsBatteryService.hpp"
-#include "AirPodsPluginData.hpp"
 #include "util/FileUtil.hpp"
 
 inline int icon_normal = 0;
@@ -47,52 +46,31 @@ namespace {
 	}
 }
 
-class AirPodsPlugin final : public IPlugin {
+class AirPodsPlugin final : public candy::Plugin {
 public:
-	std::wstring GetPluginName() const override {
-		return L"AirPods Battery";
-	}
-
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.airpodsbatteryplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.1.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"Type airpods to show the battery level of connected Apple headphones";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		g_airPodsHost = host;
+	bool Initialize() override {
+		m_host = &GetHost();
+		s_instance = this;
 
 		const std::wstring path = GetExecutableFolder() + LR"(\plugins\icon\)";
-		
+
 		icon_normal = GetSysImageIndex(path + LR"(ic_airpods_normal.ico)");
 		icon_charge = GetSysImageIndex(path + LR"(ic_airpods_charge.ico)");
 		icon_charge_case = GetSysImageIndex(path + LR"(ic_airpods_charge_case.ico)");
 		icon_disconnect = GetSysImageIndex(path + LR"(ic_airpods_disconnected.ico)");
-		return g_airPodsHost != nullptr;
+		return true;
 	}
 
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		g_airPodsPluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
+	void RefreshActions() override {
 		// Bluetooth work is activated lazily when the keyword is used.
 	}
 
 	void Shutdown() override {
 		mainWindowVisible = false;
 		Deactivate();
-		if (notifyHwnd) {
-			DestroyWindow(notifyHwnd);
-			notifyHwnd = nullptr;
-		}
-		g_airPodsHost = nullptr;
+		results.ClearLocal();
+		s_instance = nullptr;
+		m_host = nullptr;
 	}
 
 	void OnMainWindowShow(const bool isShow) override {
@@ -100,58 +78,64 @@ public:
 		if (!isShow) Deactivate();
 	}
 
-	// Called on the UI thread for every input change, so it also tells us when the
-	// keyword is gone and Bluetooth should be released.
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(
-		const std::wstring& input) override {
+	// Called on the UI thread for every input change (no trigger keywords on purpose), so it
+	// also tells us when the keyword is gone and Bluetooth should be released.
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (TrimAndLower(input) != L"airpods") {
 			Deactivate();
-			return {};
+			return;
 		}
 		Activate();
-		return BuildResults();
+		results.Publish(GetHost(), BuildResults());
+		sink.AddAll(results.Id());
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring&) override {
-		if (!g_airPodsHost) return false;
-		const auto airPodsAction = std::dynamic_pointer_cast<AirPodsAction>(action);
+	bool OnActionExecute(const uint64_t userData, const std::wstring&) override {
+		const auto airPodsAction = results.Find(userData);
 		if (!airPodsAction) return false;
-		g_airPodsHost->ShowMessage(L"AirPods Battery", airPodsAction->details);
+		GetHost().ShowMessage(L"AirPods Battery", airPodsAction->details);
+		return true;
+	}
+
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto airPodsAction = results.Find(userData);
+		if (!airPodsAction || airPodsAction->details.empty()) return false;
+		text = airPodsAction->details;
 		return true;
 	}
 
 private:
-	static constexpr UINT WM_AIRPODS_STATE_CHANGED = WM_APP + 0x1A9;
-	static constexpr UINT_PTR StaleRefreshTimerId = 1;
 	static constexpr UINT StaleRefreshIntervalMs = 1000;
 
-	std::vector<std::shared_ptr<BaseAction>> BuildResults() {
+	std::vector<std::shared_ptr<AirPodsAction>> BuildResults() {
 		const auto state = service.GetState();
 		auto action = std::make_shared<AirPodsAction>();
 		action->matchText = L"airpods";
-		action->iconFilePath = BluetoothIconPath();
+		action->matchTextVerbatim = true;
+		action->stableKey = L"airpods";
+		action->iconPath = BluetoothIconPath();
 
 		if (!state.connected && !state.ready && state.error.empty()) {
 			action->title = L"Looking for Apple headphones…";
-			action->subTitle = L"Checking connected Bluetooth devices";
+			action->subtitle = L"Checking connected Bluetooth devices";
 			action->iconIndex = icon_disconnect;
 		} else if (!state.connected) {
 			action->title = L"No connected Apple headphones";
-			action->subTitle = state.error.empty()
+			action->subtitle = state.error.empty()
 				? L"Connect your AirPods or supported Beats headphones via Bluetooth"
 				: L"Bluetooth error: " + state.error;
 			action->iconIndex = icon_disconnect;
 		} else if (!state.left && !state.right && !state.caseBox) {
 			action->title = DisplayName(state);
-			action->subTitle = L"Connected · waiting for a battery advertisement";
+			action->subtitle = L"Connected · waiting for a battery advertisement";
 			action->iconIndex = icon_normal;
 		} else {
 			action->title = DisplayName(state) + L" · L " +
 				BatteryText(state.left, state.leftCharging) + L" · R " +
 				BatteryText(state.right, state.rightCharging);
-			action->subTitle = L"Connected";
+			action->subtitle = L"Connected";
 			if (!state.deviceName.empty() && state.deviceName != DisplayName(state)) {
-				action->subTitle += L" · " + state.deviceName;
+				action->subtitle += L" · " + state.deviceName;
 			}
 			if (state.leftCharging || state.rightCharging) {
 				action->iconIndex = icon_charge;
@@ -160,101 +144,72 @@ private:
 			}
 		}
 
-		action->details = action->title + L"\n" + action->subTitle;
-		std::vector<std::shared_ptr<BaseAction>> results{action};
+		action->details = action->title + L"\n" + action->subtitle;
+		std::vector<std::shared_ptr<AirPodsAction>> items{action};
 
 		if (state.connected && (state.caseBox || state.caseCharging)) {
 			auto caseAction = std::make_shared<AirPodsAction>();
 			caseAction->matchText = L"airpods case";
-			caseAction->iconFilePath = action->iconFilePath;
+			caseAction->matchTextVerbatim = true;
+			caseAction->stableKey = L"airpods case";
+			caseAction->iconPath = action->iconPath;
 			caseAction->title = L"Charging Case · " +
 				BatteryText(state.caseBox, state.caseCharging);
-			caseAction->subTitle = DisplayName(state);
-			caseAction->details = caseAction->title + L"\n" + caseAction->subTitle;
+			caseAction->subtitle = DisplayName(state);
+			caseAction->details = caseAction->title + L"\n" + caseAction->subtitle;
 			caseAction->iconIndex = icon_charge_case;
-			results.push_back(caseAction);
+			items.push_back(caseAction);
 		}
 
-		return results;
+		return items;
 	}
 
-	void PushResultsIfActive() {
-		auto* host = g_airPodsHost;
-		if (!host || !active || !mainWindowVisible) return;
-		if (TrimAndLower(host->GetEditTextText()) != L"airpods") return;
-
-		auto results = BuildResults();
-		host->ShowResultsDerectly(results);
+	// Runs on Bluetooth threads and from the stale timer: Publish is any-thread, and the host
+	// rebuilds the visible list from the current input (which goes through OnInterceptInput again,
+	// so results only show while the keyword is still typed). Bursts are coalesced by the host.
+	void PublishIfActive() {
+		if (!m_host || !active || !mainWindowVisible) return;
+		results.Publish(GetHost(), BuildResults());
+		GetHost().NotifyActionsChanged();
 	}
 
-	static LRESULT CALLBACK NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-		auto* self = reinterpret_cast<AirPodsPlugin*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-		if (self && (msg == WM_AIRPODS_STATE_CHANGED ||
-			(msg == WM_TIMER && wParam == StaleRefreshTimerId))) {
-			self->updatePending = false;
-			self->PushResultsIfActive();
-			return 0;
-		}
-		return DefWindowProcW(hwnd, msg, wParam, lParam);
-	}
-
-	// Message-only window owned by the UI thread: Bluetooth callbacks post to it so the
-	// result list is only ever touched on the UI thread.
-	bool EnsureNotifyWindow() {
-		if (notifyHwnd) return true;
-		const HINSTANCE instance = GetModuleHandleW(nullptr);
-		static constexpr wchar_t className[] = L"CandyLauncherAirPodsNotify";
-		WNDCLASSEXW wc{sizeof(wc)};
-		wc.lpfnWndProc = NotifyWndProc;
-		wc.hInstance = instance;
-		wc.lpszClassName = className;
-		RegisterClassExW(&wc);
-		notifyHwnd = CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0,
-									HWND_MESSAGE, nullptr, instance, nullptr);
-		if (!notifyHwnd) return false;
-		SetWindowLongPtrW(notifyHwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-		return true;
+	// Window-less thread timer on the UI thread, dispatched by the host message loop.
+	static void CALLBACK StaleRefreshTimerProc(HWND, UINT, const UINT_PTR timerId, DWORD) {
+		if (s_instance && s_instance->staleTimerId == timerId) s_instance->PublishIfActive();
 	}
 
 	void Activate() {
 		if (active || !mainWindowVisible) return;
-		if (!EnsureNotifyWindow()) return;
 
-		const HWND hwnd = notifyHwnd;
-		service.SetOnChanged([this, hwnd] {
-			// Coalesce bursts of Bluetooth events into a single repaint.
-			if (!updatePending.exchange(true)) PostMessageW(hwnd, WM_AIRPODS_STATE_CHANGED, 0, 0);
+		service.SetOnChanged([this] {
+			PublishIfActive();
 		});
 		service.Start();
 		// Only needed so battery values disappear once they go stale.
-		SetTimer(notifyHwnd, StaleRefreshTimerId, StaleRefreshIntervalMs, nullptr);
+		staleTimerId = SetTimer(nullptr, 0, StaleRefreshIntervalMs, StaleRefreshTimerProc);
 		active = true;
 	}
 
 	void Deactivate() {
 		if (!active) return;
 		active = false;
-		if (notifyHwnd) KillTimer(notifyHwnd, StaleRefreshTimerId);
+		if (staleTimerId) {
+			KillTimer(nullptr, staleTimerId);
+			staleTimerId = 0;
+		}
 		service.Stop();
-		updatePending = false;
 	}
 
+	// 0 号集合不参与全局搜索，只在输入 airpods 时作为结果列表显示
+	candy::ActionSet<AirPodsAction> results{0, 0u};
 	AirPodsBatteryService service;
-	HWND notifyHwnd = nullptr;
-	std::atomic<bool> mainWindowVisible{false};
-	std::atomic<bool> updatePending{false};
 	// Only touched on the UI thread.
-	bool active = false;
+	UINT_PTR staleTimerId = 0;
+	std::atomic<bool> mainWindowVisible{false};
+	std::atomic<bool> active{false};
+	inline static AirPodsPlugin* s_instance = nullptr;
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new AirPodsPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(AirPodsPlugin, L"AirPods Battery",
+					L"Type airpods to show the battery level of connected Apple headphones", L"1.1.0",
+					L"com.candytek.airpodsbatteryplugin", nullptr)

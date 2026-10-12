@@ -69,6 +69,9 @@ struct MockHost {
 	std::vector<std::pair<uint64_t, std::vector<MockAction>>> postedResults;
 	uint64_t currentQueryId = 1;
 	int notifyCount = 0;
+	// 2.3：模拟主程序已解析好的字符串表（key -> 当前语言文本）
+	std::unordered_map<std::wstring, std::wstring> strings;
+	std::wstring language = L"en-US";
 };
 
 static MockHost g_mock;
@@ -204,10 +207,23 @@ static CL_HostApi MakeMockHostApi(const uint32_t hostMinor) {
 	};
 	api.notify_actions_changed = [](CL_PluginHandle) { ++g_mock.notifyCount; };
 	api.get_current_query_id = [](CL_PluginHandle) -> uint64_t { return g_mock.currentQueryId; };
+	api.sink_take_over = [](CL_ResultSinkHandle, CL_PluginHandle) { TestLog(L"[TakeOver]"); };
+	api.request_refresh = [](CL_PluginHandle) { ++g_mock.notifyCount; };
+	api.get_ui_language = [](CL_PluginHandle, CL_StrSink sink, void* ctx) {
+		sink(ctx, g_mock.language.c_str(), g_mock.language.size());
+	};
+	api.get_string = [](CL_PluginHandle, const wchar_t* key, CL_StrSink sink, void* ctx) -> int32_t {
+		const auto it = g_mock.strings.find(W(key));
+		if (it == g_mock.strings.end()) return 0;
+		sink(ctx, it->second.c_str(), it->second.size());
+		return 1;
+	};
 	if (hostMinor == 0) {
 		api.size = static_cast<uint32_t>(offsetof(CL_HostApi, set_clipboard_text));
 	} else if (hostMinor == 1) {
 		api.size = static_cast<uint32_t>(offsetof(CL_HostApi, set_trigger_keywords));
+	} else if (hostMinor == 2) {
+		api.size = static_cast<uint32_t>(offsetof(CL_HostApi, get_ui_language));
 	}
 	return api;
 }
@@ -360,9 +376,32 @@ int main(int argc, char** argv) {
 	TestLog(L"Description: " + W(plugin->description));
 	TestLog(L"=========================");
 
-	// 测试设置json文本
-	if (plugin->default_setting_json) {
-		std::vector<SettingItem> settings = ParseConfig(wide_to_utf8(plugin->default_setting_json), 0);
+	// 默认设置：优先 DLL 表里的 default_setting_json，否则读 DLL 旁边的 <名>.plugin.json 清单
+	// （内置编译的示例插件用 PLUGIN_TEST_EXAMPLE_MANIFEST 指定清单路径）
+	std::string settingJsonText = plugin->default_setting_json ? wide_to_utf8(plugin->default_setting_json) : "";
+	if (settingJsonText.empty()) {
+		std::filesystem::path manifestPath;
+		if (!dllPath.empty()) manifestPath = std::filesystem::path(dllPath).replace_extension().wstring() + L".plugin.json";
+#ifdef PLUGIN_TEST_EXAMPLE_MANIFEST
+		else manifestPath = PLUGIN_TEST_EXAMPLE_MANIFEST;
+#endif
+		std::ifstream manifestFile(manifestPath, std::ios::binary);
+		if (manifestFile) {
+			try {
+				const nlohmann::json manifest = nlohmann::json::parse(std::string(std::istreambuf_iterator<char>(manifestFile), {}),
+																	nullptr, true, true);
+				if (manifest.contains("default_setting_json")) {
+					const auto& settings = manifest.at("default_setting_json");
+					settingJsonText = settings.is_string() ? settings.get<std::string>() : settings.dump();
+				}
+				TestLog(L"Manifest: " + manifestPath.wstring());
+			} catch (const std::exception& e) {
+				Loge(L"PluginTest", L"Bad manifest ", manifestPath.wstring(), L": ", e.what());
+			}
+		}
+	}
+	if (!settingJsonText.empty()) {
+		std::vector<SettingItem> settings = ParseConfig(settingJsonText, 0);
 		std::function<void(std::vector<SettingItem>&)> loadSettingsToMap = [&](std::vector<SettingItem>& items) {
 			for (auto& item : items) {
 				if (EndsWith(item.key, ".start_str")) {
@@ -411,8 +450,9 @@ int main(int argc, char** argv) {
 	if (W(plugin->package_name) == L"com.example.plugin") {
 		ok &= Check(total == 3, L"example static actions");
 
+		// 没有字符串表时使用代码里的默认（英文）文本
 		plugin->on_user_input(self, L"test");
-		const MockAction* testAction = FindMockAction(1, L"测试功能");
+		const MockAction* testAction = FindMockAction(1, L"Test feature");
 		ok &= Check(testAction != nullptr, L"dynamic action published");
 		if (testAction) {
 			const uint64_t staleUserData = testAction->userData;
@@ -421,7 +461,7 @@ int main(int argc, char** argv) {
 			ok &= Check(g_mock.messageCount == before + 1, L"dynamic action shows message");
 
 			plugin->on_user_input(self, L"calc");
-			ok &= Check(FindMockAction(1, L"计算器") != nullptr, L"dynamic set replaced");
+			ok &= Check(FindMockAction(1, L"Calculator") != nullptr, L"dynamic set replaced");
 			ok &= Check(plugin->on_action_execute(self, staleUserData, L"") == 0, L"stale user_data rejected");
 		}
 
@@ -431,8 +471,27 @@ int main(int argc, char** argv) {
 			ok &= Check(plugin->on_action_execute(self, hello->userData, L"") != 0, L"execute static action");
 			ok &= Check(hello->stableKey == L"ExamplePlugin_hello", L"stable_key published");
 		}
-		const MockAction* timeEn = FindMockAction(0, L"Show Time");
-		ok &= Check(timeEn && timeEn->iconKey == L"clock", L"icon_key published");
+		const MockAction* date = FindMockAction(0, L"Show Date");
+		ok &= Check(date && date->iconKey == L"clock", L"icon_key published");
+
+		// 2.3 本地化：主程序提供字符串表后 Tr 返回翻译，缺失的 key 仍回退到代码里的默认文本；
+		// 旧主程序（表里没有 get_string）上 Tr 始终返回默认文本
+		const bool host23 = hostMinor >= 3;
+		g_mock.strings[L"action.test.title"] = L"测试功能";
+		g_mock.strings[L"action.hello.title"] = L"你好世界";
+		g_mock.language = L"zh-CN";
+		if (CL_HAS_FIELD(plugin, CL_PluginApi, on_language_changed) && plugin->on_language_changed) {
+			plugin->on_language_changed(self, L"zh-CN");
+		}
+		plugin->refresh_actions(self);
+		plugin->on_user_input(self, L"test");
+		ok &= Check((FindMockAction(1, L"测试功能") != nullptr) == host23, L"translated title only on a 2.3 host");
+		ok &= Check((FindMockAction(0, L"你好世界") != nullptr) == host23, L"translated static title only on a 2.3 host");
+		ok &= Check(FindMockAction(0, L"Show Time") != nullptr, L"untranslated key falls back to the default text");
+		g_mock.strings.clear();
+		g_mock.language = L"en-US";
+		plugin->refresh_actions(self);
+		plugin->on_user_input(self, L"calc");
 
 		// 2.2 机制；在 2.0 / 2.1 主程序上 SDK 必须静默退化
 		const bool host22 = hostMinor >= 2;

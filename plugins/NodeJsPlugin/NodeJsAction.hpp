@@ -1,59 +1,11 @@
 ﻿#pragma once
-#include "../BaseAction.hpp"
-#include "../../util/json.hpp"
-#include "util/BitmapUtil.hpp"
 #include "NodeJsPluginData.hpp"
+#include "../../util/json.hpp"
 
-class NodeJsAction : public BaseAction {
+// JS 插件返回的一条结果。图标在发布前由 NodeJsPlugin 填好：
+// 图片文件用 iconBitmap + iconKey（同一路径共享一份位图），其它文件交给主程序按 iconPath 延迟解析
+class NodeJsAction final : public candy::ActionBase {
 public:
-    std::wstring title;
-    std::wstring subTitle;
-    std::wstring iconFilePath;
-    int iconFilePathIndex = -1;
-    HBITMAP iconBitmap = nullptr;
-
     std::wstring jsPluginId;
     nlohmann::json actionData;
-
-    NodeJsAction() = default;
-
-    ~NodeJsAction() override {
-        if (iconBitmap) {
-            DeleteObject(iconBitmap);
-        }
-    }
-
-    std::wstring& getTitle() override {
-        return title;
-    }
-
-    std::wstring& getSubTitle() override {
-        return subTitle;
-    }
-
-    std::wstring& getIconFilePath() override {
-        return iconFilePath;
-    }
-
-    int getIconFilePathIndex() override {
-        return iconFilePathIndex;
-    }
-
-    HBITMAP getIconBitmap() override {
-        if (iconFilePathIndex != -1) {
-            return nullptr;
-        }
-        if (iconBitmap == nullptr && !iconFilePath.empty()) {
-            if (EndsWithAnyIgnoreCase(iconFilePath, {L".ico",L".png",L".jpeg",L".jpg",L".bmp",L".tiff",L".gif"})) {
-                iconBitmap = LoadPngAsHBITMAP(iconFilePath.c_str(), 48, 48);
-            } else if (EndsWithIgnoreCase(iconFilePath, L".svg")) {
-                iconBitmap = m_host->LoadSvgAsHBITMAP(iconFilePath.c_str(), 48, 48);
-            } else {
-                iconFilePathIndex = GetSysImageIndex(iconFilePath);
-                return nullptr;
-            }
-        }
-
-        return iconBitmap;
-    }
 };

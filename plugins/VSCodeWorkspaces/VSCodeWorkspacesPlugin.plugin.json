@@ -1,0 +1,40 @@
+{
+	"package_name": "com.candytek.vscodeworkspacesplugin",
+	"name": "Visual Studio Code Workspaces",
+	"description": "Search recent Visual Studio Code projects",
+	"version": "1.0.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.vscodeworkspacesplugin.start_str",
+				"title": "直接激活命令（留空表示不需要前缀）",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": "vsc "
+			},
+			{
+				"key": "com.candytek.vscodeworkspacesplugin.vscode_path",
+				"title": "VSCode 软件路径",
+				"type": "string",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Visual Studio Code Workspaces",
+				"description": "Search recent Visual Studio Code projects"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "Visual Studio Code 工作区",
+				"description": "Visual Studio Code 历史项目搜索插件"
+			}
+		}
+	}
+}

@@ -10,12 +10,25 @@ const rl = readline.createInterface({
 });
 
 const plugins = {};
+// CLI 模式查询正在运行的子进程，key 为 C++ 侧的 queryId；收到 cancel 时直接杀掉
+const activeQueries = {};
 
 rl.on('line', async (line) => {
     if (!line.trim()) return;
     try {
         const request = JSON.parse(line);
         const { method, params, id } = request;
+
+        if (method === 'cancel') {
+            // 通知，没有 id：输入已变化，停止该查询（模块模式无法中断，C++ 侧会丢弃过期结果）
+            const key = String(params && params.queryId);
+            const active = activeQueries[key];
+            if (active) {
+                delete activeQueries[key];
+                try { active.child.kill(); } catch (e) {}
+            }
+            return;
+        }
 
         if (method === 'init') {
             const { pluginDir, pluginId } = params;
@@ -47,7 +60,7 @@ rl.on('line', async (line) => {
 
             sendResponse(id, { success: true });
         } else if (method === 'query') {
-            const { query, pluginId } = params;
+            const { query, pluginId, queryId } = params;
             const plugin = plugins[pluginId];
             if (!plugin) {
                 sendResponse(id, { success: false, error: 'Plugin not found' });
@@ -86,6 +99,8 @@ rl.on('line', async (line) => {
                 cwd: plugin.dir,
                 env: { ...process.env, FLOW_LAUNCHER_API_VER: '1.0.0' }
             });
+            const queryKey = String(queryId);
+            if (queryId !== undefined) activeQueries[queryKey] = { child };
 
             let stdout = '';
             let stderr = '';
@@ -121,6 +136,12 @@ rl.on('line', async (line) => {
             });
             child.stderr.on('data', (data) => { stderr += data; });
             child.on('close', (code) => {
+                const wasCancelled = queryId !== undefined && !activeQueries[queryKey];
+                delete activeQueries[queryKey];
+                if (wasCancelled) {
+                    sendResponse(id, { success: false, error: 'cancelled' });
+                    return;
+                }
                 if (code !== 0 && !stdout.trim()) {
                     sendResponse(id, { success: false, error: `Process exited with code ${code}. Stderr: ${stderr}` });
                     return;

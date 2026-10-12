@@ -2,6 +2,7 @@
 
 #include "RegistryAction.hpp"
 #include "RegistryEntry.hpp"
+#include "RegistryPluginData.hpp"
 #include <windows.h>
 #include <vector>
 #include <string>

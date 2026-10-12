@@ -1,0 +1,33 @@
+{
+	"package_name": "com.candytek.runningapp",
+	"name": "Running Windows",
+	"description": "Windows of running applications",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.runningapp.index_edge_tabs",
+				"title": "索引 Edge 标签页",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": false
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Running Windows",
+				"description": "Windows of running applications"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "运行中的窗口",
+				"description": "正在运行的应用窗口"
+			}
+		}
+	}
+}

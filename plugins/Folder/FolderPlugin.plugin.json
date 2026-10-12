@@ -1,0 +1,140 @@
+{
+	"package_name": "com.candytek.folderplugin",
+	"name": "Folders",
+	"description": "Index configured folders, %PATH% and UWP apps",
+	"version": "1.1.0",
+	"min_host_api_minor": 3,
+	"default_setting_json": {
+		"version": 1,
+		"prefList": [
+			{
+				"key": "com.candytek.folderplugin.uwp_apps",
+				"title": "索引UWP应用",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.folderplugin.regedit_apps",
+				"title": "索引注册表中注册的应用",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": false
+			},
+			{
+				"key": "com.candytek.folderplugin.envpath_apps",
+				"title": "索引 %PATH% 中的可执行文件",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": false
+			},
+			{
+				"key": "com.candytek.folderplugin.show_sendto_shortcut",
+				"title": "在右键 \"发送到\" 菜单中显示 \"CandyLauncher 索引文件夹\"",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.folderplugin.allow_duplicate_items",
+				"title": "允许项目重复",
+				"title_en": "Allow duplicate items",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.folderplugin.run_item_as_admin",
+				"title": "以管理员身份运行项目",
+				"title_en": "Run item as administrator",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": false
+			},
+			{
+				"key": "com.candytek.folderplugin.index_folderpath_itself",
+				"title": "索引路径本身",
+				"title_en": "The index path itself",
+				"type": "bool",
+				"subPage": "plugin",
+				"defValue": true
+			},
+			{
+				"key": "com.candytek.folderplugin.indexed_manager",
+				"title": "索引查看器",
+				"type": "button",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.create_automation_action",
+				"title": "创建或编辑自动化动作组",
+				"type": "button",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.hotkey_open_file_location",
+				"title": "打开项目文件所在位置",
+				"title_en": "Open item file location",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.hotkey_open_target_location",
+				"title": "打开项目目标所在位置",
+				"title_en": "Open item target location",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.hotkey_copy_file_path",
+				"title": "复制项目文件路径",
+				"title_en": "Copy item file path",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.hotkey_copy_target_path",
+				"title": "复制快捷方式目标路径",
+				"title_en": "Copy shortcut target path",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.open_with_clipboard_params",
+				"title": "打开附带剪贴板参数",
+				"title_en": "Open with clipboard parameters",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			},
+			{
+				"key": "com.candytek.folderplugin.hotkey_run_item_as_admin",
+				"title": "以管理员身份运行项目",
+				"title_en": "Run item as administrator",
+				"type": "hotkeystring",
+				"subPage": "plugin",
+				"defValue": ""
+			}
+		]
+	},
+	"strings": {
+		"en-US": {
+			"plugin": {
+				"name": "Folders",
+				"description": "Index configured folders, %PATH% and UWP apps"
+			}
+		},
+		"zh-CN": {
+			"plugin": {
+				"name": "文件夹",
+				"description": "索引指定文件夹、%PATH% 和 UWP 应用"
+			}
+		}
+	}
+}
