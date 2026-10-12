@@ -1,0 +1,6 @@
+﻿// 独立皮肤编辑器的资源：图标与内嵌的编辑器页面
+#include "common/Resource.h"
+#include "windows.h"
+
+IDI_CANDYLAUNCHER ICON "icons/CandyLauncher.ico"
+IDR_SKIN_EDITOR_HTML RCDATA "web/skin_editor.html"

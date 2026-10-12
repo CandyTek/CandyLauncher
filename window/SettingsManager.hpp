@@ -33,26 +33,6 @@ inline std::vector<std::vector<HWND>> hCtrlsByTab;
 // tab的控件是否已创建，tab在首次显示时才创建控件
 inline std::vector<bool> tabCtrlsCreated;
 
-// 用来查找程序目录下的所有皮肤文件
-static std::vector<std::wstring> FindSkinFiles() {
-	std::vector<std::wstring> skinFiles;
-	TraverseOptions options;
-	options.folder = EXE_FOLDER_PATH + LR"(\skins)";
-	options.recursive = true;
-	options.extensions = {L".json"};
-
-	TraverseFiles(options.folder, options, options.folder, [&](const std::wstring& name, const std::wstring& fullPath,
-																const std::wstring& parent, const std::wstring& ext) {
-		if (StartsWithIgnoreCase(name, L"skin_")) {
-			if (StartsWithIgnoreCase(fullPath, EXE_FOLDER_PATH)) {
-				skinFiles.push_back(fullPath.substr(EXE_FOLDER_PATH.length()));
-			}
-		}
-	});
-
-	return skinFiles;
-}
-
 // 获取 settings.json 文件内容
 static std::string GetSettingsJsonText() {
 	// 正式版使用程序内嵌的文本，debug版使用绝对路径，因为频繁调试下cmake并不会频繁更新内嵌的json文本

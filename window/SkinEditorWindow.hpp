@@ -24,11 +24,15 @@
 #include "../manager/SkinFileUtil.hpp"
 #include "../util/LogUtil.hpp"
 #include "../util/StringUtil.hpp"
-#include "SettingsManager.hpp"
+#include "../util/BaseTools.hpp"
+#include "../util/MathUtil.hpp"
+#include "../util/json.hpp"
 
 inline HWND g_skinEditorHwnd = nullptr;
 // 浏览器的活动对象，主消息循环用它转发键盘消息（Tab、Delete、Ctrl+C/V 等）
 inline IOleInPlaceActiveObject* g_skinEditorActiveObject = nullptr;
+// 独立的 SkinEditor.exe 中为 true：关闭编辑器窗口即退出进程
+inline bool g_skinEditorQuitOnClose = false;
 
 constexpr int SKIN_EDITOR_WIDTH = 1200;
 constexpr int SKIN_EDITOR_HEIGHT = 800;
@@ -710,6 +714,7 @@ static LRESULT CALLBACK SkinEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 			g_skinEditorHost = nullptr;
 		}
 		g_skinEditorHwnd = nullptr;
+		if (g_skinEditorQuitOnClose) PostQuitMessage(0);
 		return 0;
 	default:
 		break;

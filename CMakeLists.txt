@@ -203,6 +203,29 @@ add_compile_definitions(NTDDI_VERSION=0x0A000003)
 # 内嵌的皮肤编辑器页面改动后需要重新编译资源
 set_source_files_properties(CandyLauncher.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html")
 
+# 独立的皮肤编辑器程序 SkinEditor.exe，与 CandyLauncher.exe 输出到同一目录
+add_executable(SkinEditor WIN32
+		skin_editor/SkinEditorApp.cpp
+		skin_editor/SkinEditor.rc
+		common/app.manifest
+		common/GlobalState.cpp
+		window/SkinEditorWindow.hpp
+		web/skin_editor.html
+)
+set_source_files_properties(skin_editor/SkinEditor.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html")
+target_precompile_headers(SkinEditor PRIVATE common/pch.h)
+target_compile_definitions(SkinEditor PRIVATE UNICODE _UNICODE
+		$<$<CONFIG:Debug>:DEBUG=1>
+		$<$<CONFIG:Release>:NDEBUG=1>
+		$<$<CONFIG:RelWithDebInfo>:REL_WITH_DEB_INFO_DEBUG=1>
+)
+if (MSVC)
+	target_compile_options(SkinEditor PRIVATE /bigobj)
+endif ()
+set_target_properties(SkinEditor PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:CandyLauncher>")
+target_link_libraries(SkinEditor PRIVATE gdiplus comctl32 user32 gdi32 shell32 ole32 oleaut32 uuid comdlg32 advapi32 shlwapi dwmapi)
+add_dependencies(CandyLauncher SkinEditor)
+
 if (CMAKE_SIZEOF_VOID_P EQUAL 8) # 64-bit
 	set(EVERYTHING_LIB ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/lib/Everything64.lib)
 else () # 32-bit
