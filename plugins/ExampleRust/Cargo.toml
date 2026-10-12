@@ -1,0 +1,13 @@
+# Standalone crate, not part of the main CMake build. See src/lib.rs for build instructions.
+[package]
+name = "example_rust_plugin"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[profile.release]
+panic = "abort"

@@ -87,3 +87,8 @@ log.txt
 /backlog
 window/todo.md
 /plugins/NodeJsPlugin/scripts
+
+# Standalone plugin examples
+plugins/ExampleC/build/
+plugins/ExampleRust/target/
+plugins/ExampleRust/Cargo.lock

@@ -369,7 +369,9 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
 	UpdateListViewScrollbarStyle();
 	// InvalidateRect(g_listViewHwnd, nullptr, TRUE);
-
+	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
+	UpdateWindow(g_mainHwnd);
+	
 	// 更新列表视图颜色
 	// COLORREF listBgColor = HexToCOLORREF(g_skinJson.value("listview_bg_color", "#FFFFFF"));
 	// COLORREF listFontColor = HexToCOLORREF(g_skinJson.value("listview_font_color", "#000000"));

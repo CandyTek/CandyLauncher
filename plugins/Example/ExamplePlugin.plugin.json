@@ -1,0 +1,8 @@
+﻿{
+	"package_name": "com.example.plugin",
+	"name": "ExamplePlugin",
+	"description": "简单示例插件",
+	"version": "1.0.0",
+	"keywords": ["ex "],
+	"min_host_api_minor": 0
+}

@@ -9,7 +9,7 @@ set(PLUGIN_SOURCES
 		FolderPluginConfigUtils.hpp
 		SystemSettingsIndex.hpp
 		FileAction.hpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		FolderPluginData.hpp
 		FileSystemTraverserWrapper.hpp
 		ShortcutRepairTool.hpp

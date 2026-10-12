@@ -347,7 +347,7 @@ static void UnregisterMainPanelToggleHotkey(HWND hWnd) {
 }
 
 static bool ConfigureMainPanelToggleHotkey(HWND hWnd, const std::string& mode, const std::string& hotkeyStr) {
-	UNREFERENCED_PARAMETER(mode);
+	(void)mode;
 	if (hotkeyStr.empty()) {
 		UnregisterHotKey(hWnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
 		return false;

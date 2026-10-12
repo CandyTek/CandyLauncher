@@ -179,7 +179,7 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					break;
 				}
 				if (setting->pluginId != 65535) {
-					m_plugins[setting->pluginId].plugin->OnSettingItemExecute(setting, g_settingsHwnd);
+					PluginManager::DispatchSettingItemExecute(setting->pluginId, setting->key, g_settingsHwnd);
 				}
 
 				if (HIWORD(wParam) == BN_CLICKED) {

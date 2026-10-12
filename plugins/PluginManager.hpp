@@ -1,5 +1,4 @@
 ﻿#pragma once
-#include "Plugin.hpp"
 #include <map>
 #include <utility>
 #include <vector>
@@ -7,8 +6,13 @@
 #include <functional>
 #include <filesystem>
 #include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <shared_mutex>
+#include <thread>
 #include <windows.h>
 
+#include "PluginActionProxy.hpp"
 #include "BaseLaunchAction.hpp"
 #include "Everything.h"
 #include "../util/BaseTools.hpp"
@@ -20,104 +24,131 @@
 #include "util/MyToastUtil.hpp"
 #include "util/OleFileDragDrop.hpp"
 #include "util/FileSystemTraverser.hpp"
+#include "util/ParallelUtil.hpp"
 #include "util/SvgUtil.hpp"
+#include "model/FileInfo.hpp"
+#include "model/TraverseOptions.hpp"
+
+// refresh_actions on a worker thread (CL_PLUGIN_REFRESH_ANY_THREAD). A refresh requested while one is
+// running is coalesced into a single follow-up run.
+struct PluginRefreshWorker {
+	std::thread thread;
+	std::mutex mutex;
+	bool running = false;
+	bool pending = false;
+};
 
 struct PluginInfo {
 	HMODULE handle = nullptr;
-	std::unique_ptr<IPlugin> plugin;
+	const CL_PluginApi* api = nullptr;
+	void* self = nullptr;
+	std::unique_ptr<CL_PluginContext> context;
+	std::unique_ptr<PluginRefreshWorker> refreshWorker;
 	std::wstring name;
+	std::wstring description;
 	std::wstring version;
 	std::wstring pkgName;
 	std::wstring filePath;
+	// The file actually passed to LoadLibrary: filePath, or its shadow copy when enabled.
+	std::wstring loadedPath;
+	std::wstring defaultSettingJson;
 	uint16_t pluginId = 65535;
-	int apiVersion = 1;
+	uint32_t apiMinor = 0;
+	uint32_t apiFlags = 0;
 	bool loaded = false;
 	uint64_t loadTimeMs = 0;
 	uint64_t refreshTimeMs = 0;
 	int32_t priority = 0;
-
-	CreatePluginFunc createFunc = nullptr;
-	DestroyPluginFunc destroyFunc = nullptr;
-	GetPluginApiVersionFunc getVersionFunc = nullptr;
+	// Last time a slow-callback warning was written for this plugin (rate limit).
+	uint64_t lastSlowLogTick = 0;
+	// "<pkg>.*" values as of the last NotifyUserSettingsLoadDone, for on_setting_changed.
+	std::map<std::string, std::string> settingSnapshot;
 };
 
-using PluginCatalogInfo = IPluginHost::PluginCatalogEntry;
+struct PluginCatalogInfo {
+	std::wstring name;
+	std::wstring description;
+	std::wstring version;
+	std::wstring pkgName;
+	std::wstring filePath;
+	std::wstring defaultSettingJson;
+	// Informational, from the manifest; the live keywords come from set_trigger_keywords.
+	std::vector<std::wstring> keywords;
+	bool enabled = true;
+	bool fromManifest = false;
+	std::filesystem::file_time_type fileTime{};
+};
 
 inline std::unordered_map<uint16_t, PluginInfo> m_plugins = {};
 inline std::vector<PluginCatalogInfo> g_pluginCatalog = {};
 inline uint16_t pluginCount = 0;
 static std::wstring TAG = L"PluginManager";
 constexpr const wchar_t* PLUGIN_BROWSER_PACKAGE_NAME = L"com.candytek.pluginbrowserplugin";
+constexpr const wchar_t* PLUGIN_MANIFEST_SUFFIX = L".plugin.json";
+constexpr const wchar_t* PLUGIN_SHADOW_DIR_NAME = L".shadow";
+// A per-keystroke plugin callback slower than this is logged (at most once per 5 s per plugin).
+constexpr uint64_t PLUGIN_SLOW_CALLBACK_MS = 50;
 
-class PluginManager : public IPluginHost {
+// Calls into the plugin only if the (optional) entry point exists in the plugin's table.
+#define CL_PLUGIN_HAS(info, field) ((info).api && CL_HAS_FIELD((info).api, CL_PluginApi, field) && (info).api->field)
+
+class PluginManager {
 private:
 	std::function<void()> m_onActionsChanged;
 	std::function<void()> m_beforePluginUnload;
+	// (queryId, actions, isFinal) on the UI thread, see HandleQueryResultsMessage.
+	std::function<void(uint64_t, std::vector<std::shared_ptr<BaseAction>>&&, bool)> m_onQueryResults;
+	// Plugins appeared / disappeared / were replaced on disk; the settings list must be rebuilt.
+	std::function<void()> m_onCatalogChanged;
 	bool m_suppressNotifications = false;
+
+	// Loaded plugins ordered by priority (desc) then load order; every dispatch walks this.
+	std::vector<uint16_t> m_dispatchOrder;
+	// Plugins that received the current on_query, for on_query_cancel.
+	std::vector<uint16_t> m_queryRecipients;
+
+	struct PendingResults {
+		uint64_t queryId = 0;
+		std::vector<std::shared_ptr<BaseAction>> actions;
+		bool isFinal = false;
+	};
+
+	std::mutex m_resultsMutex;
+	std::vector<PendingResults> m_pendingResults;
+	std::atomic<bool> m_resultsPosted{false};
+	std::atomic<bool> m_actionsChangedPosted{false};
+	std::atomic<bool> m_dirChangedPosted{false};
+
+	// Combined global-search list of every loaded plugin, rebuilt only when s_actionsVersion moved.
+	std::vector<std::shared_ptr<BaseAction>> m_combinedActions;
+	uint64_t m_combinedVersion = 0;
+
+	std::wstring m_pluginDir;
+	bool m_shadowCopy = false;
+	uint16_t m_nextPluginId = 0;
+
+	// Plugin folder watcher (hot install / update).
+	std::thread m_watchThread;
+	HANDLE m_watchStopEvent = nullptr;
+
+	// Bumped whenever a set, a priority or the loaded plugin list changes. Any thread.
+	inline static std::atomic<uint64_t> s_actionsVersion{1};
+	// Id of the input currently shown; results for older ids are dropped.
+	inline static std::atomic<uint64_t> s_currentQueryId{0};
+	// Everything SDK keeps one global query / result state per process.
+	inline static std::mutex s_everythingMutex;
 
 public:
 	PluginManager() = default;
 
 	~PluginManager() {
+		StopPluginDirWatcher();
 		UnloadAllPlugins();
 	}
 
-	void TraverseFilesSimpleForEverythingSDK(
-		const std::wstring& folderPath, // 起始目录
-		bool recursive, // 是否递归
-		const std::vector<std::wstring>& extensions, // 扩展名过滤
-		const std::wstring& nameFilter, // 文件名关键字，可为空
-		bool isIndexFilesOnly, // 是否只索引文件
-		std::function<void(const std::wstring& name,
-							const std::wstring& fullPath,
-							const std::wstring& parent,
-							const std::wstring& ext)> callback) override {
-		namespace fs = std::filesystem;
-		if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
-
-		std::wstringstream query;
-		if (isIndexFilesOnly) {
-			query << L"file: ";
-		}
-		// 指定搜索目录（递归或非递归）
-		if (recursive) query << L"\"" << folderPath << L"\"";
-		else query << L"parent:\"" << folderPath << L"\"";
-
-		// 拼接扩展名过滤（ext:）
-		if (!extensions.empty()) {
-			query << L" ext:";
-			for (size_t i = 0; i < extensions.size(); ++i) {
-				std::wstring ext = extensions[i];
-				if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
-				query << ext;
-				if (i < extensions.size() - 1) query << L";";
-			}
-		}
-
-		// 文件名关键字过滤（匹配部分文件名）
-		if (!nameFilter.empty()) {
-			query << L" " << nameFilter;
-		}
-
-		Logi(L"Everything", L"Query: ", query.str());
-
-		// 执行 Everything 查询
-		Everything_SetSearchW(query.str().c_str());
-		Everything_QueryW(TRUE);
-
-		DWORD num = Everything_GetNumResults();
-		for (DWORD i = 0; i < num; ++i) {
-			wchar_t fullPath[MAX_PATH];
-			Everything_GetResultFullPathNameW(i, fullPath, MAX_PATH);
-
-			fs::path p(fullPath);
-			callback(
-				p.stem().wstring(), // 文件名（不含扩展）
-				p.wstring(), // 完整路径
-				p.parent_path().wstring(), // 父目录
-				p.extension().wstring()); // 扩展名
-		}
-	}
+	static uint64_t ActionsVersion() { return s_actionsVersion.load(std::memory_order_acquire); }
+	static void BumpActionsVersion() { s_actionsVersion.fetch_add(1, std::memory_order_acq_rel); }
+	static uint64_t CurrentQueryId() { return s_currentQueryId.load(std::memory_order_acquire); }
 
 	void TraverseFilesForEverythingSDK(
 		const std::wstring& folderPath2,
@@ -125,7 +156,7 @@ public:
 		std::function<void(const std::wstring& name,
 							const std::wstring& fullPath,
 							const std::wstring& parent,
-							const std::wstring& ext)>&& callback) override {
+							const std::wstring& ext)>&& callback) {
 		namespace fs = std::filesystem;
 		const std::wstring folderPath = ExpandEnvironmentVariables(folderPath2, EXE_FOLDER_PATH);
 		if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) return;
@@ -184,7 +215,8 @@ public:
 
 		Logi(L"Everything", L"Executing optimized Everything search: ", search_query.str());
 
-		// 使用 Everything SDK
+		// 使用 Everything SDK；SDK 的查询状态是进程级的，多个插件线程不能同时查询
+		std::lock_guard<std::mutex> everythingLock(s_everythingMutex);
 		Everything_SetSearchW(search_query.str().c_str());
 		const ULONGLONG queryStart = GetTickCount64();
 		if (!Everything_QueryW(TRUE)) {
@@ -208,12 +240,13 @@ public:
 	}
 
 	// 搜索可能的目标文件
-	std::vector<FileInfo> SearchPossibleTargets(const std::wstring& fileName, uint64_t resultCount) override {
+	std::vector<FileInfo> SearchPossibleTargets(const std::wstring& fileName, uint64_t resultCount) {
 		std::vector<FileInfo> candidates;
 
 		// 构建搜索查询：搜索以fileName开头的.exe文件
 		std::wstring searchQuery = fileName;
 
+		std::lock_guard<std::mutex> everythingLock(s_everythingMutex);
 		Everything_SetSearchW(searchQuery.c_str());
 		Everything_QueryW(TRUE);
 
@@ -236,7 +269,7 @@ public:
 	}
 
 
-	std::wstring GetTheProcessedMatchingText(const std::wstring& source) override {
+	static std::wstring GetTheProcessedMatchingText(const std::wstring& source) {
 		// 这里可以执行一些处理，比如拼音转换、文本清理等
 		return PinyinHelper::GetPinyinWithVariants(MyToLower(sanitizeVisible(source))); // 假设使用了 PinyinHelper 处理
 	}
@@ -247,11 +280,14 @@ public:
 		PluginInfo info;
 		info.filePath = dllPath;
 		info.name = pluginName;
+		info.pluginId = m_nextPluginId;
 
 		if (LoadSinglePlugin(dllPath, info)) {
-			info.pluginId = static_cast<uint16_t>(m_plugins.size());
-			info.plugin->OnPluginIdChange(info.pluginId);
-			m_plugins[info.pluginId] = std::move(info);
+			++m_nextPluginId;
+			const uint16_t pluginId = info.pluginId;
+			m_plugins[pluginId] = std::move(info);
+			RebuildDispatchOrder();
+			BumpActionsVersion();
 			return true;
 		}
 
@@ -259,23 +295,7 @@ public:
 		return false;
 	}
 
-	const std::unordered_map<std::string, SettingItem>& GetSettingsMap() override {
-		return g_settings_map;
-	}
-
-	const std::unordered_map<std::string, std::function<void()>>& GetAppLaunchActionCallbacks() override {
-		return appLaunchActionCallBacks;
-	}
-
-	void RegisterAppLaunchActionCallback(const std::string& key, std::function<void()> callback) override {
-		appLaunchActionCallBacks[key] = std::move(callback);
-	}
-
-	void UnregisterAppLaunchActionCallback(const std::string& key) override {
-		appLaunchActionCallBacks.erase(key);
-	}
-
-	bool IsPluginEnabledByPackageName(const std::wstring& packageName) const override {
+	bool IsPluginEnabledByPackageName(const std::wstring& packageName) const {
 		if (packageName.empty()) {
 			return false;
 		}
@@ -289,12 +309,14 @@ public:
 		return FindLoadedPluginByPackageName(packageName) != nullptr;
 	}
 
+	// Plugin ids are never reused, so settings items and proxies keep pointing at the right plugin.
 	bool UnloadPlugin(const uint16_t pluginId) {
 		if (m_plugins.find(pluginId) != m_plugins.end()) {
 			NotifyBeforePluginUnload();
 			UnloadSinglePlugin(m_plugins[pluginId]);
 			m_plugins.erase(pluginId);
-			RebuildPluginIndices();
+			RebuildDispatchOrder();
+			BumpActionsVersion();
 			NotifyActionsChanged();
 			return true;
 		}
@@ -302,14 +324,18 @@ public:
 	}
 
 	void OnMainWindowShowNotifi(bool isShow) {
-		for (auto& pair : m_plugins) {
-			pair.second.plugin->OnMainWindowShow(isShow);
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (info.loaded && CL_PLUGIN_HAS(info, on_main_window_show)) {
+				info.api->on_main_window_show(info.self, isShow ? 1 : 0);
+			}
 		}
 	}
 
 	void LoadAllPlugins(const std::wstring& pluginDir) {
 		Logi(TAG, L"LoadAllPlugins start");
 		g_pluginCatalog.clear();
+		m_pluginDir = pluginDir;
 
 		if (!std::filesystem::exists(pluginDir)) {
 			Logw(TAG, L"Plugin directory does not exist: ", pluginDir);
@@ -321,41 +347,18 @@ public:
 		}
 
 		const nlohmann::json userConfig = LoadUserPluginConfig();
+		m_shadowCopy = ReadShadowCopySetting(userConfig);
+		if (m_shadowCopy) PrepareShadowDir();
+
 		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(pluginDir)) {
 			if (entry.is_regular_file() && entry.path().extension() == ".dll") {
-				PluginCatalogInfo catalogInfo;
-				if (!ProbePluginCatalogInfo(entry.path().wstring(), catalogInfo)) {
-					catalogInfo.filePath = entry.path().wstring();
-					catalogInfo.name = entry.path().stem().wstring();
-				}
-				catalogInfo.enabled = IsPluginEnabledByConfig(catalogInfo.pkgName, userConfig);
-				g_pluginCatalog.push_back(catalogInfo);
-
-				if (!catalogInfo.enabled) {
-					Logi(TAG, L"Skip disabled plugin: ", catalogInfo.pkgName);
-					continue;
-				}
-
-				const auto pluginLoadStart = GetTickCount64();
-				bool loadResult = LoadPlugin(entry.path().wstring());
-				const uint64_t pluginLoadTime = GetTickCount64() - pluginLoadStart;
-				if (loadResult) {
-					if (const PluginInfo* loadedPlugin = FindLoadedPluginByFilePath(entry.path().wstring())) {
-						m_plugins[loadedPlugin->pluginId].loadTimeMs = pluginLoadTime;
-						if (g_pluginCatalog.back().pkgName.empty() || g_pluginCatalog.back().defaultSettingJson.empty()) {
-							g_pluginCatalog.back().name = loadedPlugin->name;
-							g_pluginCatalog.back().version = loadedPlugin->version;
-							g_pluginCatalog.back().pkgName = loadedPlugin->pkgName;
-							g_pluginCatalog.back().defaultSettingJson = loadedPlugin->plugin->DefaultSettingJson();
-						}
-					}
-				}
-				Logi(TAG, L"Load result for ", entry.path().filename().wstring(), L": ", (loadResult ? L"SUCCESS" : L"FAILED"));
+				AddPluginFromDisk(entry.path().wstring(), userConfig);
 			}
 		}
 
 		Logi(TAG, L"LoadAllPlugins complete, total plugins loaded: ", m_plugins.size());
 
+		StartPluginDirWatcher();
 		NotifyActionsChanged();
 	}
 
@@ -368,118 +371,190 @@ public:
 			UnloadSinglePlugin(pair.second);
 		}
 		m_plugins.clear();
+		m_dispatchOrder.clear();
+		m_queryRecipients.clear();
+		m_combinedActions.clear();
+		BumpActionsVersion();
 		allActions.clear();
 		filteredActions.clear();
 	}
 
+	// Plugins flagged CL_PLUGIN_REFRESH_ANY_THREAD refresh on their own worker and report back through
+	// notify_actions_changed; the others run here one after another.
 	void RefreshAllActions() {
 		Logi(TAG, L"RefreshAllActions start, clearing existing actions...");
 		m_suppressNotifications = true; // 暂时禁用通知
 
-		for (auto& pair : m_plugins) {
-			if (pair.second.loaded && pair.second.plugin) {
-				Logi(TAG, L"Loading actions from plugin: ", pair.second.name);
-				const auto refreshStart = std::chrono::steady_clock::now();
-				pair.second.plugin->RefreshAllActions();
-				pair.second.refreshTimeMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-					std::chrono::steady_clock::now() - refreshStart).count());
-				Logi(TAG, L"Refresh done: ", pair.second.name, L", ", pair.second.refreshTimeMs, L" ms");
-				// ConsolePrintln(TAG, L"After loading, total actions: " + std::to_wstring(m_allActions.size()));
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (!info.loaded || !CL_PLUGIN_HAS(info, refresh_actions)) continue;
+			if (info.apiFlags & CL_PLUGIN_REFRESH_ANY_THREAD) {
+				StartRefreshAsync(info);
+				continue;
 			}
+			RefreshPluginInline(info);
 		}
 
 		m_suppressNotifications = false; // 重新启用通知
-		// ConsolePrintln(TAG, L"RefreshAllActions complete - plugin size:" + std::to_wstring(m_plugins.size()) + L", total actions: " + std::to_wstring(m_allActions.size()));
 		NotifyActionsChanged();
 	}
 
 	void DispatchUserInput(const std::wstring& input) {
 		m_suppressNotifications = true; // 防止在用户输入过程中触发递归刷新
+		const std::wstring lowerInput = MyToLower(input);
 
-		for (const auto& plugin : m_plugins) {
-			if (plugin.second.loaded && plugin.second.plugin) {
-				plugin.second.plugin->OnUserInput(input);
-			}
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (!info.loaded || !CL_PLUGIN_HAS(info, on_user_input) || !IsRoutedTo(info, lowerInput)) continue;
+			const uint64_t start = GetTickCount64();
+			info.api->on_user_input(info.self, input.c_str());
+			WarnIfSlow(info, L"on_user_input", start);
 		}
 
 		m_suppressNotifications = false; // 重新启用通知
-		//
-		// // 如果动作数量发生变化，说明插件添加了新动作，需要通知主程序
-		// if (m_allActions.size() != oldActionCount)
-		// {
-		// 	ConsolePrintln(TAG, L"DispatchUserInput detected action count change: " +
-		// 				   std::to_wstring(oldActionCount) + L" -> " +
-		// 				   std::to_wstring(m_allActions.size()));
-		// 	NotifyActionsChanged(); // 只通知，不重新刷新
-		// }
+	}
+
+	// Starts a new query for `input`: cancels the previous one on every plugin that received it and
+	// returns the id results must carry. Called once per key stroke before the dispatches below.
+	uint64_t BeginQuery() {
+		const uint64_t previous = s_currentQueryId.load(std::memory_order_acquire);
+		const uint64_t queryId = s_currentQueryId.fetch_add(1, std::memory_order_acq_rel) + 1;
+		for (const uint16_t pluginId : m_queryRecipients) {
+			const auto it = m_plugins.find(pluginId);
+			if (it == m_plugins.end() || !it->second.loaded || !CL_PLUGIN_HAS(it->second, on_query_cancel)) continue;
+			it->second.api->on_query_cancel(it->second.self, previous);
+		}
+		m_queryRecipients.clear();
+		{
+			// Batches still queued for the old query will be dropped by id; free them now.
+			std::lock_guard<std::mutex> lock(m_resultsMutex);
+			m_pendingResults.erase(std::remove_if(m_pendingResults.begin(), m_pendingResults.end(),
+												[queryId](const PendingResults& r) { return r.queryId != queryId; }),
+									m_pendingResults.end());
+		}
+		return queryId;
+	}
+
+	// Items plugins want shown instead of the normal search for this input (empty = no plugin took over).
+	std::vector<std::shared_ptr<BaseAction>> DispatchInterceptInput(const std::wstring& input) {
+		std::vector<std::shared_ptr<BaseAction>> all_actions;
+		const std::wstring lowerInput = MyToLower(input);
+
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (!info.loaded || !CL_PLUGIN_HAS(info, on_intercept_input) || !IsRoutedTo(info, lowerInput)) continue;
+			CL_ResultSink sink;
+			const uint64_t start = GetTickCount64();
+			info.api->on_intercept_input(info.self, input.c_str(), &sink);
+			WarnIfSlow(info, L"on_intercept_input", start);
+			if (!sink.actions.empty()) {
+				// 使用 std::make_move_iterator 避免共享指针不必要的引用计数原子操作
+				all_actions.insert(
+					all_actions.end(),
+					std::make_move_iterator(sink.actions.begin()),
+					std::make_move_iterator(sink.actions.end())
+				);
+			}
+		}
+
+		return all_actions;
+	}
+
+	// Asynchronous search (2.2): plugins answer later through post_results with this query id.
+	void DispatchQuery(const uint64_t queryId, const std::wstring& input, const std::wstring& arg) {
+		const std::wstring lowerInput = MyToLower(input);
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (!info.loaded || !CL_PLUGIN_HAS(info, on_query) || !IsRoutedTo(info, lowerInput)) continue;
+			const uint64_t start = GetTickCount64();
+			info.api->on_query(info.self, queryId, input.c_str(), arg.c_str());
+			WarnIfSlow(info, L"on_query", start);
+			m_queryRecipients.push_back(pluginId);
+		}
 	}
 
 	int DispatchSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT uint, const WPARAM wparam) {
-		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+		uint64_t userData = 0;
+		PluginInfo* info = ResolveActionOwner(action.get(), userData);
+		if (!info || !CL_PLUGIN_HAS(*info, on_hotkey)) {
 			return 0;
 		}
-		return m_plugins[action->pluginId].plugin->OnSendHotKey(action, vk, uint, wparam);
+		return info->api->on_hotkey(info->self, userData, vk, uint, wparam);
 	}
 
 	bool DispatchItemRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
-		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+		uint64_t userData = 0;
+		PluginInfo* info = ResolveActionOwner(action.get(), userData);
+		if (!info) {
 			Logw(TAG, L"DispatchItemRightClick skipped: action/plugin not found");
 			return false;
 		}
-		PluginInfo& info = m_plugins[action->pluginId];
-		Logi(TAG,
-						L"DispatchItemRightClick pluginId=", action->pluginId,
-						L", apiVersion=", info.apiVersion,
-						L", loaded=", info.loaded,
-						L", plugin=", (info.plugin != nullptr));
-		if (!info.loaded || !info.plugin) {
+		Logi(TAG, L"DispatchItemRightClick pluginId=", info->pluginId, L", apiMinor=", info->apiMinor);
+		if (!CL_PLUGIN_HAS(*info, on_item_right_click)) {
 			return false;
 		}
-		return info.plugin->OnItemRightClick(action, parentHwnd, screenPt);
+		return info->api->on_item_right_click(info->self, userData, parentHwnd, screenPt) != 0;
 	}
 
 	bool DispatchItemShiftRightClick(const std::shared_ptr<BaseAction>& action, HWND parentHwnd, POINT screenPt) {
-		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+		uint64_t userData = 0;
+		PluginInfo* info = ResolveActionOwner(action.get(), userData);
+		if (!info) {
 			Logw(TAG, L"DispatchItemShiftRightClick skipped: action/plugin not found");
 			return false;
 		}
-		PluginInfo& info = m_plugins[action->pluginId];
-		Logi(TAG,
-						L"DispatchItemShiftRightClick pluginId=", action->pluginId,
-						L", apiVersion=", info.apiVersion,
-						L", loaded=", info.loaded,
-						L", plugin=", (info.plugin != nullptr));
-		if (!info.loaded || !info.plugin) {
+		Logi(TAG, L"DispatchItemShiftRightClick pluginId=", info->pluginId, L", apiMinor=", info->apiMinor);
+		if (!CL_PLUGIN_HAS(*info, on_item_shift_right_click)) {
 			return false;
 		}
-		return info.plugin->OnItemShiftRightClick(action, parentHwnd, screenPt);
+		return info->api->on_item_shift_right_click(info->self, userData, parentHwnd, screenPt) != 0;
 	}
 
 	bool DispatchItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) {
-		if (!action || m_plugins.find(action->pluginId) == m_plugins.end()) {
+		uint64_t userData = 0;
+		PluginInfo* info = ResolveActionOwner(action.get(), userData);
+		if (!info || !CL_PLUGIN_HAS(*info, on_item_begin_drag)) {
 			return false;
 		}
-		PluginInfo& info = m_plugins[action->pluginId];
-		if (!info.loaded || !info.plugin) {
+		return info->api->on_item_begin_drag(info->self, userData, sourceHwnd, screenPt) != 0;
+	}
+
+	// Text the owning plugin wants copied for `action` (Ctrl+C); false when the plugin does not provide one.
+	bool DispatchItemCopyText(const std::shared_ptr<BaseAction>& action, std::wstring& text) {
+		uint64_t userData = 0;
+		PluginInfo* info = ResolveActionOwner(action.get(), userData);
+		if (!info || !CL_PLUGIN_HAS(*info, get_item_copy_text)) {
 			return false;
 		}
-		return info.plugin->OnItemBeginDrag(action, sourceHwnd, screenPt);
+		text.clear();
+		return info->api->get_item_copy_text(info->self, userData, [](void* ctx, const wchar_t* str, const size_t len) {
+			if (str) static_cast<std::wstring*>(ctx)->assign(str, len);
+		}, &text) != 0;
 	}
 
 	static bool DispatchActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) {
-		if (m_plugins.find(action->pluginId) == m_plugins.end()) {
+		if (!action) return false;
+		if (!dynamic_cast<PluginActionProxy*>(action.get())) {
 			const auto action1 = std::dynamic_pointer_cast<BaseLaunchAction>(action);
 			if (!action1) return false;
 			action1->Invoke();
 			return true;
 		}
 
-		return m_plugins[action->pluginId].plugin->OnActionExecute(action, arg);
-		// for (auto& pair : m_plugins) {
-		// 	if (pair.loaded && pair.plugin) {
-		// 		pair.plugin->OnActionExecute(action,arg);
-		// 	}
-		// }
+		uint64_t userData = 0;
+		PluginInfo* info = ResolveActionOwner(action.get(), userData);
+		if (!info || !CL_PLUGIN_HAS(*info, on_action_execute)) {
+			return false;
+		}
+		return info->api->on_action_execute(info->self, userData, arg.c_str()) != 0;
+	}
+
+	static void DispatchSettingItemExecute(const uint16_t pluginId, const std::string& key, HWND parentHwnd) {
+		const auto it = m_plugins.find(pluginId);
+		if (it == m_plugins.end() || !it->second.loaded || !CL_PLUGIN_HAS(it->second, on_setting_item_execute)) {
+			return;
+		}
+		it->second.api->on_setting_item_execute(it->second.self, utf8_to_wide(key).c_str(), parentHwnd);
 	}
 
 	std::vector<std::wstring> GetLoadedPlugins() const {
@@ -505,14 +580,7 @@ public:
 		return nullptr;
 	}
 
-	std::vector<PluginCatalogEntry> GetPluginCatalogEntries(uint16_t callerPluginId) override {
-		if (!CanUseRestrictedPluginBrowserApi(callerPluginId)) {
-			return {};
-		}
-		return g_pluginCatalog;
-	}
-
-	bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) override {
+	bool SetPluginEnabled(uint16_t callerPluginId, const std::wstring& packageName, bool enabled) {
 		if (!CanUseRestrictedPluginBrowserApi(callerPluginId) || packageName.empty()) {
 			return false;
 		}
@@ -524,6 +592,7 @@ public:
 		// 提前清除插件引用，防止全局列表索引的 action出现内存错误
 		filteredActions.clear();
 		allActions.clear();
+		BumpActionsVersion();
 		bool foundCatalog = false;
 		for (auto& catalogInfo : g_pluginCatalog) {
 			if (catalogInfo.pkgName == packageName) {
@@ -537,28 +606,27 @@ public:
 		}
 
 		SavePluginEnabledState(packageName, enabled);
-		auto it = g_settings_map.find(wide_to_utf8(packageName));
-		if (it != g_settings_map.end()) {
-			it->second.boolValue = enabled;
-		} else {
-			SettingItem setting;
-			setting.key = wide_to_utf8(packageName);
-			setting.type = "expandswitch";
-			setting.boolValue = enabled;
-			g_settings_map[setting.key] = setting;
+		{
+			std::unique_lock<std::shared_mutex> lock(g_settingsMapMutex);
+			auto it = g_settings_map.find(wide_to_utf8(packageName));
+			if (it != g_settings_map.end()) {
+				it->second.boolValue = enabled;
+			} else {
+				SettingItem setting;
+				setting.key = wide_to_utf8(packageName);
+				setting.type = "expandswitch";
+				setting.boolValue = enabled;
+				g_settings_map[setting.key] = setting;
+			}
 		}
 
 		SyncPluginsWithSettings();
 		NotifyUserSettingsLoadDone();
 		// RefreshAllActions(); // TODO:  不要刷新全部，只刷新需要的插件
-		if (!enabled) {
-		}
-
-
 		return true;
 	}
 
-	void ShowResultsDerectly(std::vector<std::shared_ptr<BaseAction>>& list) override {
+	void ShowResultsDerectly(const std::vector<std::shared_ptr<BaseAction>>& list) {
 		// SendMessage(g_listViewHwnd, WM_SETREDRAW, FALSE, 0); // 不要使用暂停重绘，反而会造成列表闪烁
 		filteredActions = list;
 		ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
@@ -570,30 +638,43 @@ public:
 		}
 		InvalidateRect(g_listViewHwnd, nullptr, TRUE);
 	}
-	
-	void PluginTaskDone() override {
-		if (pref_close_after_open_item) HideWindow();
-	}
-
-	std::wstring& GetCurrectArgText() override {
-		return currectActionArg;
-	}
 
 	void SyncPluginPrioritiesFromSettings() {
+		bool changed = false;
 		for (auto& [pluginId, info] : m_plugins) {
-			if (!info.pkgName.empty()) {
-				const std::string priorityKey = wide_to_utf8(info.pkgName) + ".priority";
+			if (info.pkgName.empty()) continue;
+			const std::string priorityKey = wide_to_utf8(info.pkgName) + ".priority";
+			int32_t priority = 0;
+			{
+				std::shared_lock<std::shared_mutex> lock(g_settingsMapMutex);
 				const auto it = g_settings_map.find(priorityKey);
-				info.priority = (it != g_settings_map.end()) ? static_cast<int32_t>(it->second.intValue) : 0;
+				priority = (it != g_settings_map.end()) ? static_cast<int32_t>(it->second.intValue) : 0;
 			}
+			if (priority == info.priority && (!info.context || info.context->priority.load() == priority)) continue;
+			info.priority = priority;
+			changed = true;
+			if (!info.context) continue;
+			// Proxies carry the priority so the merged list sorts without a lookup; restamp the live sets.
+			info.context->priority.store(priority);
+			std::lock_guard<std::mutex> lock(info.context->mutex);
+			for (auto& [setId, set] : info.context->sets) {
+				for (auto& action : set->actions) action->pluginPriority = priority;
+			}
+		}
+		if (changed) {
+			RebuildDispatchOrder();
+			BumpActionsVersion();
 		}
 	}
 
 	void NotifyUserSettingsLoadDone() {
 		SyncPluginPrioritiesFromSettings();
-		for (auto& [pluginId, info] : m_plugins) {
-			if (info.loaded && info.plugin) {
-				info.plugin->OnUserSettingsLoadDone();
+		for (const uint16_t pluginId : m_dispatchOrder) {
+			PluginInfo& info = m_plugins[pluginId];
+			if (!info.loaded) continue;
+			DispatchSettingChanges(info);
+			if (CL_PLUGIN_HAS(info, on_user_settings_loaded)) {
+				info.api->on_user_settings_loaded(info.self);
 			}
 		}
 	}
@@ -603,6 +684,7 @@ public:
 		for (const auto& catalogInfo : g_pluginCatalog) {
 			bool shouldEnable = catalogInfo.enabled;
 			if (!catalogInfo.pkgName.empty()) {
+				std::shared_lock<std::shared_mutex> lock(g_settingsMapMutex);
 				const auto it = g_settings_map.find(wide_to_utf8(catalogInfo.pkgName));
 				if (it != g_settings_map.end()) {
 					shouldEnable = it->second.boolValue;
@@ -625,6 +707,7 @@ public:
 		for (auto& catalogInfo : g_pluginCatalog) {
 			bool shouldEnable = catalogInfo.enabled;
 			if (!catalogInfo.pkgName.empty()) {
+				std::shared_lock<std::shared_mutex> lock(g_settingsMapMutex);
 				const auto it = g_settings_map.find(wide_to_utf8(catalogInfo.pkgName));
 				if (it != g_settings_map.end()) {
 					shouldEnable = it->second.boolValue;
@@ -643,8 +726,8 @@ public:
 					loadedPlugin = !catalogInfo.pkgName.empty()
 										? FindLoadedPluginByPackageName(catalogInfo.pkgName)
 										: FindLoadedPluginByFilePath(catalogInfo.filePath);
-					if (loadResult) {
-						loadedPlugin->plugin->RefreshAllActions();
+					if (loadResult && loadedPlugin) {
+						RefreshPlugin(m_plugins[loadedPlugin->pluginId]);
 					}
 				}
 
@@ -654,7 +737,7 @@ public:
 					catalogInfo.version = loadedPlugin->version;
 					catalogInfo.pkgName = loadedPlugin->pkgName;
 					if (catalogInfo.defaultSettingJson.empty()) {
-						catalogInfo.defaultSettingJson = loadedPlugin->plugin->DefaultSettingJson();
+						catalogInfo.defaultSettingJson = loadedPlugin->defaultSettingJson;
 					}
 				}
 			} else {
@@ -667,55 +750,29 @@ public:
 		SyncPluginPrioritiesFromSettings();
 	}
 
-	// static std::vector<std::shared_ptr<BaseAction>> IsInterceptInputShowResultsDirectly(const std::wstring& input) {
-	// 	for (const auto& [fst, snd] : m_plugins) {
-	// 		if (snd.loaded && snd.plugin) {
-	// 			if (auto temp = snd.plugin->InterceptInputShowResultsDirectly(input); !temp.empty()) {
-	// 				return temp;
-	// 			}
-	// 		}
-	// 	}
-	// 	return {};
-	// }
-	static std::vector<std::shared_ptr<BaseAction>> IsInterceptInputShowResultsDirectly(const std::wstring& input) {
-		std::vector<std::shared_ptr<BaseAction>> all_actions;
-
-		for (const auto& [fst, snd] : m_plugins) {
-			if (snd.loaded && snd.plugin) {
-				auto temp = snd.plugin->InterceptInputShowResultsDirectly(input);
-				if (!temp.empty()) {
-					// 使用 std::make_move_iterator 避免共享指针不必要的引用计数原子操作
-					all_actions.insert(
-						all_actions.end(),
-						std::make_move_iterator(temp.begin()),
-						std::make_move_iterator(temp.end())
-					);
+	// Appends every global-search item of every loaded plugin, highest priority first. The merged list is
+	// cached and only rebuilt after a publish / priority / load change, not on every key stroke.
+	void AppendPluginActions(std::vector<std::shared_ptr<BaseAction>>& target) {
+		const uint64_t version = ActionsVersion();
+		if (version != m_combinedVersion) {
+			m_combinedActions.clear();
+			for (const uint16_t pluginId : m_dispatchOrder) {
+				const PluginInfo& info = m_plugins[pluginId];
+				if (!info.loaded || !info.context) continue;
+				std::vector<std::shared_ptr<const PluginActionSet>> sets;
+				{
+					std::lock_guard<std::mutex> lock(info.context->mutex);
+					for (const auto& [setId, set] : info.context->sets) {
+						if (set->flags & CL_SET_GLOBAL_SEARCH) sets.push_back(set);
+					}
+				}
+				for (const auto& set : sets) {
+					m_combinedActions.insert(m_combinedActions.end(), set->actions.begin(), set->actions.end());
 				}
 			}
+			m_combinedVersion = version;
 		}
-
-		return all_actions;
-	}
-	
-	static void GetAllPluginActions(std::vector<std::shared_ptr<BaseAction>>& allActions) {
-		std::vector<std::pair<int32_t, const PluginInfo*>> sortedPlugins;
-		for (const auto& pair : m_plugins) {
-			if (pair.second.loaded && pair.second.plugin) {
-				sortedPlugins.emplace_back(pair.second.priority, &pair.second);
-			}
-		}
-		std::stable_sort(sortedPlugins.begin(), sortedPlugins.end(),
-						[](const auto& a, const auto& b) {
-							return a.first > b.first;
-						});
-
-		for (const auto& [priority, pluginInfo] : sortedPlugins) {
-			std::vector<std::shared_ptr<BaseAction>> temp = pluginInfo->plugin->GetTextMatchActions();
-			for (auto& action : temp) {
-				action->pluginPriority = priority;
-			}
-			allActions.insert(allActions.end(), temp.begin(), temp.end());
-		}
+		target.insert(target.end(), m_combinedActions.begin(), m_combinedActions.end());
 	}
 
 	void SetActionsChangedCallback(std::function<void()> callback) {
@@ -726,71 +783,121 @@ public:
 		m_beforePluginUnload = callback;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetSuccessfullyMatchingTextActions(const std::wstring& input,
-																				const std::vector<std::shared_ptr<BaseAction>>&
-																				allActions) override {
-		std::vector<std::shared_ptr<BaseAction>> filteredActions;
-		if (allActions.empty()) {
-			return filteredActions;
-		}
-		if (input.empty()) {
-			return allActions;
-		}
-		TextMatch(input, allActions, filteredActions);
-		return filteredActions;
+	void SetQueryResultsCallback(std::function<void(uint64_t, std::vector<std::shared_ptr<BaseAction>>&&, bool)> callback) {
+		m_onQueryResults = std::move(callback);
 	}
 
-	// void AddAction(const BaseAction& item) override
-	// {
-	// auto it = std::find_if(m_allActions.begin(), m_allActions.end(),
-	// 						[&](const BaseAction& action)
-	// 						{
-	// 							return action.id == item.id;
-	// 						});
-
-	// if (it != m_allActions.end())
-	// {
-	// 	*it = item;
-	// }
-	// else
-	// {
-	// m_allActions.push_back(item);
-	// }
-	// 	NotifyActionsChanged();
-	// }
-
-	// void RemoveAction(const std::wstring& itemId) override
-	// {
-	// 	m_allActions.erase(
-	// 		std::remove_if(m_allActions.begin(), m_allActions.end(),
-	// 						[&](const BaseAction& item)
-	// 						{
-	// 							return item.id == itemId;
-	// 						}),
-	// 		m_allActions.end());
-	//
-	// 	NotifyActionsChanged();
-	// }
-
-
-	// void ClearActions(const std::wstring& pluginName) override
-	// {
-	// 	m_allActions.erase(
-	// 		std::remove_if(m_allActions.begin(), m_allActions.end(),
-	// 						[&](const BaseAction& item)
-	// 						{
-	// 							return item.id.find(pluginName + L"_") == 0;
-	// 						}),
-	// 		m_allActions.end());
-	//
-	// 	NotifyActionsChanged();
-	// }
-
-	void ShowMessage(const std::wstring& title, const std::wstring& message) override {
-		MessageBoxW(nullptr, message.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+	void SetCatalogChangedCallback(std::function<void()> callback) {
+		m_onCatalogChanged = std::move(callback);
 	}
 
-	HBITMAP LoadResIconAsBitmap(int nResID, int cx, int cy) override {
+	// ---- cross-thread requests (any thread) and their UI-thread handlers ----
+
+	// post_results: the batch is queued and one WM_PLUGIN_QUERY_RESULTS is posted per burst.
+	bool QueueQueryResults(const uint64_t queryId, std::vector<std::shared_ptr<BaseAction>>&& actions, const bool isFinal) {
+		if (queryId != CurrentQueryId()) return false;
+		{
+			std::lock_guard<std::mutex> lock(m_resultsMutex);
+			m_pendingResults.push_back({queryId, std::move(actions), isFinal});
+		}
+		if (g_mainHwnd && !m_resultsPosted.exchange(true)) {
+			PostMessageW(g_mainHwnd, WM_PLUGIN_QUERY_RESULTS, 0, 0);
+		}
+		return true;
+	}
+
+	void HandleQueryResultsMessage() {
+		m_resultsPosted.store(false);
+		std::vector<PendingResults> batches;
+		{
+			std::lock_guard<std::mutex> lock(m_resultsMutex);
+			batches.swap(m_pendingResults);
+		}
+		const uint64_t current = CurrentQueryId();
+		for (auto& batch : batches) {
+			if (batch.queryId != current || !m_onQueryResults) continue;
+			m_onQueryResults(batch.queryId, std::move(batch.actions), batch.isFinal);
+		}
+	}
+
+	// notify_actions_changed and the refresh workers: coalesced into one WM_PLUGIN_ACTIONS_CHANGED.
+	void RequestActionsChanged() {
+		BumpActionsVersion();
+		if (g_mainHwnd && !m_actionsChangedPosted.exchange(true)) {
+			PostMessageW(g_mainHwnd, WM_PLUGIN_ACTIONS_CHANGED, 0, 0);
+		}
+	}
+
+	void HandleActionsChangedMessage() {
+		m_actionsChangedPosted.store(false);
+		NotifyActionsChanged();
+	}
+
+	void HandleDirChangedMessage() {
+		m_dirChangedPosted.store(false);
+		// Debounce: a copy produces several notifications, reconcile once the writes settle.
+		if (g_mainHwnd) SetTimer(g_mainHwnd, TIMER_PLUGIN_DIR_CHANGED, 1000, nullptr);
+	}
+
+	// Hot install / update: compares the plugin folder with the catalog and loads, reloads or unloads
+	// what changed. Called from the UI thread after the folder watcher settled.
+	void ReconcilePluginDir() {
+		namespace fs = std::filesystem;
+		if (m_pluginDir.empty() || !fs::is_directory(m_pluginDir)) return;
+		const nlohmann::json userConfig = LoadUserPluginConfig();
+		std::map<std::wstring, fs::file_time_type> onDisk;
+		for (const auto& entry : fs::directory_iterator(m_pluginDir)) {
+			if (entry.is_regular_file() && entry.path().extension() == ".dll") {
+				std::error_code ec;
+				onDisk[entry.path().wstring()] = fs::last_write_time(entry.path(), ec);
+			}
+		}
+
+		bool changed = false;
+		// Removed or replaced files.
+		for (size_t i = 0; i < g_pluginCatalog.size();) {
+			PluginCatalogInfo& catalogInfo = g_pluginCatalog[i];
+			const auto disk = onDisk.find(catalogInfo.filePath);
+			if (disk == onDisk.end()) {
+				Logi(TAG, L"Plugin removed from disk: ", catalogInfo.filePath);
+				if (const PluginInfo* loaded = FindLoadedPluginByFilePath(catalogInfo.filePath)) {
+					UnloadPlugin(loaded->pluginId);
+				}
+				g_pluginCatalog.erase(g_pluginCatalog.begin() + static_cast<std::ptrdiff_t>(i));
+				changed = true;
+				continue;
+			}
+			if (disk->second != catalogInfo.fileTime) {
+				Logi(TAG, L"Plugin changed on disk, reloading: ", catalogInfo.filePath);
+				if (const PluginInfo* loaded = FindLoadedPluginByFilePath(catalogInfo.filePath)) {
+					UnloadPlugin(loaded->pluginId);
+				}
+				const std::wstring path = catalogInfo.filePath;
+				g_pluginCatalog.erase(g_pluginCatalog.begin() + static_cast<std::ptrdiff_t>(i));
+				AddPluginFromDisk(path, userConfig, true);
+				changed = true;
+				continue;
+			}
+			++i;
+		}
+		// New files.
+		for (const auto& [path, time] : onDisk) {
+			bool known = false;
+			for (const auto& catalogInfo : g_pluginCatalog) {
+				if (catalogInfo.filePath == path) { known = true; break; }
+			}
+			if (known) continue;
+			Logi(TAG, L"New plugin on disk: ", path);
+			AddPluginFromDisk(path, userConfig, true);
+			changed = true;
+		}
+
+		if (!changed) return;
+		if (m_onCatalogChanged) m_onCatalogChanged();
+		NotifyActionsChanged();
+	}
+
+	HBITMAP LoadResIconAsBitmap(int nResID, int cx, int cy) {
 		HICON hIcon = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(nResID),
 										IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
 		if (!hIcon) return nullptr;
@@ -811,19 +918,7 @@ public:
 		return hBmp;
 	}
 
-	void ShowSimpleToast(const std::wstring& title, const std::wstring& msg) override {
-#if !defined(__MINGW32__)
-		MyShowSimpleToast(title, msg);
-#endif
-	}
-
-	bool BeginOleDragDropFiles(const std::vector<std::wstring>& filePaths, HWND sourceHwnd) override {
-		OleDragDropData data;
-		data.filePaths = filePaths;
-		return BeginOleDragDropData(data, sourceHwnd);
-	}
-
-	bool BeginOleDragDropData(const OleDragDropData& data, HWND sourceHwnd) override {
+	bool BeginOleDragDropData(const OleDragDropData& data, HWND sourceHwnd) {
 		if (sourceHwnd) {
 			SetForegroundWindow(sourceHwnd);
 		}
@@ -838,24 +933,7 @@ public:
 		return dragHandled;
 	}
 
-	void ChangeEditTextText(const std::wstring& basic_string) override {
-		SetWindowTextW(g_editHwnd, basic_string.c_str());
-		// 将光标移到文本末尾
-		int textLength = GetWindowTextLengthW(g_editHwnd);
-		SendMessageW(g_editHwnd, EM_SETSEL, (WPARAM)textLength, (LPARAM)textLength);
-		SendMessageW(g_editHwnd, EM_SCROLLCARET, 0, 0);
-	}
-	
-	bool MyShowWindow(int nCmdShow,bool isForeground) override {
-		ShowWindow(g_mainHwnd, nCmdShow);
-		if (isForeground)
-		{
-			SetForegroundWindow(g_mainHwnd);
-		}
-		return true;
-	}
-
-	bool SetPluginSettingValue(uint16_t callerPluginId, const std::string& key, const nlohmann::json& value) override {
+	bool SetPluginSettingValue(uint16_t callerPluginId, const std::string& key, const nlohmann::json& value) {
 		const auto pluginIt = m_plugins.find(callerPluginId);
 		if (pluginIt == m_plugins.end() || key.empty()) {
 			return false;
@@ -866,16 +944,21 @@ public:
 			Loge(TAG, L"SetPluginSettingValue reject key: ", utf8_to_wide(key));
 			return false;
 		}
-		const auto settingIt = g_settings_map.find(key);
-		if (settingIt == g_settings_map.end()) {
-			Loge(TAG, L"SetPluginSettingValue key not found: ", utf8_to_wide(key));
-			return false;
-		}
-		try {
-			settingIt->second.setValue(value);
-		} catch (const std::exception& e) {
-			Loge(TAG, L"SetPluginSettingValue value type error: ", e.what());
-			return false;
+		{
+			std::unique_lock<std::shared_mutex> lock(g_settingsMapMutex);
+			const auto settingIt = g_settings_map.find(key);
+			if (settingIt == g_settings_map.end()) {
+				Loge(TAG, L"SetPluginSettingValue key not found: ", utf8_to_wide(key));
+				return false;
+			}
+			try {
+				settingIt->second.setValue(value);
+			} catch (const std::exception& e) {
+				Loge(TAG, L"SetPluginSettingValue value type error: ", e.what());
+				return false;
+			}
+			// The plugin changed it itself: no on_setting_changed for this one.
+			pluginIt->second.settingSnapshot[key] = SerializeSettingValue(settingIt->second);
 		}
 
 		SetSettingValueInList(g_settings_ui_last_save, key, value);
@@ -883,38 +966,142 @@ public:
 		SaveUserConfigValue(key, value);
 		return true;
 	}
-	
-	HBITMAP LoadSvgAsHBITMAP(const wchar_t* absolutePath,UINT targetWidth,UINT targetHeight) override
-	{
-		return MyLoadSvgAsHBITMAP(absolutePath, targetWidth, targetHeight);
-	}
 
-private:
 	bool CanUseRestrictedPluginBrowserApi(uint16_t callerPluginId) const {
 		const auto it = m_plugins.find(callerPluginId);
 		return it != m_plugins.end() && it->second.pkgName == PLUGIN_BROWSER_PACKAGE_NAME;
 	}
 
-	static void RebuildPluginIndices() {
-		std::vector<std::pair<uint16_t, PluginInfo>> pluginList;
-		pluginList.reserve(m_plugins.size());
-		for (auto& pair : m_plugins) {
-			pluginList.emplace_back(pair.first, std::move(pair.second));
+private:
+	// Finds the loaded plugin that published `action`; null for host actions or items of an unloaded plugin.
+	static PluginInfo* ResolveActionOwner(const BaseAction* action, uint64_t& userData) {
+		const auto* proxy = dynamic_cast<const PluginActionProxy*>(action);
+		if (!proxy) return nullptr;
+		const auto it = m_plugins.find(proxy->pluginId);
+		if (it == m_plugins.end() || !it->second.loaded || !it->second.context ||
+			it->second.context->serial != proxy->ownerSerial) {
+			return nullptr;
 		}
+		userData = proxy->userData;
+		return &it->second;
+	}
 
-		std::sort(pluginList.begin(), pluginList.end(), [](const auto& lhs, const auto& rhs) {
-			return lhs.first < rhs.first;
+	void RebuildDispatchOrder() {
+		m_dispatchOrder.clear();
+		for (const auto& [pluginId, info] : m_plugins) {
+			if (info.loaded) m_dispatchOrder.push_back(pluginId);
+		}
+		std::stable_sort(m_dispatchOrder.begin(), m_dispatchOrder.end(), [](const uint16_t a, const uint16_t b) {
+			const int32_t pa = m_plugins[a].priority, pb = m_plugins[b].priority;
+			return pa != pb ? pa > pb : a < b;
 		});
+	}
 
-		m_plugins.clear();
-		for (size_t i = 0; i < pluginList.size(); ++i) {
-			PluginInfo& info = pluginList[i].second;
-			info.pluginId = static_cast<uint16_t>(i);
-			if (info.plugin) {
-				info.plugin->OnPluginIdChange(info.pluginId);
-			}
-			m_plugins[info.pluginId] = std::move(info);
+	// 2.2 trigger keywords: no keywords configured = every input.
+	static bool IsRoutedTo(const PluginInfo& info, const std::wstring& lowerInput) {
+		if (!info.context) return true;
+		std::lock_guard<std::mutex> lock(info.context->mutex);
+		const CL_PluginContext& ctx = *info.context;
+		if (!ctx.keywordsConfigured) return true;
+		if (ctx.triggerFlags & CL_TRIGGER_ALSO_GLOBAL) return true;
+		for (const auto& keyword : ctx.keywords) {
+			if (lowerInput.size() >= keyword.size() && lowerInput.compare(0, keyword.size(), keyword) == 0) return true;
 		}
+		return false;
+	}
+
+	static void WarnIfSlow(PluginInfo& info, const wchar_t* what, const uint64_t startTick) {
+		const uint64_t now = GetTickCount64();
+		const uint64_t elapsed = now - startTick;
+		if (elapsed < PLUGIN_SLOW_CALLBACK_MS || now - info.lastSlowLogTick < 5000) return;
+		info.lastSlowLogTick = now;
+		Logw(TAG, L"Slow plugin callback: ", info.name, L" ", what, L" took ", elapsed, L" ms");
+	}
+
+	void RefreshPluginInline(PluginInfo& info) {
+		Logi(TAG, L"Loading actions from plugin: ", info.name);
+		const auto refreshStart = std::chrono::steady_clock::now();
+		info.api->refresh_actions(info.self);
+		info.refreshTimeMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - refreshStart).count());
+		Logi(TAG, L"Refresh done: ", info.name, L", ", info.refreshTimeMs, L" ms");
+	}
+
+	void RefreshPlugin(PluginInfo& info) {
+		if (!info.loaded || !CL_PLUGIN_HAS(info, refresh_actions)) return;
+		if (info.apiFlags & CL_PLUGIN_REFRESH_ANY_THREAD) StartRefreshAsync(info);
+		else RefreshPluginInline(info);
+	}
+
+	void StartRefreshAsync(PluginInfo& info) {
+		if (!info.refreshWorker) info.refreshWorker = std::make_unique<PluginRefreshWorker>();
+		PluginRefreshWorker& worker = *info.refreshWorker;
+		{
+			std::lock_guard<std::mutex> lock(worker.mutex);
+			if (worker.running) {
+				worker.pending = true;
+				return;
+			}
+			worker.running = true;
+			worker.pending = false;
+		}
+		if (worker.thread.joinable()) worker.thread.join();
+		// `info` lives in m_plugins until UnloadSinglePlugin, which joins this thread first.
+		worker.thread = std::thread([this, &info, &worker] {
+			const HRESULT coInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+			for (;;) {
+				RefreshPluginInline(info);
+				RequestActionsChanged();
+				std::lock_guard<std::mutex> lock(worker.mutex);
+				if (worker.pending) {
+					worker.pending = false;
+					continue;
+				}
+				worker.running = false;
+				break;
+			}
+			if (SUCCEEDED(coInit)) CoUninitialize();
+		});
+	}
+
+	static void JoinRefreshWorker(PluginInfo& info) {
+		if (!info.refreshWorker) return;
+		if (info.refreshWorker->thread.joinable()) info.refreshWorker->thread.join();
+	}
+
+	static std::string SerializeSettingValue(const SettingItem& item) {
+		if (item.type == "string" || item.type == "hotkeystring" || item.type == "list") return "s:" + item.stringValue;
+		if (item.type == "long") return "i:" + std::to_string(item.intValue);
+		if (item.type == "bool" || item.type == "expandswitch") return item.boolValue ? "b:1" : "b:0";
+		if (item.type == "double") return "d:" + std::to_string(item.doubleValue);
+		if (item.type == "stringArr") {
+			std::string joined = "a:";
+			for (const auto& value : item.stringArr) joined += value + '\x1f';
+			return joined;
+		}
+		return std::string();
+	}
+
+	// on_setting_changed for every "<pkg>.*" value that differs from the previous snapshot.
+	static void DispatchSettingChanges(PluginInfo& info) {
+		if (info.pkgName.empty()) return;
+		const std::string prefix = wide_to_utf8(info.pkgName) + ".";
+		std::map<std::string, std::string> current;
+		{
+			std::shared_lock<std::shared_mutex> lock(g_settingsMapMutex);
+			for (const auto& [key, item] : g_settings_map) {
+				if (key.rfind(prefix, 0) == 0) current[key] = SerializeSettingValue(item);
+			}
+		}
+		const bool firstTime = info.settingSnapshot.empty();
+		if (!firstTime && CL_PLUGIN_HAS(info, on_setting_changed)) {
+			for (const auto& [key, value] : current) {
+				const auto old = info.settingSnapshot.find(key);
+				if (old != info.settingSnapshot.end() && old->second == value) continue;
+				info.api->on_setting_changed(info.self, utf8_to_wide(key).c_str());
+			}
+		}
+		info.settingSnapshot = std::move(current);
 	}
 
 	static const PluginInfo* FindLoadedPluginByFilePath(const std::wstring& filePath) {
@@ -999,6 +1186,89 @@ private:
 		}
 	}
 
+	static bool ReadShadowCopySetting(const nlohmann::json& userConfig) {
+		if (!userConfig.is_object() || !userConfig.contains("pref_plugin_shadow_copy")) return false;
+		try {
+			return JsonValueToBool(userConfig.at("pref_plugin_shadow_copy"));
+		} catch (...) {
+			return false;
+		}
+	}
+
+	static std::wstring SafeWString(const wchar_t* value) {
+		return value ? std::wstring(value) : std::wstring();
+	}
+
+	// ---- catalog / manifest ----
+
+	static std::wstring ManifestPathFor(const std::wstring& dllPath) {
+		std::filesystem::path path(dllPath);
+		return path.replace_extension().wstring() + PLUGIN_MANIFEST_SUFFIX;
+	}
+
+	// "<stem>.plugin.json" next to the DLL describes the plugin without running its code.
+	static bool ReadPluginManifest(const std::wstring& dllPath, PluginCatalogInfo& catalogInfo) {
+		const std::wstring manifestPath = ManifestPathFor(dllPath);
+		std::error_code ec;
+		if (!std::filesystem::exists(manifestPath, ec)) return false;
+		const std::string text = ReadUtf8File(manifestPath);
+		if (text.empty()) return false;
+		try {
+			const nlohmann::json manifest = nlohmann::json::parse(text);
+			if (!manifest.is_object() || !manifest.contains("package_name")) return false;
+			catalogInfo.pkgName = utf8_to_wide(manifest.at("package_name").get<std::string>());
+			if (catalogInfo.pkgName.empty()) return false;
+			if (manifest.contains("name")) catalogInfo.name = utf8_to_wide(manifest.at("name").get<std::string>());
+			if (manifest.contains("description")) catalogInfo.description = utf8_to_wide(manifest.at("description").get<std::string>());
+			if (manifest.contains("version")) catalogInfo.version = utf8_to_wide(manifest.at("version").get<std::string>());
+			if (manifest.contains("default_setting_json")) {
+				const nlohmann::json& settings = manifest.at("default_setting_json");
+				catalogInfo.defaultSettingJson = utf8_to_wide(settings.is_string() ? settings.get<std::string>() : settings.dump());
+			}
+			if (manifest.contains("keywords") && manifest.at("keywords").is_array()) {
+				for (const auto& keyword : manifest.at("keywords")) {
+					if (keyword.is_string()) catalogInfo.keywords.push_back(utf8_to_wide(keyword.get<std::string>()));
+				}
+			}
+			if (manifest.contains("min_host_api_minor")) {
+				const auto minor = manifest.at("min_host_api_minor").get<uint32_t>();
+				if (minor > CL_API_VERSION_MINOR) {
+					Logw(TAG, L"Plugin needs host api 2.", minor, L", skipped: ", dllPath);
+					return false;
+				}
+			}
+			catalogInfo.fromManifest = true;
+			return true;
+		} catch (const std::exception& e) {
+			Loge(TAG, L"Manifest parse error ", manifestPath, L": ", e.what());
+			return false;
+		}
+	}
+
+	// Reads and validates the plugin table; the DLL must stay loaded while `api` is used.
+	static const CL_PluginApi* GetValidatedPluginApi(HMODULE handle, const std::wstring& dllPath) {
+		const auto getApi = reinterpret_cast<CL_GetPluginApiFn>(GetProcAddress(handle, CL_PLUGIN_ENTRY_NAME));
+		if (!getApi) {
+			Logw(TAG, L"Not a CandyLauncher plugin (no CandyPlugin_GetApi export): ", dllPath);
+			return nullptr;
+		}
+		const CL_PluginApi* api = getApi();
+		if (!api || !CL_HAS_FIELD(api, CL_PluginApi, destroy)) {
+			Logw(TAG, L"Invalid plugin api table: ", dllPath);
+			return nullptr;
+		}
+		if (api->api_major != CL_API_VERSION_MAJOR) {
+			Logw(TAG, L"Plugin api major mismatch, plugin=", api->api_major,
+				L", host=", CL_API_VERSION_MAJOR, L": ", dllPath);
+			return nullptr;
+		}
+		if (!api->create || !api->destroy || !api->package_name || !*api->package_name) {
+			Logw(TAG, L"Plugin api table misses create/destroy/package_name: ", dllPath);
+			return nullptr;
+		}
+		return api;
+	}
+
 	static bool ProbePluginCatalogInfo(const std::wstring& dllPath, PluginCatalogInfo& catalogInfo) {
 		catalogInfo.filePath = dllPath;
 		catalogInfo.name = GetPluginNameFromPathW(dllPath);
@@ -1009,113 +1279,198 @@ private:
 			return false;
 		}
 
-		const auto createFunc = (CreatePluginFunc)GetProcAddress(handle, "CreatePlugin");
-		const auto destroyFunc = (DestroyPluginFunc)GetProcAddress(handle, "DestroyPlugin");
-		if (!createFunc || !destroyFunc) {
-			Logw(TAG, L"Probe GetProcAddress failed for: ", dllPath);
+		const CL_PluginApi* api = GetValidatedPluginApi(handle, dllPath);
+		if (!api) {
 			FreeLibrary(handle);
 			return false;
 		}
 
-		IPlugin* pluginPtr = createFunc();
-		if (!pluginPtr) {
-			Logw(TAG, L"Probe CreatePlugin returned null for: ", dllPath);
-			FreeLibrary(handle);
-			return false;
-		}
+		if (api->name && *api->name) catalogInfo.name = api->name;
+		catalogInfo.description = SafeWString(api->description);
+		catalogInfo.version = SafeWString(api->version);
+		catalogInfo.pkgName = SafeWString(api->package_name);
+		catalogInfo.defaultSettingJson = SafeWString(api->default_setting_json);
 
-		catalogInfo.name = pluginPtr->GetPluginName();
-		catalogInfo.version = pluginPtr->GetPluginVersion();
-		catalogInfo.pkgName = pluginPtr->GetPluginPackageName();
-		catalogInfo.defaultSettingJson = pluginPtr->DefaultSettingJson();
-
-		destroyFunc(pluginPtr);
 		FreeLibrary(handle);
 		return true;
+	}
+
+	bool IsPackageInCatalog(const std::wstring& pkgName) const {
+		for (const auto& catalogInfo : g_pluginCatalog) {
+			if (catalogInfo.pkgName == pkgName) return true;
+		}
+		return false;
+	}
+
+	// Catalogs one DLL (manifest first, probe otherwise) and loads it when enabled.
+	// `refreshNow` runs refresh_actions right away (hot install); startup refreshes everything later.
+	void AddPluginFromDisk(const std::wstring& dllPath, const nlohmann::json& userConfig, const bool refreshNow = false) {
+		PluginCatalogInfo catalogInfo;
+		catalogInfo.filePath = dllPath;
+		catalogInfo.name = GetPluginNameFromPathW(dllPath);
+		std::error_code ec;
+		catalogInfo.fileTime = std::filesystem::last_write_time(dllPath, ec);
+		if (!ReadPluginManifest(dllPath, catalogInfo) && !ProbePluginCatalogInfo(dllPath, catalogInfo)) {
+			// 不是有效的插件（旧版 C++ 接口或 API 主版本不兼容），不加入目录
+			return;
+		}
+		if (IsPackageInCatalog(catalogInfo.pkgName)) {
+			Logw(TAG, L"Duplicate package_name ", catalogInfo.pkgName, L", skipped: ", dllPath);
+			return;
+		}
+		catalogInfo.enabled = IsPluginEnabledByConfig(catalogInfo.pkgName, userConfig);
+		g_pluginCatalog.push_back(catalogInfo);
+
+		if (!catalogInfo.enabled) {
+			Logi(TAG, L"Skip disabled plugin: ", catalogInfo.pkgName);
+			return;
+		}
+
+		const auto pluginLoadStart = GetTickCount64();
+		const bool loadResult = LoadPlugin(dllPath);
+		const uint64_t pluginLoadTime = GetTickCount64() - pluginLoadStart;
+		Logi(TAG, L"Load result for ", std::filesystem::path(dllPath).filename().wstring(), L": ",
+			(loadResult ? L"SUCCESS" : L"FAILED"));
+		if (!loadResult) return;
+		const PluginInfo* loadedPlugin = FindLoadedPluginByFilePath(dllPath);
+		if (!loadedPlugin) return;
+		PluginInfo& info = m_plugins[loadedPlugin->pluginId];
+		info.loadTimeMs = pluginLoadTime;
+		// The manifest is informational; the DLL's table is authoritative once loaded.
+		PluginCatalogInfo& stored = g_pluginCatalog.back();
+		if (stored.fromManifest && stored.pkgName != info.pkgName) {
+			Logw(TAG, L"Manifest package_name ", stored.pkgName, L" differs from DLL ", info.pkgName, L": ", dllPath);
+			stored.pkgName = info.pkgName;
+		}
+		if (stored.defaultSettingJson.empty()) stored.defaultSettingJson = info.defaultSettingJson;
+		if (refreshNow) RefreshPlugin(info);
+	}
+
+	// ---- shadow copies (pref_plugin_shadow_copy): the original DLL is never locked, so it can be
+	// overwritten in place while the plugin runs; the watcher then reloads it. ----
+
+	std::wstring ShadowDir() const {
+		return m_pluginDir + L"\\" + PLUGIN_SHADOW_DIR_NAME;
+	}
+
+	void PrepareShadowDir() const {
+		namespace fs = std::filesystem;
+		std::error_code ec;
+		fs::create_directories(ShadowDir(), ec);
+		SetFileAttributesW(ShadowDir().c_str(), FILE_ATTRIBUTE_HIDDEN);
+		// Copies left behind by a crash; the ones still locked by another instance stay.
+		for (const auto& entry : fs::directory_iterator(ShadowDir(), ec)) {
+			fs::remove(entry.path(), ec);
+		}
+		AddDllDirectory(m_pluginDir.c_str());
+	}
+
+	HMODULE LoadPluginLibrary(const std::wstring& dllPath, std::wstring& loadedPath) const {
+		loadedPath = dllPath;
+		if (!m_shadowCopy) return LoadLibraryW(dllPath.c_str());
+
+		namespace fs = std::filesystem;
+		std::error_code ec;
+		const auto time = fs::last_write_time(dllPath, ec).time_since_epoch().count();
+		wchar_t stamp[32];
+		swprintf_s(stamp, L"%llx", static_cast<unsigned long long>(time));
+		const std::wstring shadow = ShadowDir() + L"\\" + fs::path(dllPath).stem().wstring() + L"." + stamp + L".dll";
+		if (!fs::exists(shadow, ec) && !CopyFileW(dllPath.c_str(), shadow.c_str(), FALSE)) {
+			Logw(TAG, L"Shadow copy failed (", GetLastError(), L"), loading in place: ", dllPath);
+			return LoadLibraryW(dllPath.c_str());
+		}
+		loadedPath = shadow;
+		// Dependencies next to the original DLL still resolve through AddDllDirectory(m_pluginDir).
+		return LoadLibraryExW(shadow.c_str(), nullptr,
+							LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS);
 	}
 
 	bool LoadSinglePlugin(const std::wstring& dllPath, PluginInfo& info) {
 		Logi(TAG, L"LoadSinglePlugin start: ", info.name);
 
-		info.handle = LoadLibraryW(dllPath.c_str());
+		info.handle = LoadPluginLibrary(dllPath, info.loadedPath);
 		if (!info.handle) {
 			Loge(TAG, L"LoadLibraryW failed for: ", dllPath, L", Error: ", GetLastError());
 			return false;
 		}
 
-		info.createFunc = (CreatePluginFunc)GetProcAddress(info.handle, "CreatePlugin");
-		info.destroyFunc = (DestroyPluginFunc)GetProcAddress(info.handle, "DestroyPlugin");
-		info.getVersionFunc = (GetPluginApiVersionFunc)GetProcAddress(info.handle, "GetPluginApiVersion");
-
-		if (!info.createFunc || !info.destroyFunc) {
-			Loge(TAG, L"GetProcAddress failed - createFunc: ", (info.createFunc != nullptr),
-							L", destroyFunc: ", (info.destroyFunc != nullptr));
+		info.api = GetValidatedPluginApi(info.handle, dllPath);
+		if (!info.api) {
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
 			return false;
 		}
-
-		if (info.getVersionFunc) {
-			info.apiVersion = info.getVersionFunc();
-		}
-		// ConsolePrintln(TAG, L"Plugin API version: " + std::to_wstring(info.apiVersion));
-
-		IPlugin* pluginPtr = info.createFunc();
-		if (!pluginPtr) {
-			Loge(TAG, L"CreateSimplePlugin returned null");
+		if (FindLoadedPluginByPackageName(SafeWString(info.api->package_name))) {
+			Loge(TAG, L"Duplicate package_name already loaded, rejected: ", dllPath);
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
+			info.api = nullptr;
 			return false;
 		}
 
-		info.plugin.reset(pluginPtr);
+		static std::atomic<uint64_t> nextSerial{1};
+		info.apiMinor = info.api->api_minor;
+		info.apiFlags = CL_HAS_FIELD(info.api, CL_PluginApi, flags) ? info.api->flags : 0u;
+		if (info.api->name && *info.api->name) info.name = info.api->name;
+		info.description = SafeWString(info.api->description);
+		info.version = SafeWString(info.api->version);
+		info.pkgName = SafeWString(info.api->package_name);
+		info.defaultSettingJson = SafeWString(info.api->default_setting_json);
+		info.context = std::make_unique<CL_PluginContext>();
+		info.context->serial = nextSerial++;
+		info.context->pluginId = info.pluginId;
+		info.context->pkgName = info.pkgName;
+		info.context->logTag = info.name;
 
-		if (!info.plugin->Initialize(this)) {
-			Loge(TAG, L"Plugin Initialize failed");
-			info.destroyFunc(pluginPtr);
-			info.plugin.reset();
+		info.self = info.api->create(info.context.get(), GetHostApi());
+		if (!info.self) {
+			Loge(TAG, L"Plugin create failed: ", info.pkgName);
+			ReleasePluginContext(info);
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
+			info.api = nullptr;
 			return false;
 		}
-		Logi(TAG, L"Plugin Initialize success");
+		Logi(TAG, L"Plugin create success: ", info.pkgName, L", api ", info.api->api_major, L".", info.apiMinor,
+			(info.apiFlags & CL_PLUGIN_REFRESH_ANY_THREAD) ? L", refresh on worker" : L"");
 
-		info.version = info.plugin->GetPluginVersion();
-		info.pkgName = info.plugin->GetPluginPackageName();
 		info.loaded = true;
-
-		// info.plugin->LoadActions();
-
 		return true;
 	}
 
-	static void UnloadSinglePlugin(PluginInfo& info) {
-		Logi(TAG, L"Unloading plugin: ", info.name);
-		if (info.plugin) {
-			Logi(TAG, L"Shutting down plugin: ", info.name);
-			info.plugin->Shutdown();
-			if (info.destroyFunc) {
-				Logi(TAG, L"Destroying plugin: ", info.name);
-				info.destroyFunc(info.plugin.release());
-			}
+	// Drops everything the host keeps on behalf of the plugin, especially callbacks into its code.
+	static void ReleasePluginContext(PluginInfo& info) {
+		if (!info.context) return;
+		for (const auto& key : info.context->appCommands) {
+			appLaunchActionCallBacks.erase(key);
 		}
+		info.context.reset();
+	}
+
+	void UnloadSinglePlugin(PluginInfo& info) {
+		Logi(TAG, L"Unloading plugin: ", info.name);
+		// A refresh still running on the worker must finish before the instance goes away.
+		JoinRefreshWorker(info);
+		m_queryRecipients.erase(std::remove(m_queryRecipients.begin(), m_queryRecipients.end(), info.pluginId),
+								m_queryRecipients.end());
+		if (info.self && info.api) {
+			Logi(TAG, L"Destroying plugin: ", info.name);
+			info.api->destroy(info.self);
+			info.self = nullptr;
+		}
+		ReleasePluginContext(info);
 
 		if (info.handle) {
 			Logi(TAG, L"Freeing plugin library: ", info.name);
 			FreeLibrary(info.handle);
 			info.handle = nullptr;
 		}
+		if (!info.loadedPath.empty() && info.loadedPath != info.filePath) {
+			DeleteFileW(info.loadedPath.c_str());
+		}
 
+		info.api = nullptr;
 		info.loaded = false;
-	}
-
-	std::wstring& GetEditTextText() override {
-		return editTextBuffer;
-	}
-
-	static std::wstring GetPluginNameFromPath(const std::wstring& dllPath) {
-		std::filesystem::path path(dllPath);
-		return path.stem().wstring();
 	}
 
 	static std::wstring GetPluginNameFromPathW(const std::wstring& dllPath) {
@@ -1137,6 +1492,69 @@ private:
 			m_beforePluginUnload();
 		}
 	}
+
+	// ---- plugin folder watcher ----
+
+	void StartPluginDirWatcher() {
+		if (m_watchThread.joinable() || m_pluginDir.empty()) return;
+		m_watchStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+		m_watchThread = std::thread([this] { WatchPluginDir(); });
+	}
+
+	void StopPluginDirWatcher() {
+		if (m_watchStopEvent) SetEvent(m_watchStopEvent);
+		if (m_watchThread.joinable()) m_watchThread.join();
+		if (m_watchStopEvent) {
+			CloseHandle(m_watchStopEvent);
+			m_watchStopEvent = nullptr;
+		}
+	}
+
+	void WatchPluginDir() {
+		const HANDLE dir = CreateFileW(m_pluginDir.c_str(), FILE_LIST_DIRECTORY,
+										FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+										FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+		if (dir == INVALID_HANDLE_VALUE) {
+			Logw(TAG, L"Plugin dir watcher not started: ", GetLastError());
+			return;
+		}
+		OVERLAPPED overlapped{};
+		overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+		std::vector<BYTE> buffer(64 * 1024);
+		const HANDLE waits[2] = {m_watchStopEvent, overlapped.hEvent};
+		for (;;) {
+			ResetEvent(overlapped.hEvent);
+			if (!ReadDirectoryChangesW(dir, buffer.data(), static_cast<DWORD>(buffer.size()), FALSE,
+										FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE,
+										nullptr, &overlapped, nullptr)) {
+				break;
+			}
+			if (WaitForMultipleObjects(2, waits, FALSE, INFINITE) != WAIT_OBJECT_0 + 1) {
+				CancelIo(dir);
+				break;
+			}
+			DWORD bytes = 0;
+			if (!GetOverlappedResult(dir, &overlapped, &bytes, TRUE)) continue;
+			bool relevant = bytes == 0; // 缓冲区溢出时 bytes 为 0，保守地重新扫描
+			for (DWORD offset = 0; !relevant && offset < bytes;) {
+				const auto* notify = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(buffer.data() + offset);
+				const std::wstring name(notify->FileName, notify->FileNameLength / sizeof(wchar_t));
+				const std::wstring lower = MyToLower(name);
+				relevant = EndsWith(lower, L".dll") || EndsWith(lower, MyToLower(PLUGIN_MANIFEST_SUFFIX));
+				if (notify->NextEntryOffset == 0) break;
+				offset += notify->NextEntryOffset;
+			}
+			if (relevant && g_mainHwnd && !m_dirChangedPosted.exchange(true)) {
+				PostMessageW(g_mainHwnd, WM_PLUGIN_DIR_CHANGED, 0, 0);
+			}
+		}
+		CloseHandle(overlapped.hEvent);
+		CloseHandle(dir);
+	}
+
+	static const CL_HostApi* GetHostApi();
 };
 
 inline std::unique_ptr<PluginManager> g_pluginManager;
+
+#include "PluginHostApi.hpp"

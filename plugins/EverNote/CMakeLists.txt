@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 插件源文件
 set(PLUGIN_SOURCES
 		EverNotePlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		EverNoteAction.hpp
 		EverNotePluginData.hpp
 )

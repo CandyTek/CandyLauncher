@@ -8,7 +8,7 @@ add_executable(PluginTest
 #		../Bookmark/BookmarkPlugin.cpp
 #		../CalcExprtk/CalcPlugin.cpp
 #		../CherryTree/CherryTreePlugin.cpp
-#		../Example/ExamplePlugin.cpp
+		../Example/ExamplePlugin.cpp
 #		../FeatureLaunch/FeatureLaunchPlugin.cpp
 #		../Folder/FolderPlugin.cpp
 #		../JetbrainsWorkspaces/Main.cpp
@@ -16,7 +16,7 @@ add_executable(PluginTest
 #		../Registry/RegistryPlugin.cpp
 #		../RunningApp/RunningAppPlugin.cpp
 #		../Service/ServicePlugin.cpp
-		../TextFile/TextFilePlugin.cpp
+#		../TextFile/TextFilePlugin.cpp
 #		../UnitConverter/UnitConverterPlugin.cpp
 #		../ValueGenerator/Main.cpp
 #		../VSCodeWorkspaces/Main.cpp
@@ -87,4 +87,14 @@ add_custom_command(TARGET PluginTest POST_BUILD
 )
 
 add_test(NAME PluginTest COMMAND PluginTest)
+
+# 通过 DLL 加载书签插件，分别模拟当前主程序和 2.0 主程序
+if (TARGET BookmarkPlugin)
+	add_dependencies(PluginTest BookmarkPlugin)
+	add_test(NAME PluginTestBookmarkDll COMMAND PluginTest $<TARGET_FILE:BookmarkPlugin>)
+	add_test(NAME PluginTestBookmarkDllHost20 COMMAND PluginTest $<TARGET_FILE:BookmarkPlugin> --host-minor=0)
+	add_test(NAME PluginTestBookmarkDllHost21 COMMAND PluginTest $<TARGET_FILE:BookmarkPlugin> --host-minor=1)
+endif ()
+# 示例插件在 2.1 主程序上：2.2 的 SDK 封装必须静默退化
+add_test(NAME PluginTestHost21 COMMAND PluginTest --host-minor=1)
 

@@ -419,6 +419,16 @@ private:
 											? g_pluginManager->DispatchSendHotKey(selectedAction, vk, currentModifiers, wParam)
 											: 0;
 					if (pluginResult == 0) {
+						// Ctrl+C 且输入框没有选中文本时，复制插件为当前项提供的文本
+						if (vk == 'C' && currentModifiers == MOD_CTRL_KEY && selectedAction) {
+							DWORD selStart = 0, selEnd = 0;
+							SendMessage(hwnd, EM_GETSEL, reinterpret_cast<WPARAM>(&selStart), reinterpret_cast<LPARAM>(&selEnd));
+							std::wstring copyText;
+							if (selStart == selEnd && g_pluginManager->DispatchItemCopyText(selectedAction, copyText)) {
+								CopyTextToClipboard(g_mainHwnd, copyText);
+								return 0;
+							}
+						}
 						break;
 					} else {
 						return pluginResult;

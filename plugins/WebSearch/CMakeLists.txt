@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PLUGIN_SOURCES
 		WebSearchPlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		WebSearchAction.hpp
 		WebSearchPluginData.hpp
 		WebSearchUtil.hpp

@@ -1,48 +1,8 @@
 ﻿#pragma once
-#include <memory>
-#include "util/BitmapUtil.hpp"
-#include "BookmarkPluginData.hpp"
+#include <string>
+#include "plugins/sdk/CandyPluginSdk.hpp"
 
-class BookmarkAction final : public BaseAction {
-	public:
-	BookmarkAction() {
-		pluginId = m_pluginId;
-	}
+class BookmarkAction final : public candy::ActionBase {
+public:
 	std::wstring url;
-
-	
-	// 同一浏览器的所有条目共享图标
-	std::shared_ptr<LazySysImageIndex> icon;
-	std::wstring title;
-	std::wstring subTitle;
-
-	std::wstring& getTitle() override
-	{
-		return title;
-	}
-
-	std::wstring& getSubTitle() override
-	{
-		return subTitle;
-	}
-
-	std::wstring& getIconFilePath() override
-	{
-		static std::wstring empty;
-		return icon ? icon->path : empty;
-	}
-
-	int getIconFilePathIndex() override
-	{
-		return icon ? icon->get() : -1;
-	}
-
-	HBITMAP getIconBitmap() override
-	{
-		return nullptr;
-	}
-
-	~BookmarkAction() override
-	{
-	}
 };

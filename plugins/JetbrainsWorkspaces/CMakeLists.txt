@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 插件源文件
 set(PLUGIN_SOURCES
 		JbPlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		JbAction.hpp
 		JbPluginData.hpp
 		JbPluginUtil.hpp

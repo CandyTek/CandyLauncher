@@ -1,5 +1,4 @@
-﻿#include "../Plugin.hpp"
-#include <memory>
+﻿#include <memory>
 
 #include "BookmarkAction.hpp"
 #include "BookmarkPluginData.hpp"
@@ -78,47 +77,7 @@ static bool LaunchBookmarkUrl(const std::wstring& url, const bool useSubBrowser)
 }
 }
 
-class BookmarkPlugin : public IPlugin {
-private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-	std::wstring startStr = L"bm ";
-	ParsedHotkey hkOpenWithSubBrowser;
-
-public:
-	BookmarkPlugin() = default;
-	~BookmarkPlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"书签";
-	}
-
-	std::wstring GetPluginPackageName() const override {
-		return L"com.candytek.bookmarkplugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"索引浏览器书签";
-	}
-
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-	void RefreshAllActions() override {
-		if (!m_host) return;
-		allPluginActions = GetAllChromiumBookmarks();
-	}
-
-	std::wstring DefaultSettingJson() override {
-		return LR"json(
+static const wchar_t* BOOKMARK_DEFAULT_SETTING_JSON = LR"json(
 {
 	"version": 1,
 	"prefList": [
@@ -161,98 +120,110 @@ public:
 }
 
    )json";
+
+class BookmarkPlugin : public candy::Plugin {
+private:
+	candy::ActionSet<BookmarkAction> bookmarks{0};
+	std::wstring startStr = L"bm ";
+	ParsedHotkey hkOpenWithSubBrowser;
+	ParsedHotkey hkCopyMarkdownLink;
+
+	// 设置了激活命令时，书签只通过激活命令显示，不参与全局搜索
+	uint32_t BookmarkSetFlags() const {
+		return startStr.empty() ? CL_SET_GLOBAL_SEARCH : 0u;
 	}
 
-	void OnUserSettingsLoadDone() override {
-		startStr = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.start_str").stringValue);
-		isMatchTextUrl = m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.matchtext_url").boolValue;
-		g_browser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.mainbrowser").stringValue);
-		g_subbrowser = utf8_to_wide(m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.subbrowser").stringValue);
+public:
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
+	}
+
+	void RefreshActions() override {
+		bookmarks.SetFlags(GetHost(), BookmarkSetFlags());
+		bookmarks.Publish(GetHost(), GetAllChromiumBookmarks());
+	}
+
+	void OnUserSettingsLoaded() override {
+		const candy::Host& host = GetHost();
+		startStr = host.GetString(L"com.candytek.bookmarkplugin.start_str", L"bm ");
+		isMatchTextUrl = host.GetBool(L"com.candytek.bookmarkplugin.matchtext_url", true);
+		g_browser = host.GetString(L"com.candytek.bookmarkplugin.mainbrowser");
+		g_subbrowser = host.GetString(L"com.candytek.bookmarkplugin.subbrowser");
 		hkOpenWithSubBrowser = ParseHotkeyString("xx(1)(13)");
-		
-		// auto it = settings_map.find("pref_pinyin_mode");
-		// if (it != settings_map.end()) {
-		// 	pinyinType = it->second.stringValue;
-		// }
+		hkCopyMarkdownLink = ParseHotkeyString("xx(6)(67)"); // Ctrl+Shift+C
+		bookmarks.SetFlags(host, BookmarkSetFlags());
+		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
+		if (startStr.empty()) host.SetTriggerKeywords({});
+		else host.SetTriggerKeywords({startStr});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		bookmarks.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host || !startStr.empty()) return {};
-		return allPluginActions;
-	}
-
-	std::vector<std::shared_ptr<BaseAction>> InterceptInputShowResultsDirectly(const std::wstring& input) override {
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (!startStr.empty() && StartsWith(input, startStr)) {
 			// 单独显示本插件actions
-			return m_host->GetSuccessfullyMatchingTextActions(input.substr(startStr.size()),allPluginActions);
+			sink.AddMatches(bookmarks.Id(), input.substr(startStr.size()));
 		}
-		// 由插件系统管理
-		return {};
 	}
 
-	int OnSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
+	bool OnHotKey(const uint64_t userData, const UINT vk, const UINT currentModifiers, const WPARAM wparam) override {
 		if (hkOpenWithSubBrowser.matches(vk, currentModifiers)) {
-			auto bookmarkAction = std::dynamic_pointer_cast<BookmarkAction>(action);
-			if (!m_host || !bookmarkAction || bookmarkAction->url.empty()) return 0;
+			const auto bookmarkAction = bookmarks.Find(userData);
+			if (!bookmarkAction || bookmarkAction->url.empty()) return false;
 			LaunchBookmarkUrl(bookmarkAction->url, true);
-			m_host->PluginTaskDone();
-			return 1;
+			GetHost().TaskDone();
+			return true;
 		}
-		return 0;
+		if (hkCopyMarkdownLink.matches(vk, currentModifiers)) {
+			const auto bookmarkAction = bookmarks.Find(userData);
+			if (!bookmarkAction || bookmarkAction->url.empty()) return false;
+			const std::wstring title = bookmarkAction->title.empty() ? bookmarkAction->url : bookmarkAction->title;
+			// 主程序低于 2.1 时没有 set_clipboard_text，返回 false 交给主程序默认处理
+			return GetHost().SetClipboardText(L"[" + title + L"](" + bookmarkAction->url + L")");
+		}
+		return false;
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto action1 = std::dynamic_pointer_cast<BookmarkAction>(action);
-		if (!action1) return false;
-		if (action1->url.empty()) return false;
-		// const std::wstring command = L"start " + action1->url;
-		// system(wide_to_utf8(command).c_str());
+	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
+		const auto bookmarkAction = bookmarks.Find(userData);
+		if (!bookmarkAction || bookmarkAction->url.empty()) return false;
+		text = bookmarkAction->url;
+		return true;
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto action1 = bookmarks.Find(userData);
+		if (!action1 || action1->url.empty()) return false;
 		return LaunchBookmarkUrl(action1->url, false);
 	}
-	bool OnItemBeginDrag(const std::shared_ptr<BaseAction>& action, HWND sourceHwnd, POINT screenPt) override {
-		auto bookmarkAction = std::dynamic_pointer_cast<BookmarkAction>(action);
-		if (!m_host || !bookmarkAction) {
+
+	bool OnItemBeginDrag(const uint64_t userData, const HWND sourceHwnd, const POINT screenPt) override {
+		const auto bookmarkAction = bookmarks.Find(userData);
+		if (!bookmarkAction || bookmarkAction->url.empty()) {
 			return false;
 		}
 
-		const std::wstring url = bookmarkAction->url;
-		if (url.empty()) {
-			return false;
-		}
-
+		const std::wstring& url = bookmarkAction->url;
 		const std::wstring title = bookmarkAction->title.empty() ? url : bookmarkAction->title;
 		const std::wstring escapedTitle = EscapeHtmlText(title);
 		const std::wstring escapedUrl = EscapeHtmlText(url);
 
-		OleDragDropData dragData;
+		candy::DragData dragData;
 		dragData.text = title + L"\r\n" + url;
 		dragData.url = url;
 		dragData.html = L"<a href=\"" + escapedUrl + L"\">" + escapedTitle + L"</a>";
-		dragData.rtf = L"{\\rtf1\\ansi\\deff0 {\\field{\\*\\fldinst HYPERLINK \"" +
-			EscapeRtfText(url) + L"\"}{\\fldrslt " + EscapeRtfText(title) + L"}}}";
+		dragData.rtf = LR"({\rtf1\ansi\deff0 {\field{\*\fldinst HYPERLINK ")" +
+			EscapeRtfText(url) + LR"("}{\fldrslt )" + EscapeRtfText(title) + L"}}}";
 
 		Logi(L"BookmarkPlugin", L"Begin OLE drag drop url=", url);
-		return m_host->BeginOleDragDropData(dragData, sourceHwnd);
+		return GetHost().BeginDrag(dragData, sourceHwnd);
 	}
-
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new BookmarkPlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+// 读取书签文件只用到 "Any thread" 的主程序服务，可以在工作线程刷新，不阻塞启动
+CANDY_PLUGIN_EXPORT_EX(BookmarkPlugin, L"书签", L"索引浏览器书签", L"1.2.0", L"com.candytek.bookmarkplugin",
+						BOOKMARK_DEFAULT_SETTING_JSON, CL_PLUGIN_REFRESH_ANY_THREAD)

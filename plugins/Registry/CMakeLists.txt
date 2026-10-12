@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 插件源文件
 set(PLUGIN_SOURCES
 	RegistryPlugin.cpp
-	../Plugin.hpp
+	../sdk/CandyPluginSdk.hpp
 	RegistryAction.hpp
 	RegistryPluginData.hpp
 	RegistryEntry.hpp

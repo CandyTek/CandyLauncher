@@ -63,9 +63,10 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - **view/SwitchView.hpp**: a switch control that imitates windows8ui
 
 ### Plugin system
-- **plugins/PluginManager.hpp**: Plugin core, manage all plugin events of the program. It implements the IPluginHost interface, which allows plugins to interact with the host environment
-- **plugins/Plugin.hpp**: Implement the parent class of the plugin, which provides methods for retrieving plugin metadata (name ...) and handling plugin-specific actions
-- **plugins/BaseAction.hpp**: Element base class of program main list
+- **plugins/sdk/CandyPluginApi.h**: Pure C plugin ABI (`CL_PluginApi` exported by plugins via `CandyPlugin_GetApi`, `CL_HostApi` provided by the host). Rules and porting guide: [DOC_PLUGIN_API_ABI_NOTES.md](docs/DOC_PLUGIN_API_ABI_NOTES.md)
+- **plugins/sdk/CandyPluginSdk.hpp**: Header-only C++ layer compiled into plugins (`candy::Plugin`, `candy::Host`, `candy::ActionSet<T>`, `CANDY_PLUGIN_EXPORT`)
+- **plugins/PluginManager.hpp**: Plugin core, loads plugins and dispatches events; `PluginHostApi.hpp` implements `CL_HostApi`, `PluginActionProxy.hpp` holds host-owned copies of plugin list items
+- **plugins/BaseAction.hpp**: Element base class of program main list (host only, never crosses the DLL boundary)
 
 #### Plugin module
 - **[Bookmark](plugins/Bookmark/BookmarkPlugin.cpp**: Indexes bookmarks of browsers such as Edge Chrome

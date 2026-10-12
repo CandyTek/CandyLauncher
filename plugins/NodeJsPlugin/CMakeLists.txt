@@ -11,7 +11,7 @@ set(PLUGIN_SOURCES
     NodeJsScriptManager.hpp
     NodeJsPluginData.hpp
     NodeJsPlugin.cpp
-    ../Plugin.hpp
+    ../sdk/CandyPluginSdk.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

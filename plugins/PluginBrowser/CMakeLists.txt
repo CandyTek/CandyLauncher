@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PLUGIN_SOURCES
 		PluginBrowserPlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		PluginBrowserAction.hpp
 		PluginBrowserPluginData.hpp
 )

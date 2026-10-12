@@ -34,6 +34,14 @@
 			"defValue": false
 		},
 		{
+			"key": "pref_plugin_shadow_copy",
+			"title": "插件影子加载 (可在运行时覆盖 plugins 目录中的 DLL，重启生效)",
+			"title_en": "Plugin shadow copies (plugin DLLs can be replaced while running; needs restart)",
+			"type": "bool",
+			"subPage": "normal",
+			"defValue": false
+		},
+		{
 			"key": "pref_check_app_version",
 			"title": "自动检查更新(未完善)",
 			"title_en": "Automatically check for updates (unfinished)",

@@ -83,6 +83,9 @@ add_test(NAME UrlUtilTest COMMAND UrlUtilTest)
 #add_test(NAME ScreenToolsQrTest COMMAND ScreenToolsQrTest
 #	${CMAKE_SOURCE_DIR}/plugins/ScreenTools2/test.png)
 
+# The ScreenTools plugin may be disabled in the root CMakeLists to speed up builds;
+# build the ZXing QR library here so the test does not depend on the plugin.
+include(${CMAKE_SOURCE_DIR}/plugins/ScreenTools/ZxingQr.cmake)
 add_executable(ScreenToolsZxingQrTest ScreenToolsZxingQrTest.cpp
 	${CMAKE_SOURCE_DIR}/plugins/ScreenTools/QrDecoder.cpp)
 target_link_libraries(ScreenToolsZxingQrTest PRIVATE screen_tools_zxing_qr gdiplus)

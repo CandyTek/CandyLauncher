@@ -348,6 +348,8 @@ static void refreshAppLaunchAction() {
 
 	baseAppLaunchActions.push_back(base_launch_action1);
 	// baseAppLaunchActions.push_back(base_launch_action2);
+	// 主程序自己的条目变了，合并列表需要重建
+	PluginManager::BumpActionsVersion();
 }
 
 static void listViewCleanupGraphicsResources() {
@@ -579,9 +581,13 @@ static void addActionDone() {
 	InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 }
 
+// PluginManager::ActionsVersion() the merged allActions list was built from; 0 = must rebuild.
+inline uint64_t g_allActionsBuiltVersion = 0;
+
 static void clearVisibleActionReferences() {
 	filteredActions.clear();
 	allActions.clear();
+	g_allActionsBuiltVersion = 0;
 	if (g_listViewHwnd) {
 		ListView_SetItemCountEx(g_listViewHwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
 		g_listViewSystemIconWarmer.reset(g_listViewHwnd, filteredActions);
@@ -592,14 +598,34 @@ static void clearVisibleActionReferences() {
 // 编辑框筛选列表内容
 inline void actionFilter(const std::wstring& keyword) {
 	filteredActions.clear();
-	allActions.clear();
-	allActions = baseAppLaunchActions;
-	PluginManager::GetAllPluginActions(allActions);
+	// 合并列表只在插件发布/优先级/加载状态变化后重建，而不是每次按键
+	const uint64_t version = PluginManager::ActionsVersion();
+	if (version != g_allActionsBuiltVersion || allActions.empty()) {
+		allActions.clear();
+		allActions = baseAppLaunchActions;
+		if (g_pluginManager) g_pluginManager->AppendPluginActions(allActions);
+		g_allActionsBuiltVersion = version;
+	}
 
 	// ConsolePrintln(L"项目数量" + std::to_wstring(allActions.size()));
 	TextMatch(keyword, allActions, filteredActions);
 	// 关键方法，用于提交列表数据更新
 	addActionDone();
+}
+
+// Results a plugin delivered through post_results for the query currently shown (UI thread).
+inline void appendQueryResults(const uint64_t queryId, std::vector<std::shared_ptr<BaseAction>>&& results, const bool isFinal) {
+	if (queryId != PluginManager::CurrentQueryId() || results.empty() || !g_listViewHwnd) return;
+	const bool wasEmpty = filteredActions.empty();
+	filteredActions.insert(filteredActions.end(), std::make_move_iterator(results.begin()),
+							std::make_move_iterator(results.end()));
+	ListView_SetItemCountEx(g_listViewHwnd, filteredActions.size(), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+	if (wasEmpty) {
+		ListView_SetItemState(g_listViewHwnd, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+		ListView_EnsureVisible(g_listViewHwnd, 0, FALSE);
+	}
+	g_listViewSystemIconWarmer.reset(g_listViewHwnd, filteredActions);
+	if (IsWindowVisible(g_listViewHwnd)) InvalidateRect(g_listViewHwnd, nullptr, FALSE);
 }
 
 static void listViewMeasureItem(MEASUREITEMSTRUCT* lpMeasureItem) {
@@ -1002,12 +1028,18 @@ inline void textMatching() {
 		currectActionArg = L"";
 	}
 	if (g_pluginManager) {
-		if (const auto list = PluginManager::IsInterceptInputShowResultsDirectly(editTextBuffer2); !list.empty()) {
-			filteredActions = list;
+		// 每次按键是一个新的查询；之前的异步查询被取消，其迟到的结果会被丢弃
+		const uint64_t queryId = g_pluginManager->BeginQuery();
+		if (auto list = g_pluginManager->DispatchInterceptInput(editTextBuffer2); !list.empty()) {
+			filteredActions = std::move(list);
 			addActionDone();
+			g_pluginManager->DispatchQuery(queryId, editTextBuffer2, currectActionArg);
 			return;
 		}
 		g_pluginManager->DispatchUserInput(editTextBuffer2);
+		actionFilter(editTextBuffer2);
+		g_pluginManager->DispatchQuery(queryId, editTextBuffer2, currectActionArg);
+		return;
 	}
 	actionFilter(editTextBuffer2);
 }

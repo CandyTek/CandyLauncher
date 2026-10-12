@@ -12,7 +12,7 @@ set(PLUGIN_SOURCES
 		../../util/BaseTools.hpp
 		../../model/SettingItem.hpp
 		${CMAKE_SOURCE_DIR}/3rdparty/ExprTk/exprtk.hpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		CalcEngine.hpp
 		CalcPluginData.hpp
 )

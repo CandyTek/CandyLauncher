@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 插件源文件
 set(PLUGIN_SOURCES
 		CherryTreePlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		CherryTreeAction.hpp
 		CherryTreePluginData.hpp
 		${CMAKE_SOURCE_DIR}/3rdparty/pugixml/src/pugixml.cpp

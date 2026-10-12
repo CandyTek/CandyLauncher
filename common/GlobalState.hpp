@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <Shobjidl.h>
+#include <shared_mutex>
 #include <string>
 #include <variant>
 #include <gdiplus.h>
@@ -41,6 +42,8 @@ extern std::vector<SettingItem> g_settings_ui_last_save;
 extern std::vector<SettingItem> g_settings_ui;
 // 在任何地方都可以调用这个数组来获取用户配置项
 extern std::unordered_map<std::string, SettingItem> g_settings_map;
+// Plugins read settings from worker threads; LoadSettingsMap and plugin writes take it exclusively.
+inline std::shared_mutex g_settingsMapMutex;
 
 extern const std::wstring EXE_FOLDER_PATH;
 extern std::wstring USER_SETTINGS_PATH;

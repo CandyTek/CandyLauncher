@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(PLUGIN_SOURCES
 		RunningAppAction.hpp
 		RunningAppPlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		RunningAppPluginData.hpp
 		../../util/MainTools.hpp
 		../../util/BitmapUtil.hpp

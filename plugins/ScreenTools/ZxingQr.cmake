@@ -1,0 +1,64 @@
+﻿# Builds the ZXing QR-only static library used by ScreenToolsPlugin and ScreenToolsZxingQrTest.
+# Included from both plugins/ScreenTools/CMakeLists.txt and tests/CMakeLists.txt, so guard
+# against defining the target twice.
+if(TARGET screen_tools_zxing_qr)
+	return()
+endif()
+
+# ZXING_READERS builds every format. This plugin needs only the QR decoder.
+set(ZXING_SRC ${CMAKE_SOURCE_DIR}/3rdparty/zxing-cpp/core/src)
+add_library(screen_tools_zxing_qr STATIC
+	${ZXING_SRC}/Barcode.cpp
+	${ZXING_SRC}/BarcodeFormat.cpp
+	${ZXING_SRC}/BinaryBitmap.cpp
+	${ZXING_SRC}/BitArray.cpp
+	${ZXING_SRC}/BitMatrix.cpp
+	${ZXING_SRC}/BitSource.cpp
+	${ZXING_SRC}/CharacterSet.cpp
+	${ZXING_SRC}/ConcentricFinder.cpp
+	${ZXING_SRC}/Content.cpp
+	${ZXING_SRC}/ECI.cpp
+	${ZXING_SRC}/Error.cpp
+	${ZXING_SRC}/GenericGF.cpp
+	${ZXING_SRC}/GenericGFPoly.cpp
+	${ZXING_SRC}/GlobalHistogramBinarizer.cpp
+	${ZXING_SRC}/GridSampler.cpp
+	${ZXING_SRC}/HRI.cpp
+	${ZXING_SRC}/HybridBinarizer.cpp
+	${ZXING_SRC}/PerspectiveTransform.cpp
+	${ZXING_SRC}/ReedSolomonDecoder.cpp
+	${ZXING_SRC}/ResultPoint.cpp
+	${ZXING_SRC}/TextDecoder.cpp
+	${ZXING_SRC}/Utf.cpp
+	${ZXING_SRC}/qrcode/QRBitMatrixParser.cpp
+	${ZXING_SRC}/qrcode/QRCodecMode.cpp
+	${ZXING_SRC}/qrcode/QRDataBlock.cpp
+	${ZXING_SRC}/qrcode/QRDecoder.cpp
+	${ZXING_SRC}/qrcode/QRDetector.cpp
+	${ZXING_SRC}/qrcode/QRErrorCorrectionLevel.cpp
+	${ZXING_SRC}/qrcode/QRFormatInformation.cpp
+	${ZXING_SRC}/qrcode/QRReader.cpp
+	${ZXING_SRC}/qrcode/QRVersion.cpp
+	${ZXING_SRC}/libzueci/zueci.c)
+set_source_files_properties(${ZXING_SRC}/libzueci/zueci.c PROPERTIES COMPILE_DEFINITIONS ZUECI_EMBED_NO_TO_ECI)
+target_include_directories(screen_tools_zxing_qr PUBLIC ${ZXING_SRC})
+target_compile_definitions(screen_tools_zxing_qr PRIVATE ZXING_READERS)
+target_compile_features(screen_tools_zxing_qr PUBLIC cxx_std_17)
+
+if(MSVC)
+	target_compile_options(screen_tools_zxing_qr PRIVATE
+			/wd4244
+			/wd4996
+			/wd4018
+			/wd5287
+			/wd4267
+			/wd4554
+			/wd4146
+			/wd4311
+	)
+else()
+	target_compile_options(screen_tools_zxing_qr PRIVATE
+			-Wno-parentheses
+			-Wno-conversion
+	)
+endif()

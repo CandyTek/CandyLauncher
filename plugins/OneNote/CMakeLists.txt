@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 插件源文件
 set(PLUGIN_SOURCES
 		OneNotePlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		OneNoteAction.hpp
 		OneNotePluginData.hpp
 		OneNoteUtil.hpp

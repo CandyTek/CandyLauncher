@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(PLUGIN_SOURCES
 		ToolBoxAction.hpp
 		ToolBoxPlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		ToolBoxPluginData.hpp	
 		qrcodegen.cpp
 		qrcodegen.hpp

@@ -348,6 +348,12 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 	g_pluginManager->SetActionsChangedCallback([]() {
 		refreshVisibleActionsFromCurrentInput();
 	});
+	g_pluginManager->SetQueryResultsCallback(appendQueryResults);
+	// 插件目录热更新后重建设置列表（插件开关、设置项、优先级）
+	g_pluginManager->SetCatalogChangedCallback([]() {
+		LoadSettingList();
+		g_pluginManager->NotifyUserSettingsLoadDone();
+	});
 	Init(g_mainHwnd, hInstance);
 	userSettingsAfterTheAppStart();
 	g_pluginManager->NotifyUserSettingsLoadDone();
@@ -691,6 +697,9 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 					// 没有拖动，直接隐藏
 					HideWindow();
 				}
+			} else if (wParam == TIMER_PLUGIN_DIR_CHANGED) {
+				KillTimer(hWnd, TIMER_PLUGIN_DIR_CHANGED);
+				if (g_pluginManager) g_pluginManager->ReconcilePluginDir();
 			} else if (wParam == TIMER_RELOAD_SKIN_FILE) {
 				KillTimer(hWnd, TIMER_RELOAD_SKIN_FILE);
 				if (refreshSkin(g_currectSkinFilePath)) {
@@ -712,6 +721,15 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			g_pluginManager->OnMainWindowShowNotifi(false);
 		}
 		break;
+	case WM_PLUGIN_QUERY_RESULTS:
+		if (g_pluginManager) g_pluginManager->HandleQueryResultsMessage();
+		return 0;
+	case WM_PLUGIN_ACTIONS_CHANGED:
+		if (g_pluginManager) g_pluginManager->HandleActionsChangedMessage();
+		return 0;
+	case WM_PLUGIN_DIR_CHANGED:
+		if (g_pluginManager) g_pluginManager->HandleDirChangedMessage();
+		return 0;
 	case WM_APP_UPDATE_AVAILABLE:
 		return AppUpdate::HandleUpdateAvailableMessage(lParam);
 	case WM_APP_UPDATE_ERROR:

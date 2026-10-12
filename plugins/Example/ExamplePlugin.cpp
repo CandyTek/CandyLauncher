@@ -1,79 +1,11 @@
-﻿#include "../Plugin.hpp"
-#include <windows.h>
+﻿#include <windows.h>
 #include <memory>
 
 #include "ExampleAction.hpp"
 #include "ExamplePluginData.hpp"
 #include "../../util/BitmapUtil.hpp"
 
-class ExamplePlugin : public IPlugin {
-private:
-	std::vector<std::shared_ptr<BaseAction>> allPluginActions;
-	std::vector<std::shared_ptr<BaseAction>> dynamicExampleActions;
-
-public:
-	ExamplePlugin() = default;
-	~ExamplePlugin() override = default;
-
-	std::wstring GetPluginName() const override {
-		return L"ExamplePlugin";
-	}
-
-	std::wstring GetPluginPackageName() const override {
-		return L"com.example.plugin";
-	}
-
-	std::wstring GetPluginVersion() const override {
-		return L"1.0.0";
-	}
-
-	std::wstring GetPluginDescription() const override {
-		return L"简单示例插件";
-	}
-
-	// 不要在初始化里加载Actions，由主程序调用 RefreshAllActions
-	bool Initialize(IPluginHost* host) override {
-		m_host = host;
-		return m_host != nullptr;
-	}
-	
-	void OnPluginIdChange(const uint16_t pluginId) override {
-		m_pluginId = pluginId;
-	}
-
-
-	void RefreshAllActions() override {
-		if (!m_host) return;
-
-		allPluginActions.clear();
-		// 应该使用make_shared，而不是简单的ExampleAction，这样子iconBitmap 的图标才能正常显示
-		std::shared_ptr<ExampleAction> action1 = std::make_shared<ExampleAction>();
-		action1->id = L"ExamplePlugin_hello";
-		action1->title = L"Hello World";
-		action1->subTitle = L"显示Hello World消息";
-		action1->matchText = m_host->GetTheProcessedMatchingText(action1->title);
-		action1->iconBitmap = LoadShell32IconAsBitmap(15);
-		allPluginActions.push_back(action1);
-
-		std::shared_ptr<ExampleAction> action2 = std::make_shared<ExampleAction>();
-		action2->id = L"ExamplePlugin_time";
-		action2->title = L"显示时间";
-		action2->subTitle = L"显示当前系统时间";
-		action2->matchText = m_host->GetTheProcessedMatchingText(action2->title);
-		action2->iconBitmap = LoadShell32IconAsBitmap(265);
-		allPluginActions.push_back((action2));
-
-		std::shared_ptr<ExampleAction> action3 = std::make_shared<ExampleAction>();
-		action3->id = L"ExamplePlugin_time_en";
-		action3->title = L"Show Time";
-		action3->subTitle = L"Show current system time";
-		action3->matchText = m_host->GetTheProcessedMatchingText(action3->title);
-		action3->iconBitmap = LoadShell32IconAsBitmap(265);
-		allPluginActions.push_back((action3));
-	}
-
-	std::wstring DefaultSettingJson() override {
-		return LR"(
+static const wchar_t* EXAMPLE_DEFAULT_SETTING_JSON = LR"(
 {
 	"version": 1,
 	"prefList": [
@@ -111,96 +43,137 @@ public:
 }
 
    )";
+
+// 演示 2.2 的全部机制：触发关键字、临时结果 (TransientSet)、异步查询 (OnQuery + PostResults)、
+// 共享图标 (iconKey)、稳定标识 (stableKey)、设置项变更通知 (OnSettingChanged)。
+class ExamplePlugin : public candy::Plugin {
+private:
+	// 0 号集合：固定 actions；1 号集合：根据输入动态生成的 actions，两者都参与全局搜索
+	candy::ActionSet<ExampleAction> staticActions{0};
+	candy::ActionSet<ExampleAction> dynamicActions{1};
+	// 2 号：输入 "ex " 时直接显示的临时结果；3 号：异步查询结果。集合 id 不能和 ActionSet 重复
+	candy::TransientSet<ExampleAction> interceptResults{2};
+	candy::TransientSet<ExampleAction> queryResults{3};
+
+	static std::shared_ptr<ExampleAction> MakeAction(const wchar_t* id, const wchar_t* title, const wchar_t* subtitle) {
+		auto action = std::make_shared<ExampleAction>();
+		action->id = id;
+		action->title = title;
+		action->subtitle = subtitle;
+		// 稳定标识：刷新后主程序仍能认出同一个条目
+		action->stableKey = id;
+		return action;
 	}
 
-	void OnUserSettingsLoadDone() override {
-		// auto it = settings_map.find("pref_pinyin_mode");
-		// if (it != settings_map.end()) {
-		// 	pinyinType = it->second.stringValue;
-		// }
+	std::shared_ptr<ExampleAction> FindAction(const uint64_t userData) const {
+		if (auto action = staticActions.Find(userData)) return action;
+		if (auto action = dynamicActions.Find(userData)) return action;
+		if (auto action = interceptResults.Find(userData)) return action;
+		return queryResults.Find(userData);
+	}
+
+public:
+	// 不要在初始化里加载Actions，由主程序调用 RefreshActions
+	bool Initialize() override {
+		m_host = &GetHost();
+		return true;
+	}
+
+	void OnUserSettingsLoaded() override {
+		// "ex " 开头的输入路由到本插件；CL_TRIGGER_ALSO_GLOBAL 让 OnUserInput 对其它输入也继续生效
+		GetHost().SetTriggerKeywords({L"ex "}, CL_TRIGGER_ALSO_GLOBAL);
+	}
+
+	void OnSettingChanged(const std::wstring& key) override {
+		GetHost().Log(L"setting changed: " + key);
+	}
+
+	void RefreshActions() override {
+		// matchText 留空，由主程序根据 title 生成（小写 + 拼音）
+		auto action1 = MakeAction(L"ExamplePlugin_hello", L"Hello World", L"显示Hello World消息");
+		action1->iconBitmap = LoadShell32IconAsBitmap(15);
+
+		// 两个条目共用一张位图：只有第一个带 iconBitmap，第二个只给 iconKey
+		auto action2 = MakeAction(L"ExamplePlugin_time", L"显示时间", L"显示当前系统时间");
+		action2->iconBitmap = LoadShell32IconAsBitmap(265);
+		action2->iconKey = L"clock";
+
+		auto action3 = MakeAction(L"ExamplePlugin_time_en", L"Show Time", L"Show current system time");
+		action3->iconKey = L"clock";
+
+		staticActions.Publish(GetHost(), {action1, action2, action3});
 	}
 
 	void Shutdown() override {
-		if (m_host) {
-			allPluginActions.clear();
-		}
+		staticActions.ClearLocal();
+		dynamicActions.ClearLocal();
 		m_host = nullptr;
 	}
 
-	std::vector<std::shared_ptr<BaseAction>> GetTextMatchActions() override {
-		if (!m_host) return {};
-		std::vector<std::shared_ptr<BaseAction>> combinedActions = allPluginActions;
-		combinedActions.insert(combinedActions.end(), dynamicExampleActions.begin(), dynamicExampleActions.end());
-
-		return combinedActions;
-	}
-
-	void OnMainWindowShow(bool isShow) override {
-	}
-
 	void OnUserInput(const std::wstring& input) override {
-		if (!m_host) return;
-		dynamicExampleActions.clear();
-		// 只在输入包含特定关键词时才添加动态actions，并且使用固定ID避免重复
+		// 只在输入包含特定关键词时才添加动态actions
 		if (input.find(L"test") != std::wstring::npos) {
-			ExampleAction action;
-			action.id = L"ExamplePlugin_dynamic_test";
-			action.title = L"测试功能";
-			action.subTitle = L"执行测试功能 (输入包含test)";
-			action.matchText = L"test";
-			action.iconFilePath = LR"(c:\nothing.ico)";
-			action.iconFilePathIndex = GetSysImageIndex(action.getIconFilePath());
-			dynamicExampleActions.push_back(std::make_shared<ExampleAction>(action));
+			auto action = MakeAction(L"ExamplePlugin_dynamic_test", L"测试功能", L"执行测试功能 (输入包含test)");
+			action->matchText = L"test";
+			action->matchTextVerbatim = true;
+			action->iconPath = LR"(c:\nothing.ico)";
+			dynamicActions.Publish(GetHost(), {action});
 		} else if (input.find(L"calc") != std::wstring::npos) {
-			ExampleAction action;
-			action.id = L"ExamplePlugin_calculator";
-			action.title = L"计算器";
-			action.subTitle = L"打开系统计算器 (输入包含calc)";
-			action.matchText = L"calc";
-			action.iconFilePath = LR"(c:\Windows\System32\calc.exe)";
-			action.iconFilePathIndex = GetSysImageIndex(action.getIconFilePath());
-			dynamicExampleActions.push_back(std::make_shared<ExampleAction>(action));
+			auto action = MakeAction(L"ExamplePlugin_calculator", L"计算器", L"打开系统计算器 (输入包含calc)");
+			action->matchText = L"calc";
+			action->matchTextVerbatim = true;
+			action->iconPath = LR"(c:\Windows\System32\calc.exe)";
+			dynamicActions.Publish(GetHost(), {action});
+		} else if (dynamicActions.Size() > 0) {
+			dynamicActions.Clear(GetHost());
 		}
 	}
 
-	bool OnActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) override {
-		if (!m_host) return false;
-		auto exampleAction = std::dynamic_pointer_cast<ExampleAction>(action);
+	// "ex xxx"：接管结果列表，显示只为本次输入生成的条目（不进入任何集合，不做拼音处理）
+	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
+		if (input.rfind(L"ex ", 0) != 0) return;
+		const std::wstring arg = input.substr(3);
+		auto echo = MakeAction(L"ExamplePlugin_echo", (L"Echo: " + arg).c_str(), L"临时结果，回车显示消息");
+		sink.AddTransient(interceptResults, {echo});
+	}
+
+	// 异步查询：这里为了示例直接在调用线程里投递；真实插件会在工作线程完成后再 PostResults
+	void OnQuery(const uint64_t queryId, const std::wstring& input, const std::wstring& arg) override {
+		if (input.find(L"async") == std::wstring::npos) return;
+		auto result = MakeAction(L"ExamplePlugin_async", L"异步结果", (L"query " + std::to_wstring(queryId)).c_str());
+		queryResults.PostResults(GetHost(), queryId, {result}, true, true);
+	}
+
+	bool OnActionExecute(const uint64_t userData, const std::wstring& arg) override {
+		const auto exampleAction = FindAction(userData);
 		if (!exampleAction) return false;
 
 		if (exampleAction->id == L"ExamplePlugin_hello") {
-			m_host->ShowMessage(L"示例插件", L"Hello World from Plugin!");
+			GetHost().ShowMessage(L"示例插件", L"Hello World from Plugin!");
 		} else if (exampleAction->id == L"ExamplePlugin_time") {
 			SYSTEMTIME st;
 			GetSystemTime(&st);
 			wchar_t timeStr[256];
 			wsprintf(timeStr, L"当前时间: %04d-%02d-%02d %02d:%02d:%02d UTC",
 					st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			m_host->ShowMessage(L"时间", timeStr);
+			GetHost().ShowMessage(L"时间", timeStr);
 		} else if (exampleAction->id == L"ExamplePlugin_time_en") {
 			SYSTEMTIME st;
 			GetSystemTime(&st);
 			wchar_t timeStr[256];
 			wsprintf(timeStr, L"Current time: %04d-%02d-%02d %02d:%02d:%02d UTC",
 					st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-			m_host->ShowMessage(L"Time", timeStr);
+			GetHost().ShowMessage(L"Time", timeStr);
 		} else if (exampleAction->id == L"ExamplePlugin_dynamic_test") {
-			m_host->ShowMessage(L"测试", L"这是动态生成的测试动作被执行了！");
+			GetHost().ShowMessage(L"测试", L"这是动态生成的测试动作被执行了！");
 		} else if (exampleAction->id == L"ExamplePlugin_calculator") {
 			ShellExecuteA(nullptr, "open", "calc.exe", nullptr, nullptr, SW_SHOWNORMAL);
+		} else if (exampleAction->id == L"ExamplePlugin_echo" || exampleAction->id == L"ExamplePlugin_async") {
+			GetHost().ShowMessage(L"示例插件", exampleAction->title);
 		}
 		return true;
 	}
 };
 
-PLUGIN_EXPORT IPlugin* CreatePlugin() {
-	return new ExamplePlugin();
-}
-
-PLUGIN_EXPORT void DestroyPlugin(IPlugin* plugin) {
-	delete plugin;
-}
-
-PLUGIN_EXPORT int GetPluginApiVersion() {
-	return 1;
-}
+CANDY_PLUGIN_EXPORT(ExamplePlugin, L"ExamplePlugin", L"简单示例插件", L"1.0.0", L"com.example.plugin",
+					EXAMPLE_DEFAULT_SETTING_JSON)

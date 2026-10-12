@@ -111,20 +111,24 @@ static void initGlobalVariable() {
 }
 
 static void LoadSettingsMap() {
-	g_settings_map.clear();
+	{
+		// 插件可能正在工作线程上读取设置
+		std::unique_lock<std::shared_mutex> lock(g_settingsMapMutex);
+		g_settings_map.clear();
 
-	// 递归加载设置项到map中
-	std::function<void(const std::vector<SettingItem>&)> loadSettingsToMap =
-		[&](const std::vector<SettingItem>& settings) {
-		for (const auto& item : settings) {
-			g_settings_map[item.key] = item;
-			if ((item.type == "expand" || item.type == "expandswitch") && !item.children.empty()) {
-				loadSettingsToMap(item.children);
+		// 递归加载设置项到map中
+		std::function<void(const std::vector<SettingItem>&)> loadSettingsToMap =
+			[&](const std::vector<SettingItem>& settings) {
+			for (const auto& item : settings) {
+				g_settings_map[item.key] = item;
+				if ((item.type == "expand" || item.type == "expandswitch") && !item.children.empty()) {
+					loadSettingsToMap(item.children);
+				}
 			}
-		}
-	};
+		};
 
-	loadSettingsToMap(g_settings_ui_last_save);
+		loadSettingsToMap(g_settings_ui_last_save);
+	}
 	initGlobalVariable();
 	Logi(L"SettingsManager", L"总共 ", g_settings_map.size(), L" 个设置项");
 	// auto it = g_settings_map.find("com.candytek.normallaunchplugin.moreitem");
@@ -369,14 +373,21 @@ static void LoadSettingList() {
 				setting.subPageIndex = GetTabIndexForSetting("plugin");
 				setting.setValue(nlohmann::json(pluginCatalog.enabled));
 
+				std::wstring defaultSettingJson = pluginCatalog.defaultSettingJson;
+				uint16_t settingPluginId = 65535;
 				if (const PluginInfo* loadedPlugin = g_pluginManager->FindLoadedPluginByPackageName(pluginCatalog.pkgName)) {
 					setting.pluginId = loadedPlugin->pluginId;
-					const std::wstring defaultSettingJson = pluginCatalog.defaultSettingJson.empty()
-																? loadedPlugin->plugin->DefaultSettingJson()
-																: pluginCatalog.defaultSettingJson;
-					setting.children = ParseConfig(wide_to_utf8(defaultSettingJson), loadedPlugin->pluginId);
-				} else if (!pluginCatalog.defaultSettingJson.empty() && pluginCatalog.defaultSettingJson != L"{}") {
-					setting.children = ParseConfig(wide_to_utf8(pluginCatalog.defaultSettingJson), 65535);
+					settingPluginId = loadedPlugin->pluginId;
+					if (defaultSettingJson.empty()) defaultSettingJson = loadedPlugin->defaultSettingJson;
+				}
+				// default_setting_json 可以为空（插件没有自己的设置项），此时只保留开关和优先级
+				if (!defaultSettingJson.empty() && defaultSettingJson != L"{}") {
+					try {
+						setting.children = ParseConfig(wide_to_utf8(defaultSettingJson), settingPluginId);
+					} catch (...) {
+						Loge(L"SettingsManager", L"注意，该插件的设置json加载失败: ", pluginCatalog.name);
+						setting.children.clear();
+					}
 				}
 
 				SettingItem priorityItem;
@@ -392,7 +403,7 @@ static void LoadSettingList() {
 
 				pluginSettings.push_back(setting);
 			} catch (...) {
-				Loge(L"SettingsManager", L"注意，该插件的设置json加载失败: ", pluginCatalog.name);
+				Loge(L"SettingsManager", L"注意，该插件的设置项创建失败: ", pluginCatalog.name);
 			}
 		}
 	}

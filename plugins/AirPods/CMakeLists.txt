@@ -10,7 +10,7 @@ set(PLUGIN_SOURCES
 	AirPodsBatteryService.hpp
 	AirPodsAction.hpp
 	AirPodsPluginData.hpp
-	../Plugin.hpp
+	../sdk/CandyPluginSdk.hpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})

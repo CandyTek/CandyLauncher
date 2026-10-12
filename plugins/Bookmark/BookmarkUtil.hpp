@@ -2,6 +2,7 @@
 
 #include "util/json.hpp"
 #include "BookmarkAction.hpp"
+#include "BookmarkPluginData.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -68,8 +69,8 @@ static void FlattenBookmarkNodes(const json& node, std::vector<RawBookmarkRef>& 
 // 并行构建 Action：每个元素按下标写入，保持书签原有顺序
 static void BuildBookmarkActions(
 	const std::vector<RawBookmarkRef>& rawList,
-	std::vector<std::shared_ptr<BaseAction>>& out,
-	const std::shared_ptr<LazySysImageIndex>& icon) {
+	std::vector<std::shared_ptr<BookmarkAction>>& out,
+	const std::wstring& iconPath) {
 	const size_t base = out.size();
 	out.resize(base + rawList.size());
 
@@ -79,12 +80,15 @@ static void BuildBookmarkActions(
 			auto act = std::make_shared<BookmarkAction>();
 			Utf8ToWideFast(item.name, act->title);
 			Utf8ToWideFast(item.url, act->url);
-			act->subTitle = act->url;
-			act->icon = icon;
+			act->subtitle = act->url;
+			act->stableKey = act->url;
+			act->iconPath = iconPath;
+			// 在插件内并行处理匹配文本，主程序原样使用
+			act->matchTextVerbatim = true;
 			try {
 				act->matchText = isMatchTextUrl
-					? m_host->GetTheProcessedMatchingText(act->title) + act->url
-					: m_host->GetTheProcessedMatchingText(act->title);
+					? m_host->ProcessMatchText(act->title) + act->url
+					: m_host->ProcessMatchText(act->title);
 			} catch (...) {
 				act->matchText = act->title;
 			}
@@ -125,9 +129,9 @@ static std::string findFirstIcoFile(const std::string& folderPath) {
 
 // 解析指定基目录 + profile 下的 Chromium 书签（Chrome/Edge 通用）
 // 如果你在多 Profile 环境（比如同时有 "Profile 1"、"Profile 2"），用 GetChromeBookmarksFromBaseDir(baseDir, "Profile 1") 指定即可。
-static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(const std::string& baseDir, const std::string& profile) {
+static std::vector<std::shared_ptr<BookmarkAction>> GetChromeBookmarksFromBaseDir(const std::string& baseDir, const std::string& profile) {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BookmarkAction>> result;
 
 
 	try {
@@ -144,7 +148,6 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 		if (browserIconPath.empty()) {
 			browserIconPath = LR"(C:\Program Files\Internet Explorer\iexplore.exe)";
 		}
-		const auto icon = std::make_shared<LazySysImageIndex>(std::move(browserIconPath));
 
 		const auto t0 = std::chrono::steady_clock::now();
 		std::string content;
@@ -170,7 +173,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 		if (auto other = rootsIt->find("other"); other != rootsIt->end()) {
 			FlattenBookmarkNodes(*other, rawList);
 		}
-		BuildBookmarkActions(rawList, result, icon);
+		BuildBookmarkActions(rawList, result, browserIconPath);
 		const auto t2 = std::chrono::steady_clock::now();
 		using ms = std::chrono::milliseconds;
 		Logi(L"BookmarkUtil", L"[perf] ", p.wstring(), L" parse=", std::chrono::duration_cast<ms>(t1 - t0).count(),
@@ -185,23 +188,30 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarksFromBaseDir(co
 	return result;
 }
 
-inline std::string getLocalAppData() {
-	char* buffer = nullptr;
-	size_t len = 0;
-
-	if (_dupenv_s(&buffer, &len, "LOCALAPPDATA") == 0 && buffer != nullptr) {
-		std::string localAppData(buffer);
-		free(buffer); // 记得释放内存
-		return localAppData;
+// 浏览器书签来源列表，元素可以是 chrome / edge / 书签文件路径
+inline std::vector<std::string> GetBrowserList() {
+	std::vector<std::string> list;
+	for (const auto& item : m_host->GetStringArray(L"com.candytek.bookmarkplugin.browser_list")) {
+		list.push_back(wide_to_utf8(item));
 	}
+	return list;
+}
 
-	return "";
+inline std::string getLocalAppData() {
+	// 用 Win32 API 读取环境变量，MinGW 的 msvcrt 没有 _dupenv_s
+	const DWORD required = GetEnvironmentVariableA("LOCALAPPDATA", nullptr, 0);
+	if (required == 0) return "";
+	std::string localAppData(required, '\0');
+	const DWORD written = GetEnvironmentVariableA("LOCALAPPDATA", localAppData.data(), required);
+	if (written == 0 || written >= required) return "";
+	localAppData.resize(written);
+	return localAppData;
 }
 
 
-static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarks() {
+static std::vector<std::shared_ptr<BookmarkAction>> GetChromeBookmarks() {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BookmarkAction>> result;
 
 	const std::string localAppData = getLocalAppData();
 	if (localAppData.empty()) {
@@ -216,14 +226,14 @@ static std::vector<std::shared_ptr<BaseAction>> GetChromeBookmarks() {
 // ---- Edge: 新增支持 ----
 
 // 如果未来需要支持自定义 profile（例如 "Profile 1"），可复用此函数
-static std::vector<std::shared_ptr<BaseAction>> GetEdgeBookmarksFromBaseDir(const std::string& baseDir, const std::string& profile) {
+static std::vector<std::shared_ptr<BookmarkAction>> GetEdgeBookmarksFromBaseDir(const std::string& baseDir, const std::string& profile) {
 	// Edge 书签文件结构与 Chrome 一致，直接复用解析逻辑
 	return GetChromeBookmarksFromBaseDir(baseDir, profile);
 }
 
-static std::vector<std::shared_ptr<BaseAction>> GetEdgeBookmarks() {
+static std::vector<std::shared_ptr<BookmarkAction>> GetEdgeBookmarks() {
 	namespace fs = std::filesystem;
-	std::vector<std::shared_ptr<BaseAction>> result;
+	std::vector<std::shared_ptr<BookmarkAction>> result;
 
 	const std::string localAppData = getLocalAppData();
 	if (localAppData.empty()) {
@@ -235,11 +245,11 @@ static std::vector<std::shared_ptr<BaseAction>> GetEdgeBookmarks() {
 	return GetEdgeBookmarksFromBaseDir(baseDir.u8string(), "Default");
 }
 
-static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks3() {
-	std::vector<std::shared_ptr<BaseAction>> result;
-	const auto& list = m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.browser_list").stringArr;
+static std::vector<std::shared_ptr<BookmarkAction>> GetAllChromiumBookmarks3() {
+	std::vector<std::shared_ptr<BookmarkAction>> result;
+	const auto list = GetBrowserList();
 
-	std::vector<std::future<std::vector<std::shared_ptr<BaseAction>>>> futures;
+	std::vector<std::future<std::vector<std::shared_ptr<BookmarkAction>>>> futures;
 
 	for (const std::string& item : list) {
 		if (MyTrim(item).empty()) continue;
@@ -253,7 +263,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks3() {
 				char expandedPath[MAX_PATH];
 				ExpandEnvironmentStringsA(item.c_str(), expandedPath, MAX_PATH);
 				if (GetFileAttributesA(expandedPath) == INVALID_FILE_ATTRIBUTES) {
-					return std::vector<std::shared_ptr<BaseAction>>{};
+					return std::vector<std::shared_ptr<BookmarkAction>>{};
 				}
 				return GetChromeBookmarksFromBaseDir(expandedPath, "Default");
 			}
@@ -271,13 +281,13 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks3() {
 	return result;
 }
 
-static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks() {
-    std::vector<std::shared_ptr<BaseAction>> result;
+static std::vector<std::shared_ptr<BookmarkAction>> GetAllChromiumBookmarks() {
+    std::vector<std::shared_ptr<BookmarkAction>> result;
     
     // 拷贝配置列表，避免异步线程执行期间 settings 发生重新分配
-    const auto list = m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.browser_list").stringArr;
+    const auto list = GetBrowserList();
 
-    std::vector<std::future<std::vector<std::shared_ptr<BaseAction>>>> futures;
+    std::vector<std::future<std::vector<std::shared_ptr<BookmarkAction>>>> futures;
     futures.reserve(list.size());
 
     for (const std::string& item : list) {
@@ -285,7 +295,7 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks() {
         if (trimmed.empty()) continue;
 
         // 按值捕获 item，确保线程内部持有独立副本
-        futures.push_back(std::async(std::launch::async, [trimmed]() -> std::vector<std::shared_ptr<BaseAction>> {
+        futures.push_back(std::async(std::launch::async, [trimmed]() -> std::vector<std::shared_ptr<BookmarkAction>> {
             try {
                 if (trimmed == "chrome") {
                     return GetChromeBookmarks();
@@ -300,7 +310,8 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks() {
                     if (ExpandEnvironmentStringsA(trimmed.c_str(), expandedPath.data(), requiredSize) == 0) {
                         return {};
                     }
-                    expandedPath.pop_back(); // 移除末尾 '\0'
+                    // ANSI 版本返回的长度可能比实际多，按实际字符串长度截断
+                    expandedPath.resize(std::char_traits<char>::length(expandedPath.c_str()));
 
                     if (GetFileAttributesA(expandedPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
                         return {};
@@ -327,9 +338,9 @@ static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks() {
 }
 
 // （可选）如需一次性聚合 Chrome + Edge：
-static std::vector<std::shared_ptr<BaseAction>> GetAllChromiumBookmarks2() {
-	std::vector<std::shared_ptr<BaseAction>> result;
-	std::vector<std::string> list = m_host->GetSettingsMap().at("com.candytek.bookmarkplugin.browser_list").stringArr;
+static std::vector<std::shared_ptr<BookmarkAction>> GetAllChromiumBookmarks2() {
+	std::vector<std::shared_ptr<BookmarkAction>> result;
+	std::vector<std::string> list = GetBrowserList();
 
 	for (std::string& basic_string : list) {
 		if (basic_string == "chrome") {

@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 插件源文件
 set(PLUGIN_SOURCES
 		TextFilePlugin.cpp
-		../Plugin.hpp
+		../sdk/CandyPluginSdk.hpp
 		TextFileAction.hpp
 		TextFilePluginData.hpp
 		TextFileUtil.hpp
