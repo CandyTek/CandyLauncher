@@ -47,7 +47,7 @@ static void CreateDefaultWebSearchConfig(const std::wstring& path) {
 		j["engines"].push_back(e);
 	};
 
-	addEngine("gg",   "Google",           "https://www.google.com/search?q=%s&oq=hello&sourceid=chrome&ie=UTF-8");
+	addEngine("gg",   "Google",           "https://www.google.com/search?q=%s&ie=UTF-8");
 	addEngine("gt",   "Google Translate",  "https://translate.google.com/?hl=en&tab=wT#en/zh-CN/%s");
 	addEngine("ii",   "Bing",              "http://www.bing.com/search?q=%s");
 	addEngine("bd",   "Baidu",             "https://www.baidu.com/s?wd=%s");

@@ -122,6 +122,14 @@ public:
 			bool success = false;
 			std::wstring message;
 
+			// 启停服务会影响系统，执行前弹窗让用户再次确认
+			const std::wstring confirmText = serviceAction->isRunning
+				? Tr(L"msg.confirm_stop", L"Stop service \"{0}\"?")
+				: Tr(L"msg.confirm_start", L"Start service \"{0}\"?");
+			const int choice = MessageBoxW(nullptr, candy::Format(confirmText, {serviceAction->displayName}).c_str(),
+										   Tr(L"msg.title", L"Service").c_str(), MB_YESNO | MB_ICONQUESTION | MB_TOPMOST);
+			if (choice != IDYES) return false;
+
 			if (serviceAction->isRunning) {
 				// 停止服务
 				success = StopWindowsService(serviceAction->serviceName);

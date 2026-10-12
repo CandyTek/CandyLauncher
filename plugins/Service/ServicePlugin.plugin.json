@@ -1,4 +1,4 @@
-{
+﻿{
 	"package_name": "com.candytek.serviceplugin",
 	"name": "Windows Services",
 	"description": "Index and manage Windows services",
@@ -56,7 +56,9 @@
 				"stop_ok": "Service stopped: {0}",
 				"stop_fail": "Failed to stop service: {0}",
 				"start_ok": "Service started: {0}",
-				"start_fail": "Failed to start service: {0}"
+				"start_fail": "Failed to start service: {0}",
+				"confirm_stop": "Stop service \"{0}\"?",
+				"confirm_start": "Start service \"{0}\"?"
 			}
 		},
 		"zh-CN": {
@@ -89,7 +91,9 @@
 				"stop_ok": "成功停止服务: {0}",
 				"stop_fail": "停止服务失败: {0}",
 				"start_ok": "成功启动服务: {0}",
-				"start_fail": "启动服务失败: {0}"
+				"start_fail": "启动服务失败: {0}",
+				"confirm_stop": "是否停止服务「{0}」？",
+				"confirm_start": "是否启动服务「{0}」？"
 			}
 		}
 	}
