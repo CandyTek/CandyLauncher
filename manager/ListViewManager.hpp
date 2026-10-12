@@ -255,8 +255,8 @@ static void listViewInitializeGraphicsResources() {
 
 
 	if (g_skinJson != nullptr) {
-		g_listViewBackgroundColor = HexToGdiplusColor(
-			validateHexColor(g_skinJson.value("listview_bg_color", ""), "#FFFFFF"));
+		g_listViewBackgroundColor = ApplySkinWindowOpacity(HexToGdiplusColor(
+			validateHexColor(g_skinJson.value("listview_bg_color", ""), "#FFFFFF")));
 		g_itemIconSelectedX = g_skinJson.value("item_icon_selected_x", 4);
 		g_itemIconSelectedY = g_skinJson.value("item_icon_selected_y", 4);
 		g_itemIconX = g_skinJson.value("item_icon_x", 4);
@@ -303,8 +303,8 @@ static void listViewInitializeGraphicsResources() {
 	} else {
 	}
 
-	Gdiplus::Color itemBgGdiplusColor = HexToGdiplusColor(itemBgColor);
-	Gdiplus::Color itemBgGdiplusColorSelected = HexToGdiplusColor(itemBgColorSelected);
+	Gdiplus::Color itemBgGdiplusColor = ApplySkinWindowOpacity(HexToGdiplusColor(itemBgColor));
+	Gdiplus::Color itemBgGdiplusColorSelected = ApplySkinWindowOpacity(HexToGdiplusColor(itemBgColorSelected));
 
 	Gdiplus::Color itemFontGdiplusColor1 = HexToGdiplusColor(itemFontColor1);
 	Gdiplus::Color itemFontGdiplusColor2 = HexToGdiplusColor(itemFontColor2);

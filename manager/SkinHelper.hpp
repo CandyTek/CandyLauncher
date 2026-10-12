@@ -12,6 +12,7 @@
 #include "SkinFileUtil.hpp"
 #include "BackgroundLayerPainter.hpp"
 #include "../util/StringUtil.hpp"
+#include "common/GuaranteedSkinJson.hpp"
 
 // 监听皮肤文件改动
 inline std::thread g_skinFileWatcherThread;
@@ -125,6 +126,7 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 			image = nullptr;
 			ShowErrorMsgBox(L"加载背景图片失败");
 		}
+		image = BakeSkinWindowOpacity(image);
 	}
 }
 
@@ -142,6 +144,7 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 			image = nullptr;
 			ShowErrorMsgBox(L"加载背景图片失败");
 		}
+		image = BakeSkinWindowOpacity(image);
 	}
 }
 
@@ -233,13 +236,20 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	std::ifstream in((skinPath.data()));
 	if (!in) {
 		Loge(L"SkinHelper", L"文件不存在: ", skinPath);
-		return false;
+		skinPath = getCurrectSkinPath(L"default");
+		in = std::ifstream((skinPath.data()));
 	}
+	std::string utf8json;
 
-	// 读取整个文件内容（UTF-8 编码）
-	std::ostringstream buffer;
-	buffer << in.rdbuf();
-	std::string utf8json = buffer.str();
+	if (!in) {
+		Loge(L"SkinHelper", L"文件不存在: ", skinPath);
+		utf8json = GUARANTEED_SKIN_JSON;
+	} else {
+		// 读取整个文件内容（UTF-8 编码）
+		std::ostringstream buffer;
+		buffer << in.rdbuf();
+		utf8json = buffer.str();
+	}
 
 	// 解析 JSON
 	try {
@@ -252,20 +262,22 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 		g_skinJson["skin_folder"] = std::filesystem::absolute(fullPath.parent_path()).u8string();
 	} catch (const nlohmann::json::parse_error& e) {
 		Loge(L"SkinHelper", L"JSON 解析错误: ", e.what());
-		return false;
+		try {
+			g_skinJson = nlohmann::json::parse(GUARANTEED_SKIN_JSON);
+			std::filesystem::path fullPath(skinPath);
+		} catch (const nlohmann::json::parse_error& e2) {
+			Loge(L"SkinHelper", L"JSON 解析错误: ", e2.what());
+			return false;
+		}
 	}
 	// --- 1. 更新主窗口 ---
 	MAIN_WINDOW_WIDTH = g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH);
 	MAIN_WINDOW_HEIGHT = g_skinJson.value("window_height", DEFAULT_MAIN_WINDOW_HEIGHT);
 	SetWindowPos(g_mainHwnd, nullptr, 0, 0, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
 
-	int windowOpacity = g_skinJson.value("window_opacity", 255);
-	if (windowOpacity < 0) windowOpacity = 0;
-	if (windowOpacity > 255) windowOpacity = 255;
-	if (g_lastWindowOpacity != windowOpacity) {
-		g_lastWindowOpacity = windowOpacity;
-		SetLayeredWindowAttributes(g_mainHwnd, 0, static_cast<BYTE>(windowOpacity), LWA_ALPHA);
-	}
+	// 透明度在加载背景图、解析背景色时烘焙进 alpha（见 ApplySkinWindowOpacity），这里只需先记录下来。
+	// 不要改回 SetLayeredWindowAttributes：那会让主窗口变成分层窗口，输入时整窗闪烁
+	g_skinWindowOpacity = std::clamp(g_skinJson.value("window_opacity", 255), 0, 255);
 
 	// --- 2. 更新编辑框 (hEdit) ---
 	if (g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {

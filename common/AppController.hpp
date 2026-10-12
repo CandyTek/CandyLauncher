@@ -331,7 +331,7 @@ inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
 				return 1;
 			} else {
 				// 绘制透明色
-				Gdiplus::SolidBrush bgBrush(HexToGdiplusColor(bgColorStr));
+				Gdiplus::SolidBrush bgBrush(ApplySkinWindowOpacity(HexToGdiplusColor(bgColorStr)));
 				Gdiplus::Graphics graphics(hdc);
 				graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
 				Gdiplus::Rect rect(ps.rcPaint.left,

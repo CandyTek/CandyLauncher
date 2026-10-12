@@ -29,7 +29,7 @@ inline EditPaintStyle g_editPaintStyle;
 
 // 皮肤更新时解析一次；闪烁和输入触发的 WM_PAINT 只读取已解析的值。
 static void RefreshEditPaintStyle() {
-	g_editPaintStyle.background = GetColor("editbox_bg_color", "#FFFFFF");
+	g_editPaintStyle.background = ApplySkinWindowOpacity(GetColor("editbox_bg_color", "#FFFFFF"));
 	g_editPaintStyle.font = GetColor("editbox_font_color", "#222222");
 	g_editPaintStyle.selectionBackground = GetColor("editbox_selection_bg_color", "#3399FF");
 	g_editPaintStyle.selectionFont = GetColor("editbox_selection_font_color", "#FFFFFF");

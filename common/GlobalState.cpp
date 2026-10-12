@@ -85,7 +85,7 @@ std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1 = nullptr;
 std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2 = nullptr;
 std::wstring g_currectSkinFilePath = L"default";
 
-int g_lastWindowOpacity = 255;
+int g_skinWindowOpacity = 255;
 
 int g_itemIconX = 4;
 int g_itemIconY = 4;

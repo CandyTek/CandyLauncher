@@ -132,7 +132,8 @@ extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected1;
 extern std::unique_ptr<Gdiplus::Font> g_listItemFontSelected2;
 extern std::wstring g_currectSkinFilePath;
 
-extern int g_lastWindowOpacity;
+// 皮肤 window_opacity（0~255）：绘制各背景层时按比例降低 alpha，不使用分层窗口
+extern int g_skinWindowOpacity;
 
 extern int g_itemIconX;
 extern int g_itemIconY;

@@ -101,6 +101,7 @@ add_executable(CandyLauncher WIN32
 		util/SvgUtil.hpp
 		manager/ProcessManager.hpp
 		manager/SkinFileUtil.hpp
+		common/GuaranteedSkinJson.hpp
 )
 
 # 语言配置
