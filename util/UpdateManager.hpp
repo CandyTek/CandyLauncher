@@ -228,9 +228,14 @@ private:
 	std::string _targetVersion;
 };
 
-inline void StartDownloadUpdate(const std::string& updateUrl, const std::string& versionString, const bool manual) {
-	if (updateUrl.empty()) {
+inline void StartDownloadUpdate(const CAutoUpdaterGithub::VersionEntry& entry, const bool manual) {
+	if (entry.versionUpdateUrl.empty()) {
 		MessageBoxW(g_mainHwnd, L"No supported update package was found in the GitHub release.", L"Update", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+		return;
+	}
+	// 下载后由 updater 库校验 SHA-256（来自 GitHub API 的 digest 字段），缺失则拒绝安装
+	if (entry.versionUpdateSha256.empty()) {
+		MessageBoxW(g_mainHwnd, L"The GitHub release asset has no SHA-256 digest, so the update cannot be verified and will not be installed.", L"Update", MB_OK | MB_ICONWARNING | MB_TOPMOST);
 		return;
 	}
 
@@ -243,13 +248,14 @@ inline void StartDownloadUpdate(const std::string& updateUrl, const std::string&
 	}
 
 	MyShowSimpleToast(L"CandyLauncher", L"Downloading update package");
-	std::thread([updateUrl, versionString, manual]() {
+	Logi(L"Update", L"Downloading v", utf8_to_wide(entry.versionString), L" expected sha256=", utf8_to_wide(entry.versionUpdateSha256), L" size=", entry.versionUpdateSize);
+	std::thread([entry, manual]() {
 		UpdateStatusListener listener(manual);
-		listener.setTargetVersion(versionString);
+		listener.setTargetVersion(entry.versionString);
 
 		CAutoUpdaterGithub updater(kGithubRepoName, ExtractCurrentVersionString());
 		updater.setUpdateStatusListener(&listener);
-		updater.downloadAndInstallUpdate(updateUrl);
+		updater.downloadAndInstallUpdate(entry);
 		g_isDownloadingUpdate = false;
 	}).detach();
 }
@@ -327,9 +333,9 @@ inline LRESULT HandleUpdateAvailableMessage(LPARAM lParam) {
 		: ShowAutomaticUpdateDialog(payload->changelog);
 
 	if (payload->manual && result == IDYES) {
-		StartDownloadUpdate(latest.versionUpdateUrl, latest.versionString, payload->manual);
+		StartDownloadUpdate(latest, payload->manual);
 	} else if (!payload->manual && result == kUpdateDialogButtonUpdate) {
-		StartDownloadUpdate(latest.versionUpdateUrl, latest.versionString, payload->manual);
+		StartDownloadUpdate(latest, payload->manual);
 	} else if (!payload->manual && result == kUpdateDialogButtonIgnoreVersion) {
 		SaveIgnoredUpdateVersion(latest.versionString);
 	} else if (!payload->manual && result == kUpdateDialogButtonDisableAutoPrompt) {

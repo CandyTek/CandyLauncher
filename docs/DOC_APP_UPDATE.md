@@ -27,9 +27,17 @@ This repository is now integrated with GitHub Release update capabilities, with 
 - Fall back to `.exe` / `.msi` only if no `.zip` asset exists
 - Never use the release HTML page itself as the download target
 
+### Download Integrity Check
+
+- The GitHub Releases API reports a `digest` (`sha256:<hex>`) and `size` for every asset; `parseReleasesJson` stores them in `VersionEntry::versionUpdateSha256` / `versionUpdateSize`
+- `downloadAndInstallUpdate(const VersionEntry&)` computes SHA-256 (Windows CNG `bcrypt`) over the downloaded bytes and compares size and digest before anything is written or launched
+- A missing digest, a size mismatch or a hash mismatch is reported through `onUpdateError` and the package is never installed
+- Assets must be uploaded through GitHub (web UI, `gh release upload`, or the API) so the digest exists; the host also refuses to start the download if the entry has no digest
+
 ### Portable Update Flow
 
 - Download the zip package to a temp path
+- Verify size and SHA-256 against the release asset metadata (see above)
 - Launch a helper step such as a temporary script or future `Updater.exe`
 - Wait for `CandyLauncher.exe` to exit
 - Extract the zip and copy files over the current app directory
