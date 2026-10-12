@@ -197,6 +197,17 @@ static HBITMAP GetIconFromPathAsBitmap(const std::wstring& path) {
 	return hBitmap;
 }
 
+// 从任意系统 DLL（如 imageres.dll）加载指定索引的图标为 HBITMAP，用于插件条目的 iconBitmap
+inline HBITMAP LoadDllIconAsBitmap(const wchar_t* dllName, int index, int cx = 48) {
+	HICON hIcon = nullptr;
+	if (FAILED(SHDefExtractIconW(dllName, index, 0, &hIcon, nullptr, static_cast<UINT>(cx))) || !hIcon) {
+		return nullptr;
+	}
+	HBITMAP hBitmap = IconToBitmap2(hIcon);
+	DestroyIcon(hIcon);
+	return hBitmap;
+}
+
 // 从 shell32.dll 加载指定索引的图标为 HBITMAP
 inline HBITMAP LoadShell32IconAsBitmap(int index, int cx = 48, int cy = 48) {
 	HICON hIcon = LoadShell32IconHQ(index, cx, cy);

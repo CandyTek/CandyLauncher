@@ -37,6 +37,16 @@ namespace {
 		return std::wstring(systemDirectory) + L"\\bthprops.cpl";
 	}
 
+	// 图标文件缺失时 SHGetFileInfo 会返回系统图标列表的 0 号（空白图标），所以显式返回 -1，
+	// 让条目回退到 iconPath（蓝牙图标）
+	int IconIndexForFile(const std::wstring& path) {
+		if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+			Loge(L"AirPodsPlugin", L"Icon file not found: ", path);
+			return -1;
+		}
+		return GetSysImageIndex(path);
+	}
+
 	std::wstring DisplayName(const AirPodsBatteryState& state) {
 		if (!state.modelName.empty() && state.modelName != L"Apple headphones") {
 			return state.modelName;
@@ -54,10 +64,10 @@ public:
 
 		const std::wstring path = GetExecutableFolder() + LR"(\plugins\icon\)";
 
-		icon_normal = GetSysImageIndex(path + LR"(ic_airpods_normal.ico)");
-		icon_charge = GetSysImageIndex(path + LR"(ic_airpods_charge.ico)");
-		icon_charge_case = GetSysImageIndex(path + LR"(ic_airpods_charge_case.ico)");
-		icon_disconnect = GetSysImageIndex(path + LR"(ic_airpods_disconnected.ico)");
+		icon_normal = IconIndexForFile(path + LR"(ic_airpods_normal.ico)");
+		icon_charge = IconIndexForFile(path + LR"(ic_airpods_charge.ico)");
+		icon_charge_case = IconIndexForFile(path + LR"(ic_airpods_charge_case.ico)");
+		icon_disconnect = IconIndexForFile(path + LR"(ic_airpods_disconnected.ico)");
 		return true;
 	}
 

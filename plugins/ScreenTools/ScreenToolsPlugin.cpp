@@ -19,6 +19,7 @@
 
 #include "stb_image_write.h"
 #include "plugins/PluginHotkeyManager.hpp"
+#include "util/BitmapUtil.hpp"
 #include "util/MyJsonUtil.hpp"
 #include "util/UrlUtil.hpp"
 
@@ -614,6 +615,10 @@ public:
             action->title = std::get<1>(entry);
             action->subtitle = std::get<2>(entry);
             action->stableKey = L"ScreenTools_" + action->id;
+            // 列表图标：截长图用 imageres.dll 的相机，二维码识别用 shell32.dll 的放大镜
+            action->iconBitmap = action->id == L"long"
+                                     ? LoadDllIconAsBitmap(L"imageres.dll", 52)
+                                     : LoadDllIconAsBitmap(L"shell32.dll", 22);
             items.push_back(action);
         }
         actions.Publish(GetHost(), std::move(items));
