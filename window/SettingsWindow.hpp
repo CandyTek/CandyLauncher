@@ -544,17 +544,23 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			RefreshSettingsUI(g_settingsHwnd, reinterpret_cast<HWND>(lParam));
 
 			// 仅在UI重建时恢复保存的滚动位置
-			RECT clientRect;
-			GetClientRect(tabContainers[currentSubPageIndex], &clientRect);
-			const int viewHeight = clientRect.bottom - clientRect.top;
-
+			// 重建后 UpdateScrollRange 已把滚动位置重置为0，控件也处于未滚动的位置，
+			// 这里按新的滚动范围 (nMax - nPage) 夹取保存的位置，而不是用可视高度夹取，
+			// 否则页面滚动超过一屏后展开/折叠会跳回靠上的位置
 			if (g_savedScrollPos > 0) {
-				// 计算有效的滚动位置范围
-				const int maxPos = viewHeight;
+				SCROLLINFO si;
+				si.cbSize = sizeof(si);
+				si.fMask = SIF_RANGE | SIF_PAGE;
+				int maxPos = 0;
+				if (GetScrollInfo(tabContainers[currentSubPageIndex], SB_VERT, &si)) {
+					maxPos = si.nMax - static_cast<int>(si.nPage);
+				}
 				int restorePos = MyMin(g_savedScrollPos, maxPos);
 				restorePos = MyMax(0, restorePos);
-				// 同步控件位置到恢复的滚动位置
-				SendMessage(tabContainers[currentSubPageIndex], WM_VSCROLL, MAKELONG(SB_THUMBPOSITION, restorePos), 0);
+				if (restorePos > 0) {
+					// 同步控件位置到恢复的滚动位置
+					SendMessage(tabContainers[currentSubPageIndex], WM_VSCROLL, MAKELONG(SB_THUMBPOSITION, restorePos), 0);
+				}
 			}
 			SendMessage(tabContainers[currentSubPageIndex], WM_SETREDRAW, TRUE, 0);
 			InvalidateRect(tabContainers[currentSubPageIndex], nullptr, TRUE);

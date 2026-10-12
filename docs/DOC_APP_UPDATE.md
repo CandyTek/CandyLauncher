@@ -35,15 +35,22 @@ This repository is now integrated with GitHub Release update capabilities, with 
 - Extract the zip and copy files over the current app directory
 - Restart CandyLauncher
 
-### Versioning Caution
+### Versioning (single source of truth)
 
-- Release comparison uses natural version comparison
-- Mixed version styles can block update prompts
-- Example:
-    - local app version: `1.1.20260414`
-    - GitHub tag: `1.1`
-- In that case the local version may be treated as newer
-- Keep app version strings and GitHub tag strategy aligned
+- The app version is defined once: `project(CandyLauncher VERSION x.y.z)` in `CMakeLists.txt`
+- CMake `configure_file`s `common/AppVersion.h.in` into `<build>/generated/common/AppVersion.h`, which provides:
+    - `APP_VERSION_STRING` (`"1.2.0"`), `APP_VERSION_RC` (`1,2,0,0`), `APP_VERSION_MAJOR/MINOR/PATCH`, `APP_ARCH_STRING`
+- Consumers of that header (never hard-code a version anywhere else):
+    - `CandyLauncher.rc` and `skin_editor/SkinEditor.rc` `VERSIONINFO` blocks (file properties in Explorer)
+    - `util/UpdateManager.hpp` `ExtractCurrentVersionString()` passed to the GitHub updater
+    - `common/settings.json` about-page item `pref_version_name` uses `{version}` / `{arch}` placeholders, expanded in `util/MyJsonUtil.hpp`
+- To release a new version:
+    1. Bump `project(CandyLauncher VERSION x.y.z)` and re-run CMake generate
+    2. Build, package `CandyLauncher.zip`
+    3. Create the GitHub release with tag `vx.y.z` (SemVer, `v` prefix); the updater strips the `v` before comparing
+- Release comparison uses natural version comparison, so mixed styles can block update prompts
+    - Example that broke before: local `1.0.20260414` vs tag `1.1` => local treated as newer
+    - Legacy tags (`0.0.1`, `0.1`, `1.1`, ...) are all below `1.2.0`; keep every new tag above the previous one
 
 
 ### For portable zip updates, the current approach is:

@@ -1,0 +1,19 @@
+#pragma once
+// Generated from common/AppVersion.h.in by CMake. Do not edit the generated file.
+// Single source of truth is project(CandyLauncher VERSION x.y.z) in CMakeLists.txt.
+
+#define APP_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define APP_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define APP_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+// "1.2.0" - compared against GitHub release tags (tag "v1.2.0" is trimmed to "1.2.0" by the updater)
+#define APP_VERSION_STRING "@PROJECT_VERSION@"
+
+// 1,2,0,0 - numeric form for VERSIONINFO FILEVERSION / PRODUCTVERSION
+#define APP_VERSION_RC @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+
+#if defined(_WIN64) || defined(_M_X64) || defined(_M_ARM64)
+#define APP_ARCH_STRING "x64"
+#else
+#define APP_ARCH_STRING "x86"
+#endif

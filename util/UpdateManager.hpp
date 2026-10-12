@@ -11,6 +11,7 @@
 #include <thread>
 
 #include "../3rdparty/github-releases-autoupdater/src/cautoupdatergithub.h"
+#include "common/AppVersion.h"
 #include "../common/GlobalState.hpp"
 #include "FileUtil.hpp"
 #include "LogUtil.hpp"
@@ -119,29 +120,10 @@ struct UpdateFinishedPayload {
 	std::string versionString;
 };
 
+// 当前程序版本，唯一来源是 CMakeLists.txt 的 project(VERSION)，经 AppVersion.h 生成
+// 与 GitHub Release tag 比较时，tag 的 "v" 前缀会被 updater 去掉，因此 tag 应命名为 v1.2.0 这种形式
 inline std::string ExtractCurrentVersionString() {
-	for (const auto& item : g_settings_ui_last_save) {
-		if (item.key != "pref_version_name") continue;
-
-		const std::string title = item.title;
-		size_t versionPos = title.find('V');
-		if (versionPos == std::string::npos) {
-			versionPos = title.find('v');
-		}
-		if (versionPos == std::string::npos) continue;
-
-		size_t endPos = title.find('(', versionPos);
-		if (endPos == std::string::npos) {
-			endPos = title.size();
-		}
-
-		std::string version = MyTrim(title.substr(versionPos + 1, endPos - versionPos - 1));
-		if (!version.empty()) {
-			return version;
-		}
-	}
-
-	return "0.0.0";
+	return APP_VERSION_STRING;
 }
 
 inline std::wstring BuildUpdateSummaryText(const CAutoUpdaterGithub::ChangeLog& changelog) {

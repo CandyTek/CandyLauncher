@@ -502,8 +502,8 @@
 		},
 		{
 			"key": "pref_version_name",
-			"title": "版本 V1.0.20260414(x64)",
-			"title_en": "Version V1.0 (x64)",
+			"title": "版本 V{version} ({arch})",
+			"title_en": "Version V{version} ({arch})",
 			"type": "text",
 			"subPage": "about",
 			"defValue": ""

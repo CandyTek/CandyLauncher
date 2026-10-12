@@ -111,6 +111,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - Supports both x64 and x86 architectures
 - Uses precompiled headers (pch.h)
 - C++17 standard requirement
+- App version is single-sourced from `project(CandyLauncher VERSION x.y.z)` in CMakeLists.txt; CMake generates `common/AppVersion.h` (`APP_VERSION_STRING`, `APP_VERSION_RC`, `APP_ARCH_STRING`) used by the .rc VERSIONINFO, the updater and the about page. Never hard-code a version elsewhere. GitHub release tags are `vX.Y.Z`.
 
 ### Non-important files
 - deprecated folder

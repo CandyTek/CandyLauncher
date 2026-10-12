@@ -179,6 +179,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	APP_STARTUP_TIME = GetTickCount64() - g_appStartTick; // 记录程序耗费时
 	g_WM_TASKBARCREATED = RegisterWindowMessageW(L"TaskbarCreated");
 	Logi(L"WinMain", L"程序初始化完成");
+	for (const auto& item : g_settings_ui_last_save) {
+		if (item.key != "pref_version_name") continue;
+		Logi(L"WinMain", L"App version " + utf8_to_wide(AppUpdate::ExtractCurrentVersionString()) + L", about page: " + utf8_to_wide(item.title));
+		break;
+	}
 	AppUpdate::ScheduleStartupUpdateCheck();
 	// MyShowSimpleToast(L"CandyLauncher 已启动", L"程序初始化完成,按 Alt+K 呼出启动器");
 

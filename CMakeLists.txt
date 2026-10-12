@@ -1,10 +1,16 @@
 ﻿cmake_minimum_required(VERSION 3.10)
-project(CandyLauncher)
+# 应用版本号唯一来源：改这里即可，会同步到 AppVersion.h / VERSIONINFO 资源 / 关于页 / 更新检查
+# GitHub Release 的 tag 使用 v<MAJOR>.<MINOR>.<PATCH>（例如 v1.2.0）
+project(CandyLauncher VERSION 1.2.0)
 #project(CandyLauncher C CXX)
 
 # 用到17的许多特性，filesystem快速搜索文件的功能，方便的内联变量
 set(CMAKE_CXX_STANDARD 17)
 include_directories(.)
+
+# 由 project(VERSION) 生成 common/AppVersion.h，供 C++ 与 .rc 共用
+configure_file(common/AppVersion.h.in "${CMAKE_BINARY_DIR}/generated/common/AppVersion.h" @ONLY)
+include_directories("${CMAKE_BINARY_DIR}/generated")
 
 add_executable(CandyLauncher WIN32
 		common/pch.h

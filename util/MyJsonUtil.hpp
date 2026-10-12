@@ -1,9 +1,27 @@
 ﻿#include <codecvt>
+#include <cstring>
 #include <string>
 
 #include "json.hpp"
+#include "common/AppVersion.h"
 #include "common/I18n.hpp"
 #include "common/GlobalState.hpp"
+
+// 替换 settings.json 标题中的 {version} / {arch} 占位符，版本号来自 CMake project(VERSION)
+inline std::string ExpandAppVersionPlaceholders(std::string text) {
+	static const std::pair<const char*, const char*> kReplacements[] = {
+		{"{version}", APP_VERSION_STRING},
+		{"{arch}", APP_ARCH_STRING},
+	};
+	for (const auto& [placeholder, value] : kReplacements) {
+		const size_t placeholderLen = std::strlen(placeholder);
+		for (size_t pos = text.find(placeholder); pos != std::string::npos; pos = text.find(placeholder, pos)) {
+			text.replace(pos, placeholderLen, value);
+			pos += std::strlen(value);
+		}
+	}
+	return text;
+}
 
 inline std::string makeCompactJsonWithoutBraces(const std::string& path) {
 	// 构造 JSON
@@ -33,7 +51,7 @@ inline std::vector<SettingItem> ParseConfig(const std::string& configStr, uint16
 				SettingItem setting;
 				setting.key = item["key"].get<std::string>();
 				setting.type = item["type"].get<std::string>();
-				setting.title = GetLocalizedJsonString(item, "title");
+				setting.title = ExpandAppVersionPlaceholders(GetLocalizedJsonString(item, "title"));
 				setting.pluginId = pluginId;
 				setting.subPageIndex = GetTabIndexForSetting(item["subPage"].get<std::string>());
 
