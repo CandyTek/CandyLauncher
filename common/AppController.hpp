@@ -21,12 +21,15 @@ constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
 constexpr bool needOpenSettingWindow = false;
 constexpr bool needMinimizeSettingWindow = true;
+// 崩溃时是否生成 crash_dump.dmp（crash_log.txt 始终生成）
+constexpr bool needWriteCrashMiniDump = true;
 #else
 constexpr bool needOpenDebugCmd = false;
 constexpr bool needOpenShell32IconViewer = false;
 constexpr bool needOpenIndexedManager = false;
 constexpr bool needOpenSettingWindow = false;
 constexpr bool needMinimizeSettingWindow = false;
+constexpr bool needWriteCrashMiniDump = true;
 #endif
 
 // --- (在此处粘贴上面定义的 MAKE_HOTKEY_KEY, HotkeyMap) ---

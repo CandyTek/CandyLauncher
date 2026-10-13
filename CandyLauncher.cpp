@@ -32,6 +32,7 @@
 #include "util/EditDropTarget.hpp"
 #include "manager/ProcessManager.hpp"
 #include "util/UpdateManager.hpp"
+#include "util/CrashHandler.hpp"
 #include "view/CustomComboBox.hpp"
 #include "window/Shell32IconViewer.hpp"
 
@@ -124,6 +125,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 					_In_opt_ HINSTANCE hPrevInstance,
 					_In_ LPWSTR lpCmdLine,
 					_In_ int nCmdShow) {
+	// 最先安装崩溃捕获：开始记录日志，接管未处理异常
+	CrashHandler::Install();
+	CrashHandler::SetMiniDumpEnabled(needWriteCrashMiniDump);
+	// 测试崩溃对话框：--crash-test 或 --crash-test=terminate / --crash-test=abort
+	const wchar_t* crashTestArg = lpCmdLine ? wcsstr(lpCmdLine, L"--crash-test") : nullptr;
+
 	const std::wstring executablePath = GetOwnExecutablePath();
 	if (executablePath.empty()) {
 		MessageBoxW(nullptr, L"无法获取程序路径。", L"CandyLauncher", MB_OK | MB_ICONERROR);
@@ -162,7 +169,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	isToastAvailable = InitializeWinToast();
 #endif
 	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
 	if (needOpenDebugCmd) AttachConsoleForDebug();
 	PinyinHelper::initPinyinLib(EXE_FOLDER_PATH);
 	InitializeCustomButtonResources();
@@ -186,6 +192,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	}
 	AppUpdate::ScheduleStartupUpdateCheck();
 	// MyShowSimpleToast(L"CandyLauncher 已启动", L"程序初始化完成,按 Alt+K 呼出启动器");
+	// 崩溃时先隐藏主窗口和托盘图标，再弹出崩溃对话框
+	CrashHandler::SetCleanupCallback([]() {
+		if (g_mainHwnd) ShowWindow(g_mainHwnd, SW_HIDE);
+		HideTrayIcon();
+	});
+	if (crashTestArg) {
+		Logi(L"WinMain", L"收到 --crash-test，主动触发崩溃，命令行: ", lpCmdLine);
+		const wchar_t* kind = wcschr(crashTestArg, L'=');
+		CrashHandler::TriggerTestCrash(kind ? kind + 1 : nullptr);
+	}
 
 	MSG msg;
 
@@ -341,6 +357,8 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 		// });
 		std::wstring pluginDir = (EXE_FOLDER_PATH + L"\\plugins");
 		g_pluginManager->LoadAllPlugins(pluginDir);
+		// 插件 DLL 可能覆盖了顶层异常过滤器
+		CrashHandler::ReinstallExceptionFilter();
 	}
 
 	LoadSettingList();
@@ -358,6 +376,7 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 	g_pluginManager->SetCatalogChangedCallback([]() {
 		LoadSettingList();
 		g_pluginManager->NotifyUserSettingsLoadDone();
+		CrashHandler::ReinstallExceptionFilter();
 	});
 	Init(g_mainHwnd, hInstance);
 	userSettingsAfterTheAppStart();

@@ -260,6 +260,7 @@ target_link_libraries(CandyLauncher PRIVATE
 		advapi32
 		shlwapi
 		dwmapi
+		dbghelp
 		d2d1
 		dwrite
 		msimg32
