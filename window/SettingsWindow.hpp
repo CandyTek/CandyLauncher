@@ -31,6 +31,14 @@ static int tabBtnWidth = 120;
 static HWND blankBelowTabBelow = nullptr;
 inline HFONT pref_edit_hfont = nullptr;
 inline bool isSettingsWindowClosingWithoutSave = false;
+// 快捷键页“主面板显示、隐藏快捷键”下方的占用提示文本，随tab重建
+inline HWND g_toggleHotkeyOccupiedLabel = nullptr;
+// 提示文本所在tab、当前是否显示、显示时该行额外增加的高度
+inline size_t g_toggleHotkeyOccupiedTabIdx = 0;
+inline bool g_toggleHotkeyOccupiedShown = false;
+inline int g_toggleHotkeyOccupiedExtraHeight = 0;
+// 每个tab的内容高度，用于动态增减行高后更新滚动范围
+inline std::vector<int> tabContentHeights;
 
 static std::map<std::string, UINT> tabNameMap = {
 	{"plugin", IDS_I18N_TAB_PLUGIN},
@@ -131,6 +139,62 @@ static void setCustomEdit(HWND hEdit, bool isNumber=false) {
 	SendMessageW(hEdit, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
 	// 文本区域左右内缩
 	SendMessageW(hEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+}
+
+// 在父窗口坐标系内上下移动控件
+static void OffsetSettingControlY(HWND hCtrl, const int dy) {
+	RECT rect;
+	GetWindowRect(hCtrl, &rect);
+	MapWindowPoints(HWND_DESKTOP, GetParent(hCtrl), reinterpret_cast<LPPOINT>(&rect), 2);
+	SetWindowPos(hCtrl, nullptr, rect.left, rect.top + dy, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+}
+
+// 主面板快捷键被其他程序占用时显示红色提示文本，否则隐藏。
+// 提示隐藏时不占行高，显示时把下方控件整体下移并更新滚动范围
+static void UpdateToggleHotkeyOccupiedLabel() {
+	if (g_toggleHotkeyOccupiedLabel == nullptr || !IsWindow(g_toggleHotkeyOccupiedLabel)) return;
+	const bool show = g_toggleMainPanelHotkeyOccupied;
+	if (show == g_toggleHotkeyOccupiedShown) return;
+	g_toggleHotkeyOccupiedShown = show;
+
+	const size_t tabIdx = g_toggleHotkeyOccupiedTabIdx;
+	if (tabIdx >= hCtrlsByTab.size() || tabIdx >= tabContainers.size()) return;
+	HWND hParent = tabContainers[tabIdx];
+	const int delta = show ? g_toggleHotkeyOccupiedExtraHeight : -g_toggleHotkeyOccupiedExtraHeight;
+
+	SendMessage(hParent, WM_SETREDRAW, FALSE, 0);
+	ShowWindow(g_toggleHotkeyOccupiedLabel, show ? SW_SHOW : SW_HIDE);
+	const auto& ctrls = hCtrlsByTab[tabIdx];
+	auto it = std::find(ctrls.begin(), ctrls.end(), g_toggleHotkeyOccupiedLabel);
+	if (it != ctrls.end()) {
+		for (++it; it != ctrls.end(); ++it) {
+			if (*it) OffsetSettingControlY(*it, delta);
+		}
+	}
+
+	// 更新滚动范围。UpdateScrollRange 会把滚动位置重置为0但不移动控件，这里再把位置恢复回去
+	if (tabIdx < tabContentHeights.size()) {
+		tabContentHeights[tabIdx] += delta;
+		const int oldPos = GetScrollPos(hParent, SB_VERT);
+		UpdateScrollRange(hParent, tabContentHeights[tabIdx]);
+		SCROLLINFO si;
+		si.cbSize = sizeof(si);
+		si.fMask = SIF_RANGE | SIF_PAGE;
+		int maxPos = 0;
+		if (GetScrollInfo(hParent, SB_VERT, &si) && si.nMax > 0) {
+			maxPos = MyMax(0, si.nMax - static_cast<int>(si.nPage));
+		}
+		const int newPos = MyMin(oldPos, maxPos);
+		if (newPos != oldPos) {
+			// 内容变短导致滚动位置被夹取，控件整体下移补偿
+			for (HWND hCtrl : ctrls) {
+				if (hCtrl) OffsetSettingControlY(hCtrl, oldPos - newPos);
+			}
+		}
+		SetScrollPos(hParent, SB_VERT, newPos, TRUE);
+	}
+	SendMessage(hParent, WM_SETREDRAW, TRUE, 0);
+	InvalidateRect(hParent, nullptr, TRUE);
 }
 
 static void RestoreSavedToggleMainPanelHotkey() {
@@ -290,6 +354,29 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				SendMessageW(hCtrl, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
 				InstallHotkeySubclass(hCtrl, hwnd, utf8_to_wide(item.key));
 				SendMessageW(hCtrl, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+				if (item.key == "pref_hotkey_toggle_main_panel") {
+					// 输入框下方放一行红色提示，快捷键被其他程序占用时显示，默认隐藏
+					const std::wstring warnText = LoadI18nString(IDS_I18N_HOTKEY_OCCUPIED_TEXT,
+						L"This hotkey is already in use by another app");
+					const int warnWidth = 444 - indentLevel * 20;
+					const int warnHeight = GetLabelHeight(hwnd, warnText, warnWidth, hFontDefault);
+					const int warnY = 27; // 输入框高 25 + 间距
+					g_toggleHotkeyOccupiedLabel = CreateWindowW(L"STATIC", warnText.c_str(),
+						WS_CHILD,
+						indentX, currentY + warnY, warnWidth, warnHeight, hParent, nullptr, nullptr, nullptr);
+					SendMessageW(g_toggleHotkeyOccupiedLabel, WM_SETFONT, (WPARAM)hFontDefault, TRUE);
+					SetPropW(g_toggleHotkeyOccupiedLabel, SETTINGS_WARN_TEXT_PROP, reinterpret_cast<HANDLE>(1));
+					// 仅在提示显示时增加行高；隐藏时不占空间，之后切换由 UpdateToggleHotkeyOccupiedLabel 移动下方控件
+					const int rowHeightBase = MyMax(35, labelHeight);
+					const int rowHeightWarn = MyMax(rowHeightBase, warnY + warnHeight + 4);
+					g_toggleHotkeyOccupiedTabIdx = tabIdx;
+					g_toggleHotkeyOccupiedExtraHeight = rowHeightWarn - rowHeightBase;
+					g_toggleHotkeyOccupiedShown = g_toggleMainPanelHotkeyOccupied;
+					if (g_toggleHotkeyOccupiedShown) {
+						ShowWindow(g_toggleHotkeyOccupiedLabel, SW_SHOW);
+						labelHeight = rowHeightWarn;
+					}
+				}
 			} else if (item.type == "button") {
 				ButtonStyle btnStyle = BTN_NORMAL;
 				if (item.key == "pref_backup_settings") {
@@ -315,6 +402,10 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 			if (hCtrl) {
 				ctrls.push_back(hCtrl);
 			}
+			// 提示文本必须排在输入框之后，这样显示、隐藏时只移动它下方的控件
+			if (item.type == "hotkeystring" && item.key == "pref_hotkey_toggle_main_panel" && g_toggleHotkeyOccupiedLabel) {
+				ctrls.push_back(g_toggleHotkeyOccupiedLabel);
+			}
 			currentY += MyMax(35, labelHeight);
 		}
 	};
@@ -322,6 +413,7 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 
 	int contentHeight = y + 20; // y 是最后一个控件的底部+边距
 	UpdateScrollRange(hParent, contentHeight); // 调用正确的辅助函数
+	if (tabIdx < tabContentHeights.size()) tabContentHeights[tabIdx] = contentHeight;
 
 	hCtrlsByTab[tabIdx] = ctrls;
 	tabCtrlsCreated[tabIdx] = true;
@@ -406,6 +498,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			// 只为当前tab生成控件，其他tab在首次切换时生成
 			hCtrlsByTab.clear();
 			hCtrlsByTab.resize(subPageTabs.size());
+			tabContentHeights.assign(subPageTabs.size(), 0);
 			tabCtrlsCreated.assign(subPageTabs.size(), false);
 			EnsureTabControlsCreated(0, hwnd);
 
@@ -523,6 +616,9 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 		currentSubPageIndex = 0;
 		g_settingsHwnd = nullptr;
 		blankBelowTabBelow = nullptr;
+		g_toggleHotkeyOccupiedLabel = nullptr;
+		g_toggleHotkeyOccupiedShown = false;
+		tabContentHeights.clear();
 		isSettingsWindowClosingWithoutSave = false;
 		// 清理临时设置数据
 		g_settings_ui.clear();
@@ -583,6 +679,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 					pref_hotkey_toggle_main_panel_mode,
 					wide_to_utf8(value)
 				);
+				UpdateToggleHotkeyOccupiedLabel();
 			}
 
 			return 0;

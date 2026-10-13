@@ -6,6 +6,8 @@
 
 // 只能给当前的滚动tab唯一使用
 inline int g_savedScrollPos = 0;
+// 带有该窗口属性的 STATIC 控件以红色警告文本绘制
+static const wchar_t* SETTINGS_WARN_TEXT_PROP = L"SettingsWarnText";
 
 static void UpdateScrollRange(HWND hwnd, int contentHeight) {
 	RECT clientRect;
@@ -165,6 +167,9 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				SetBkColor(hdcStatic, RGB(255, 255, 255));
 				static HBRUSH hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
 				return reinterpret_cast<INT_PTR>(hBrushWhite);
+			}
+			if (GetPropW(hCtrl, SETTINGS_WARN_TEXT_PROP) != nullptr) {
+				SetTextColor(hdcStatic, RGB(214, 48, 49));
 			}
 			SetBkMode(hdcStatic, TRANSPARENT);
 			return reinterpret_cast<INT_PTR>(GetStockObject(NULL_BRUSH));

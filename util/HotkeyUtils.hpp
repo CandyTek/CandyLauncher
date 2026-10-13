@@ -181,6 +181,8 @@ inline static UINT g_toggleMainPanelHookModifiers = 0;
 inline static UINT g_toggleMainPanelHookVk = 0;
 inline static bool g_toggleMainPanelHookUseDoubleClick = false;
 inline static bool g_toggleMainPanelHookUseMouse = false;
+// 主面板显示、隐藏快捷键（组合键模式）是否被其他程序占用，注册失败时置位，设置界面据此显示提示文本
+inline static bool g_toggleMainPanelHotkeyOccupied = false;
 
 static UINT NormalizeHotkeyVk(UINT vk) {
 	if (vk == VK_LSHIFT || vk == VK_RSHIFT) return VK_SHIFT;
@@ -300,6 +302,7 @@ static void ResetMainPanelToggleHookState() {
 
 static void UnregisterMainPanelToggleHotkey(HWND hWnd) {
 	UnregisterHotKey(hWnd, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+	g_toggleMainPanelHotkeyOccupied = false;
 	if (g_toggleMainPanelKeyboardHook != nullptr) {
 		UnhookWindowsHookEx(g_toggleMainPanelKeyboardHook);
 		g_toggleMainPanelKeyboardHook = nullptr;
@@ -317,7 +320,17 @@ static bool ConfigureMainPanelToggleHotkey(HWND hWnd, const std::string& mode, c
 	if (hotkeyStr.empty()) return false;
 
 	if (mode.empty() || mode == "key_combination") {
-		return RegisterHotkeyFromString(hWnd, hotkeyStr, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+		const bool registered = RegisterHotkeyFromString(hWnd, hotkeyStr, HOTKEY_ID_TOGGLE_MAIN_PANEL);
+		if (!registered) {
+			UINT parsedModifiers = 0;
+			UINT parsedVk = 0;
+			// 字符串能解析但注册失败，说明该组合键已被其他程序占用
+			g_toggleMainPanelHotkeyOccupied = ParseHotkeyString(hotkeyStr, parsedModifiers, parsedVk);
+			if (g_toggleMainPanelHotkeyOccupied) {
+				Loge(L"Hotkey", L"主面板快捷键注册失败，可能已被其他程序占用: ", utf8_to_wide(hotkeyStr));
+			}
+		}
+		return registered;
 	}
 
 	UINT modifiers = 0;

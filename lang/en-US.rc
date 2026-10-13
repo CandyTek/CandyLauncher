@@ -27,4 +27,5 @@ BEGIN
 	IDS_I18N_RESTORE_SUCCESS_TEXT "Settings restored. Restart the app to apply them."
 	IDS_I18N_RESTORE_FAIL_TEXT "Restore failed"
 	IDS_I18N_STARTUP_TIME_PREFIX "Startup completed in "
+	IDS_I18N_HOTKEY_OCCUPIED_TEXT "This hotkey is already in use by another app"
 END
