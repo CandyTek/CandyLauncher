@@ -78,19 +78,24 @@ static LRESULT CALLBACK EditBorder2pxProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		return 0;
 
 	case WM_ERASEBKGND:
-		// 交给 WM_PAINT 统一处理，减少闪烁
+		// EDIT 删除文字时需要擦掉旧字形；多行控件尤其不能跳过背景擦除。
+		{
+			RECT rc;
+			GetClientRect(hWnd, &rc);
+			FillRect(reinterpret_cast<HDC>(wParam), &rc, GetSysColorBrush(COLOR_WINDOW));
+		}
 		return 1;
 
 	case WM_PAINT:
 		{
-			PAINTSTRUCT ps;
-			HDC hdc = BeginPaint(hWnd, &ps);
+			// 让原生 EDIT 完整处理自己的绘制和无效区域，再覆盖自定义边框。
+			LRESULT lr = CallWindowProcW(data->oldProc, hWnd, msg, wParam, lParam);
+			HDC hdc = GetDC(hWnd);
+			if (!hdc) return lr;
 
 			RECT rc;
 			GetClientRect(hWnd, &rc);
 
-			// 先让原生 EDIT 画文字/背景
-			LRESULT lr = CallWindowProcW(data->oldProc, hWnd, msg, (WPARAM)hdc, 0);
 			bool hasFocus = (GetFocus() == hWnd);
 			COLORREF borderColor = hasFocus ? RGB(0, 120, 215)   // 蓝色（Win10 风格）
 											: RGB(180, 180, 180); // 默认灰色
@@ -108,8 +113,8 @@ static LRESULT CALLBACK EditBorder2pxProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			FillRect(hdc, &rRight, hBrush);
 
 			DeleteObject(hBrush);
-			EndPaint(hWnd, &ps);
-			return 0;
+			ReleaseDC(hWnd, hdc);
+			return lr;
 		}
 
 	case EM_SETRECTNP:

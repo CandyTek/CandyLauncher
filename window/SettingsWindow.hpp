@@ -311,10 +311,10 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				hCtrl = CreateWindowW(L"EDIT",
 									defVal.c_str(),
 									WS_CHILD | WS_VISIBLE | ES_LEFT | ES_MULTILINE | WS_VSCROLL| ES_AUTOHSCROLL|ES_AUTOVSCROLL|WS_BORDER,
-									contorlX, currentY, 200, 50, hParent, (HMENU)currentCtrlSubId, nullptr,
+									contorlX, currentY, 200, 72, hParent, (HMENU)currentCtrlSubId, nullptr,
 									nullptr);
 				setCustomEdit(hCtrl);
-				currentY += 30;
+				currentY += 40;
 			} else if (item.type == "list") {
 				hCtrl = CreateEnhancedComboBox(hParent, currentCtrlSubId, contorlX, currentY, 200, 300, (HMENU)currentCtrlSubId);
 				// 1. 獲取 ComboBox 的詳細資訊，主要是為了得到下拉列表的句柄 (hwndList)
