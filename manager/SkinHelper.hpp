@@ -125,7 +125,8 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 		if (image->GetLastStatus() != Gdiplus::Ok) {
 			delete image;
 			image = nullptr;
-			ShowErrorMsgBox(L"加载背景图片失败");
+			// ShowErrorMsgBox(L"加载背景图片失败");
+			Loge("skin",L"加载背景图片失败");
 		}
 		image = BakeSkinWindowOpacity(image);
 	}
@@ -143,7 +144,8 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 		if (image->GetLastStatus() != Gdiplus::Ok) {
 			delete image;
 			image = nullptr;
-			ShowErrorMsgBox(L"加载背景图片失败");
+			// ShowErrorMsgBox(L"加载背景图片失败");
+			Loge("skin",L"加载背景图片失败");
 		}
 		image = BakeSkinWindowOpacity(image);
 	}
@@ -219,7 +221,7 @@ static void UpdateListViewScrollbarStyle()
 
 
 // 返回 false 表示皮肤文件读取或解析失败，此时保留原有皮肤
-static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) {
+static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, const bool needFocusWindow = true) {
 	skinPath = getCurrectSkinPath(skinPath);
 	// 黑夜模式功能
 	std::string mode = g_settings_map["pref_night_mode"].stringValue;
@@ -264,7 +266,7 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 			g_skinJson = nlohmann::json::parse(GUARANTEED_SKIN_JSON);
 			std::filesystem::path fullPath(skinPath);
 		} catch (const nlohmann::json::parse_error& e2) {
-			Loge(L"SkinHelper", L"A fatal mistake, JSON pause: ", e2.what());
+			Loge(L"SkinHelper", L"A fatal mistake, JSON parse: ", e2.what());
 			throw;
 			return false;
 		}
@@ -272,7 +274,10 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	// --- 1. 更新主窗口 ---
 	MAIN_WINDOW_WIDTH = g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH);
 	MAIN_WINDOW_HEIGHT = g_skinJson.value("window_height", DEFAULT_MAIN_WINDOW_HEIGHT);
-	SetWindowPos(g_mainHwnd, nullptr, 0, 0, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT, SWP_NOMOVE | SWP_NOZORDER);
+	int u_flags = SWP_NOMOVE | SWP_NOZORDER;
+	if (!needFocusWindow)
+		u_flags |= SWP_NOACTIVATE;
+	SetWindowPos(g_mainHwnd, nullptr, 0, 0, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT, u_flags);
 
 	// 透明度在加载背景图、解析背景色时烘焙进 alpha（见 ApplySkinWindowOpacity），这里只需先记录下来。
 	// 不要改回 SetLayeredWindowAttributes：那会让主窗口变成分层窗口，输入时整窗闪烁
@@ -307,22 +312,7 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	);
 	ReleaseDC(g_editHwnd, hdc);
 
-	// 初始化GDI+图形对象
-
-
-	// Gdiplus::Graphics graphics(hEdit);
-	// graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
-	// Gdiplus::FontFamily fontFamily(L"微软雅黑");
-	// Gdiplus::Font gdiFont(&fontFamily, 25, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	// LOGFONTW logfont;
-	// Gdiplus::Status status = gdiFont.GetLogFontW(&graphics,&logfont);
-	// HFONT hFont = CreateFontIndirect(&logfont);
-	// SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-	// 注意：编辑框的背景色和前景色需要在 WM_CTLCOLOREDIT 中处理
-
 	// --- 3. 更新列表视图 (ListView) ---
-
 	int listX = g_skinJson.value("listview_x", 10);
 	int listY = g_skinJson.value("listview_y", 45);
 	g_listViewWidth = g_skinJson.value("listview_width", 580);
@@ -333,7 +323,6 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	clearBackgroundCachedBitmaps();
 
 	// 处理背景图片
-	
 	Gdiplus::Image* g_BgImage = nullptr;
 	getSkinPictureFile(g_BgImage, "window_bg_picture", MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	//RenderNinePatchToSize
@@ -365,8 +354,8 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	const int paddingRight = (std::max)(0, g_skinJson.value("editbox_padding_right", 4));
 	SendMessage(g_editHwnd, EM_SETMARGINS, EC_RIGHTMARGIN, MAKELPARAM(0, paddingRight));
 
-	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER);
-	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
+	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER|SWP_NOACTIVATE);
+	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER|SWP_NOACTIVATE);
 
 	// Each control gets a cache created against its own DC. CachedBitmap is
 	// device-specific and cannot safely be shared between these windows.
@@ -398,35 +387,16 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
 	UpdateListViewScrollbarStyle();
 	// InvalidateRect(g_listViewHwnd, nullptr, TRUE);
-	InvalidateRect(g_listViewHwnd, nullptr, TRUE);
-	UpdateWindow(g_mainHwnd);
-	
-	// 更新列表视图颜色
-	// COLORREF listBgColor = HexToCOLORREF(g_skinJson.value("listview_bg_color", "#FFFFFF"));
-	// COLORREF listFontColor = HexToCOLORREF(g_skinJson.value("listview_font_color", "#000000"));
-	// ListView_SetBkColor(listViewHwnd, listBgColor);
-	// ListView_SetTextBkColor(listViewHwnd, listBgColor); // 文本背景色通常和列表背景色一致
-	// ListView_SetTextColor(listViewHwnd, listFontColor);
+	// UpdateWindow(g_mainHwnd);
 
-	// 更新列表视图字体 (与编辑框类似)
-	// 注意: ListViewManager 的自定义绘制(WM_DRAWITEM)也需要使用新的字体和颜色信息
-	// 你可能需要在 ListViewManager 类中添加方法来存储这些皮肤设置
 
-	// ListView_SetBkColor(listViewHwnd, CLR_NONE);
-	// ListView_SetTextBkColor(listViewHwnd, CLR_NONE);
-
+	RedrawWindow(g_mainHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 	if (isShowWindow) {
-		// 暴力强制渲染
-		RECT rc;
-		GetWindowRect(g_mainHwnd, &rc);
-		// 临时缩小窗口
-		SetWindowPos(g_mainHwnd, nullptr, rc.left, rc.top, rc.left + 1, rc.top + 1,
-					SWP_NOZORDER);
-		// 恢复原大小
-		SetWindowPos(g_mainHwnd, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
-					SWP_NOZORDER);
-		ShowWindow(g_mainHwnd, SW_FORCEMINIMIZE);
-		SetTimer(g_mainHwnd, TIMER_SHOW_WINDOW, 50, nullptr);
+		if (needFocusWindow) {
+			SetTimer(g_mainHwnd, TIMER_SHOW_WINDOW, 50, nullptr);
+		} else {
+			ShowWindow(g_mainHwnd, SW_SHOWNOACTIVATE);
+		}
 	}
 	return true;
 }

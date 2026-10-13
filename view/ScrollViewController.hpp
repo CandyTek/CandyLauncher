@@ -254,7 +254,6 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 							int selIdx = static_cast<int>(SendMessage(g_hSkinComboBox, CB_GETCURSEL, 0, 0));
 							g_currectSkinFilePath = utf8_to_wide(g_settings_ui[g_prefSkinIndex].entryValues[selIdx]);
 							//ShowErrorMsgBox(g_currectSkinFilePath);
-							ShowMainWindowSimple();
 							SendMessage(g_mainHwnd, WM_REFRESH_SKIN, 0, 0);
 						}
 					}

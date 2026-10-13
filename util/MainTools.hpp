@@ -794,10 +794,6 @@ inline void ShowMainWindowSimple() {
 			PlaySoundW(soundPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
 		}
 	}
-	// if (g_BgImage != nullptr) {
-	// 	RedrawWindow(g_mainHwnd, nullptr, nullptr,
-	// 				RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
-	// }
 	SetForegroundWindow(g_mainHwnd);
 	if (g_hklIme != nullptr) PostMessageW(g_editHwnd, WM_INPUTLANGCHANGEREQUEST, 0, (LPARAM)g_hklIme);
 	if (g_editHwnd && g_listViewHwnd) {

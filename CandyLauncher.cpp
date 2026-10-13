@@ -727,7 +727,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				if (g_pluginManager) g_pluginManager->ReconcilePluginDir();
 			} else if (wParam == TIMER_RELOAD_SKIN_FILE) {
 				KillTimer(hWnd, TIMER_RELOAD_SKIN_FILE);
-				if (refreshSkin(g_currectSkinFilePath)) {
+				if (refreshSkin(g_currectSkinFilePath, true, false)) {
 					g_skinFileReloadRetries = 0;
 				} else if (++g_skinFileReloadRetries < SKIN_FILE_RELOAD_MAX_RETRIES) {
 					// 文件可能仍在写入中（空内容或被占用），稍后重试
@@ -787,7 +787,7 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				g_skinFileReloadRetries = 0;
 				SetTimer(hWnd, TIMER_RELOAD_SKIN_FILE, SKIN_FILE_RELOAD_DELAY_MS, nullptr);
 			} else {
-				refreshSkin(g_currectSkinFilePath);
+				refreshSkin(g_currectSkinFilePath,true,false);
 			}
 			return 0;
 		}
