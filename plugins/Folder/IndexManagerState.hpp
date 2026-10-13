@@ -38,6 +38,7 @@ static HIMAGELIST g_fileListSysImageList = nullptr;
 #define IDM_DELETE_CONFIG 2005
 #define IDM_SHOW_EXCLUDED_ITEMS 2006
 #define IDM_COPY_CONFIG 2007
+#define IDM_SHELL_CONTEXT_MENU 2008
 #define IDC_FILE_FILTER_EDIT 3001
 #define IDC_FILE_FILTER_CLEAR 3002
 #define IDC_TOGGLE_FILE_ICON 3003
@@ -88,6 +89,8 @@ static std::vector<std::wstring> folderItemTexts;
 static int index_last_selected = -1;
 static EditScrollSync editSyncHelper;
 static int rightClickedItemIndex = -1;
+// 右侧文件列表最近一次右键点击的屏幕坐标，用于弹出系统右键菜单
+static POINT rightClickedScreenPt = {0, 0};
 static int rightClickedConfigItemIndex = -1;
 static bool g_configDirty = false;
 static bool g_suppressDirty = false;

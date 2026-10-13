@@ -71,10 +71,13 @@ static void UpdateFilteredFileList() {
 		}
 	}
 
+	// 设置项数、自动列宽各自都会触发一次重绘，先冻结重绘，最后只刷一次，避免列表闪烁两次
+	SendMessageW(g_fileListView, WM_SETREDRAW, FALSE, 0);
 	ListView_SetItemCountEx(g_fileListView, static_cast<int>(filteredFileItemIndices.size()), LVSICF_NOINVALIDATEALL);
 	ListView_SetColumnWidth(g_fileListView, 0, LVSCW_AUTOSIZE_USEHEADER);
 	ListView_SetColumnWidth(g_fileListView, 1, LVSCW_AUTOSIZE_USEHEADER);
-	InvalidateRect(g_fileListView, nullptr, TRUE);
+	SendMessageW(g_fileListView, WM_SETREDRAW, TRUE, 0);
+	RedrawWindow(g_fileListView, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 
 	UpdateFileFilterClearButtonState();
 }
@@ -606,6 +609,15 @@ static TraverseOptions BuildCurrentConfigFromControls(int selectedIndex) {
 	return config;
 }
 
+
+// 当前左侧选中的配置是否为文件夹类型（type 为空或 "folder"，Desktop 等已知文件夹别名也属于此类）
+static bool IsCurrentConfigFolderType() {
+	if (index_last_selected < 0 || index_last_selected >= static_cast<int>(runnerConfigs.size())) {
+		return false;
+	}
+	const std::wstring& type = runnerConfigs[index_last_selected].type;
+	return type.empty() || type == L"folder";
+}
 
 static void UpdateIndexFileListFromConfig(TraverseOptions& config) {
 	CollectIndexFileListFromConfig(config, allFileItems);

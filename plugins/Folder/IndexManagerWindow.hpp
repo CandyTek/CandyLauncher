@@ -69,6 +69,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			fileItemContextMenu = CreatePopupMenu();
 			AppendMenuW(fileItemContextMenu, MF_STRING, IDM_EXCLUDE_ITEM, L"排除该项");
 			AppendMenuW(fileItemContextMenu, MF_STRING, IDM_RENAME_ITEM, L"重命名该项");
+			AppendMenuW(fileItemContextMenu, MF_STRING, IDM_SHELL_CONTEXT_MENU, L"系统右键菜单(Shift+右键)");
 			AppendMenuW(fileItemContextMenu, MF_STRING, IDM_CHECK_SHORTCUTS, L"检测快捷方式有效性");
 			AppendMenuW(fileItemContextMenu, MF_SEPARATOR, 0, nullptr);
 			AppendMenuW(fileItemContextMenu, MF_STRING, IDM_SHOW_EXCLUDED_ITEMS, L"查看已排除的项");
@@ -318,7 +319,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 											WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL |
 											LVS_OWNERDATA,
 											530, 34, 200, 400, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			ListView_SetExtendedListViewStyle(g_fileListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+			ListView_SetExtendedListViewStyle(g_fileListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 
 			// 绑定系统小图标列表到右侧文件列表
 			SHFILEINFOW sfi = {};
@@ -499,9 +500,17 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					rightClickedItemIndex = -1;
 					g_configDirty = true;
 				}
+			} else if (LOWORD(wParam) == IDM_SHELL_CONTEXT_MENU) {
+				// 弹出系统（Explorer）右键菜单
+				if (rightClickedItemIndex >= 0 && rightClickedItemIndex < static_cast<int>(allFileItems.size())) {
+					ShowShellContextMenu(hwnd, allFileItems[rightClickedItemIndex].file_path.wstring(), rightClickedScreenPt);
+					rightClickedItemIndex = -1;
+				}
 			} else if (LOWORD(wParam) == IDM_CHECK_SHORTCUTS) {
-				// 检测快捷方式有效性
-				CheckShortcutValidity(g_indexManagerHwnd, allFileItems);
+				// 检测快捷方式有效性（仅文件夹类型）
+				if (IsCurrentConfigFolderType()) {
+					CheckShortcutValidity(g_indexManagerHwnd, allFileItems);
+				}
 			} else if (LOWORD(wParam) == IDM_SHOW_EXCLUDED_ITEMS) {
 				if (index_last_selected >= 0) {
 					TraverseOptions currentConfig = BuildCurrentConfigFromControls(index_last_selected);
@@ -676,22 +685,31 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				if (pnmia->iItem >= 0 && pnmia->iItem < static_cast<int>(filteredFileItemIndices.size())) {
 					rightClickedItemIndex = filteredFileItemIndices[pnmia->iItem];
 				}
+				const bool hasItem = rightClickedItemIndex >= 0 &&
+									rightClickedItemIndex < static_cast<int>(allFileItems.size());
 
-				UINT itemMenuState = (rightClickedItemIndex >= 0 &&
-										rightClickedItemIndex < static_cast<int>(allFileItems.size()))
-										? MF_ENABLED
-										: MF_GRAYED;
+				// 获取鼠标位置
+				GetCursorPos(&rightClickedScreenPt);
+
+				// Shift + 右键：直接弹出系统（Explorer）右键菜单
+				if (hasItem && (GetKeyState(VK_SHIFT) & 0x8000)) {
+					ShowShellContextMenu(hwnd, allFileItems[rightClickedItemIndex].file_path.wstring(), rightClickedScreenPt);
+					rightClickedItemIndex = -1;
+					break;
+				}
+
+				UINT itemMenuState = hasItem ? MF_ENABLED : MF_GRAYED;
 				EnableMenuItem(fileItemContextMenu, IDM_EXCLUDE_ITEM, MF_BYCOMMAND | itemMenuState);
 				EnableMenuItem(fileItemContextMenu, IDM_RENAME_ITEM, MF_BYCOMMAND | itemMenuState);
+				EnableMenuItem(fileItemContextMenu, IDM_SHELL_CONTEXT_MENU, MF_BYCOMMAND | itemMenuState);
+				// 只有文件夹类型（含 Desktop 等已知文件夹别名）才允许检测快捷方式有效性
+				EnableMenuItem(fileItemContextMenu, IDM_CHECK_SHORTCUTS,
+								MF_BYCOMMAND | (IsCurrentConfigFolderType() ? MF_ENABLED : MF_GRAYED));
 				EnableMenuItem(fileItemContextMenu, IDM_SHOW_EXCLUDED_ITEMS,
 								MF_BYCOMMAND | (index_last_selected >= 0 ? MF_ENABLED : MF_GRAYED));
 
-				// 获取鼠标位置
-				POINT pt;
-				GetCursorPos(&pt);
-
 				// 显示右键菜单
-				TrackPopupMenu(fileItemContextMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
+				TrackPopupMenu(fileItemContextMenu, TPM_RIGHTBUTTON, rightClickedScreenPt.x, rightClickedScreenPt.y, 0, hwnd, nullptr);
 			}
 
 

@@ -35,6 +35,90 @@ inline Gdiplus::Color g_listViewBackgroundColor(255, 255, 255, 255);
 
 constexpr UINT WM_LISTVIEW_SYSTEM_ICONS_READY = WM_USER + 108;
 
+// 把图像列表中的某一项分别画到纯白和纯黑背景上，两边都与背景完全相同则该项是空白（全透明）
+static bool IsImageListEntryBlank(HIMAGELIST list, const int index, const int cx, const int cy) {
+	if (!list || index < 0 || cx <= 0 || cy <= 0) return false;
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = cx;
+	info.bmiHeader.biHeight = -cy;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	const int pixelCount = cx * cy;
+	for (const BYTE fill : {static_cast<BYTE>(0xFF), static_cast<BYTE>(0x00)}) {
+		void* bits = nullptr;
+		HBITMAP bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+		if (!bitmap || !bits) {
+			if (bitmap) DeleteObject(bitmap);
+			return false;
+		}
+		HDC dc = CreateCompatibleDC(nullptr);
+		if (!dc) {
+			DeleteObject(bitmap);
+			return false;
+		}
+		HGDIOBJ old = SelectObject(dc, bitmap);
+		memset(bits, fill, static_cast<size_t>(pixelCount) * 4);
+		ImageList_Draw(list, index, dc, 0, 0, ILD_TRANSPARENT);
+		GdiFlush();
+		const DWORD background = fill ? 0x00FFFFFF : 0x00000000;
+		const auto* pixels = static_cast<const DWORD*>(bits);
+		bool differs = false;
+		for (int i = 0; i < pixelCount; ++i) {
+			if ((pixels[i] & 0x00FFFFFF) != background) {
+				differs = true;
+				break;
+			}
+		}
+		SelectObject(dc, old);
+		DeleteDC(dc);
+		DeleteObject(bitmap);
+		if (differs) return false;
+	}
+	return true;
+}
+
+// 个别 exe 的 48px 图标资源本身是空白的（例如 MDAC SDK 的 RowsetViewer.exe，其 48x48 项整张被蒙版遮住），
+// ForceImagePresent 成功但 SHIL_EXTRALARGE 画出来全透明，而 16/32px 正常（索引管理器用小图标所以能显示）。
+// 主列表只画 SHIL_EXTRALARGE，所以发现空白时用 SHIL_LARGE / SHIL_SMALL 的图标拉伸替换该索引（只影响本进程的图像列表）
+static void RepairBlankExtraLargeSystemIcon(IImageList2* extraLarge, const int index) {
+	if (!extraLarge || index < 0) return;
+	static std::mutex repairMutex;
+	static std::unordered_set<int> checkedIndices;
+	{
+		std::lock_guard<std::mutex> lock(repairMutex);
+		if (!checkedIndices.insert(index).second) return;
+	}
+	int cx = 0, cy = 0;
+	if (FAILED(extraLarge->GetIconSize(&cx, &cy))) return;
+	// HIMAGELIST 就是 IImageList*，项目里 GetSystemImageListEx 也是这样转换的
+	if (!IsImageListEntryBlank(reinterpret_cast<HIMAGELIST>(static_cast<IImageList*>(extraLarge)), index, cx, cy)) return;
+
+	for (const int smaller : {SHIL_LARGE, SHIL_SMALL}) {
+		IImageList* source = nullptr;
+		if (FAILED(SHGetImageList(smaller, IID_IImageList, reinterpret_cast<void**>(&source))) || !source) continue;
+		int sx = 0, sy = 0;
+		HICON icon = nullptr;
+		const bool usable = SUCCEEDED(source->GetIconSize(&sx, &sy)) &&
+			!IsImageListEntryBlank(reinterpret_cast<HIMAGELIST>(source), index, sx, sy) &&
+			SUCCEEDED(source->GetIcon(index, ILD_TRANSPARENT, &icon)) && icon;
+		source->Release();
+		if (!usable) {
+			if (icon) DestroyIcon(icon);
+			continue;
+		}
+		int replaced = -1;
+		const HRESULT hr = extraLarge->ReplaceIcon(index, icon, &replaced);
+		DestroyIcon(icon);
+		if (SUCCEEDED(hr)) {
+			Logi(L"ListView", L"blank 48px system icon repaired from SHIL ", smaller, L", index=", index);
+			return;
+		}
+	}
+	Loge(L"ListView", L"blank 48px system icon could not be repaired, index=", index);
+}
+
 // Shell image lists resolve some entries lazily. Resolving them from WM_DRAWITEM
 // makes the first result paint much slower, so warm them on a background thread.
 class ListViewSystemIconWarmer {
@@ -156,7 +240,10 @@ private:
 			}
 
 			const int index = task.action->getIconFilePathIndex();
-			if (imageList && index >= 0) imageList->ForceImagePresent(index, ILFIP_ALWAYS);
+			if (imageList && index >= 0) {
+				imageList->ForceImagePresent(index, ILFIP_ALWAYS);
+				RepairBlankExtraLargeSystemIcon(imageList, index);
+			}
 
 			bool notifyWait = false;
 			{
