@@ -24,6 +24,7 @@
 #include "plugins/PluginHotkeyManager.hpp"
 #include "util/BitmapUtil.hpp"
 #include "util/MyJsonUtil.hpp"
+#include "util/ParallelUtil.hpp"
 #include "util/UrlUtil.hpp"
 
 namespace
@@ -122,6 +123,10 @@ namespace
         uint32_t* pixels = nullptr;
         const Image* frame = nullptr;
         std::vector<uint32_t> background;
+        // 上一帧选区在窗口坐标下覆盖的像素区域（已裁剪到窗口内）。多屏大分辨率时虚拟桌面可达上亿字节，
+        // 每次鼠标移动只能还原并上传新旧选区的并集，否则整帧 memcpy + UpdateLayeredWindow 会明显卡顿
+        RECT drawn{};
+        bool uploaded = false;
         bool dragging = false;
         bool done = false;
         bool cancelled = true;
@@ -130,6 +135,33 @@ namespace
     RECT Normalize(POINT a, POINT b)
     {
         return {std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x), std::max(a.y, b.y)};
+    }
+
+    RECT ClampToWindow(const Selection& state, RECT rect)
+    {
+        rect.left = std::clamp(rect.left, 0L, static_cast<LONG>(state.size.cx));
+        rect.right = std::clamp(rect.right, 0L, static_cast<LONG>(state.size.cx));
+        rect.top = std::clamp(rect.top, 0L, static_cast<LONG>(state.size.cy));
+        rect.bottom = std::clamp(rect.bottom, 0L, static_cast<LONG>(state.size.cy));
+        if (rect.right <= rect.left || rect.bottom <= rect.top) return {};
+        return rect;
+    }
+
+    bool IsEmptyRect(const RECT& rect)
+    {
+        return rect.right <= rect.left || rect.bottom <= rect.top;
+    }
+
+    // 把 background 中 rect 覆盖的行段拷回绘制缓冲，只触碰需要重绘的像素
+    void RestoreBackground(Selection& state, const RECT& rect)
+    {
+        if (IsEmptyRect(rect)) return;
+        const size_t bytes = static_cast<size_t>(rect.right - rect.left) * sizeof(uint32_t);
+        for (LONG y = rect.top; y < rect.bottom; ++y)
+        {
+            const size_t offset = static_cast<size_t>(y) * state.size.cx + rect.left;
+            memcpy(state.pixels + offset, state.background.data() + offset, bytes);
+        }
     }
 
     uint32_t PremultipliedColor(uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
@@ -165,25 +197,50 @@ namespace
         rect.right = std::clamp(rect.right, 0L, static_cast<LONG>(state.size.cx));
         rect.top = std::clamp(rect.top, 0L, static_cast<LONG>(state.size.cy));
         rect.bottom = std::clamp(rect.bottom, 0L, static_cast<LONG>(state.size.cy));
-        for (LONG y = rect.top; y < rect.bottom; ++y)
+        if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+        // 选区拖到整块 4K 屏时有近千万像素，按行分到多个线程；小选区仍在当前线程完成
+        const size_t rows = static_cast<size_t>(rect.bottom - rect.top);
+        const size_t width = static_cast<size_t>(rect.right - rect.left);
+        const size_t minRowsPerThread = std::max<size_t>(1, (size_t{1} << 18) / std::max<size_t>(1, width));
+        const uint8_t* src = state.frame->pixels.data();
+        uint32_t* dst = state.pixels;
+        const size_t stride = static_cast<size_t>(state.size.cx);
+        ParallelForRange(rows, minRowsPerThread, [&](size_t begin, size_t end)
         {
-            for (LONG x = rect.left; x < rect.right; ++x)
+            for (size_t row = begin; row < end; ++row)
             {
-                const size_t index = static_cast<size_t>(y) * state.size.cx + x;
-                state.pixels[index] = TintPixel(state.frame->pixels.data() + index * 4, 40, 130, 245, 64);
+                const size_t index = (static_cast<size_t>(rect.top) + row) * stride + rect.left;
+                for (size_t x = 0; x < width; ++x)
+                    dst[index + x] = TintPixel(src + (index + x) * 4, 40, 130, 245, 64);
             }
-        }
+        });
     }
 
     bool RenderSelection(HWND hwnd, Selection& state)
     {
         const uint32_t blueFill = PremultipliedColor(40, 130, 245, 64);
         const uint32_t blueBorder = state.frame ? 0xff2d91ff : PremultipliedColor(45, 145, 255, 245);
-        memcpy(state.pixels, state.background.data(), state.background.size() * sizeof(uint32_t));
+        RECT rect{};
         if (state.dragging)
         {
-            RECT rect = Normalize(state.start, state.end);
+            rect = Normalize(state.start, state.end);
             OffsetRect(&rect, -state.origin.x, -state.origin.y);
+            rect = ClampToWindow(state, rect);
+        }
+        // 脏区 = 旧选区 ∪ 新选区；首帧需要完整上传一次整张位图
+        RECT dirty{};
+        if (!state.uploaded)
+        {
+            memcpy(state.pixels, state.background.data(), state.background.size() * sizeof(uint32_t));
+            dirty = {0, 0, state.size.cx, state.size.cy};
+        }
+        else
+        {
+            UnionRect(&dirty, &state.drawn, &rect);
+            RestoreBackground(state, dirty);
+        }
+        if (state.dragging && !IsEmptyRect(rect))
+        {
             if (state.frame) TintSelectionRect(state, rect);
             else FillSelectionRect(state, rect, blueFill);
             // The corners make the selection easier to see over a bright screenshot.
@@ -210,10 +267,29 @@ namespace
                                   blueBorder);
             }
         }
+        state.drawn = rect;
+        if (IsEmptyRect(dirty)) return true;
         POINT source{};
         BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-        return UpdateLayeredWindow(hwnd, nullptr, &state.origin, &state.size, state.memory,
-                                   &source, 0, &blend, ULW_ALPHA) != FALSE;
+        UPDATELAYEREDWINDOWINFO info{};
+        info.cbSize = sizeof(info);
+        info.pptDst = &state.origin;
+        info.psize = &state.size;
+        info.hdcSrc = state.memory;
+        info.pptSrc = &source;
+        info.pblend = &blend;
+        info.dwFlags = ULW_ALPHA;
+        // prcDirty 让 DWM 只重新读取脏区，而不是整张虚拟桌面大小的位图
+        info.prcDirty = state.uploaded ? &dirty : nullptr;
+        if (UpdateLayeredWindowIndirect(hwnd, &info) == FALSE)
+        {
+            // 个别驱动/远程桌面下带脏区的更新可能失败，退回整帧更新
+            if (UpdateLayeredWindow(hwnd, nullptr, &state.origin, &state.size, state.memory,
+                                    &source, 0, &blend, ULW_ALPHA) == FALSE)
+                return false;
+        }
+        state.uploaded = true;
+        return true;
     }
 
     LRESULT CALLBACK SelectProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
@@ -310,8 +386,14 @@ namespace
         state.background.resize(static_cast<size_t>(state.size.cx) * state.size.cy);
         if (frozen)
         {
-            for (size_t i = 0; i < state.background.size(); ++i)
-                state.background[i] = TintPixel(frozen->pixels.data() + i * 4, 10, 18, 32, 90);
+            // 多屏 4K 下有数千万像素，按行分给多个线程压暗
+            const uint8_t* src = frozen->pixels.data();
+            uint32_t* dst = state.background.data();
+            ParallelForRange(state.background.size(), size_t{1} << 18, [src, dst](size_t begin, size_t end)
+            {
+                for (size_t i = begin; i < end; ++i)
+                    dst[i] = TintPixel(src + i * 4, 10, 18, 32, 90);
+            });
         }
         else
         {
