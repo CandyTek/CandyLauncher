@@ -525,6 +525,12 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 	case WM_MOUSEWHEEL:
 		SendMessage(tabContainers[currentSubPageIndex], WM_MOUSEWHEEL, wParam, lParam);
 		break;
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+		// 点击设置窗口空白处时收回焦点，让快捷键输入框等控件结束编辑
+		SetFocus(hwnd);
+		break;
 	case WM_CTLCOLORBTN:
 		{
 			HDC hdc = (HDC)wParam;

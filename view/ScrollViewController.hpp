@@ -61,6 +61,12 @@ static LRESULT CALLBACK ComboBoxListSubclassProc(HWND hwnd, UINT uMsg, WPARAM wP
 
 static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+		// 点击页面空白处（或不接受焦点的静态文本）时收回焦点，让快捷键输入框等控件结束编辑
+		SetFocus(hwnd);
+		break;
 	case WM_VSCROLL:
 		{
 			// 1. 获取当前滚动信息

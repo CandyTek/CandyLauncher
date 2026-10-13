@@ -94,6 +94,8 @@ static LRESULT CALLBACK SwitchControlSubclassProc(HWND hWnd, UINT uMsg, WPARAM w
 			break;
 		}
 		case WM_LBUTTONDOWN: {
+			// 自绘控件不走默认处理，这里手动取焦点，使其他正在编辑的控件（如快捷键输入框）失焦
+			SetFocus(hWnd);
 			if (switchInfo) {
 				switchInfo->isPressed = true;
 				InvalidateRect(hWnd, nullptr, FALSE);
