@@ -223,7 +223,8 @@ private:
 	};
 
 	void run(const size_t workerIndex) {
-		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		// Shell 快捷方式的图标解析依赖 STA；MTA 下 SHGetFileInfoW 可能只返回空白文件图标。
+		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 		IImageList2* imageList = nullptr;
 		SHGetImageList(SHIL_EXTRALARGE, IID_IImageList2, reinterpret_cast<void**>(&imageList));
 		if (workerIndex == 0 && imageList && unknown_file_icon_index >= 0)
