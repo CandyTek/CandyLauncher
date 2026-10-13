@@ -519,6 +519,7 @@ private:
 		case WM_NOTIFY_HEDIT_REFRESH_SKIN:
 			RefreshEditPaintStyle();
 			InvalidateEditPaintCache();
+			RebuildEditBackgroundLayer(hwnd);
 			return 1;
 		case WM_ERASEBKGND: return 1; // 阻止默认背景擦除
 		case WM_NCDESTROY:

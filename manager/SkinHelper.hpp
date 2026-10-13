@@ -27,6 +27,7 @@ constexpr int SKIN_FILE_RELOAD_DELAY_MS = 300;
 constexpr int SKIN_FILE_RELOAD_MAX_RETRIES = 5;
 
 static void clearBackgroundCachedBitmaps() {
+	clearBackgroundDibLayers();
 	delete g_BgCachedBitmap;
 	g_BgCachedBitmap = nullptr;
 	delete g_editBgCachedBitmap;
@@ -342,6 +343,17 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	getSkinPictureFile(g_listViewBgImage, "listview_bg_picture", g_listViewWidth, g_listViewHeight);
 	getSkinPictureFile(g_listItemBgImage, "item_bg_picture", g_listItemWidth, g_listItemHeight);
 	getSkinPictureFile(g_listItemBgImageSelected, "item_bg_picture_selected", g_listItemWidth, g_listItemHeight);
+	// 列表项背景图每行都要画，这里一次性缩放到 item 大小并转成预乘 DIB，绘制时只做 AlphaBlend
+	const auto bakeListItemBackground = [](Gdiplus::Image*& image, PremultipliedDibLayer& layer) {
+		if (!image) return;
+		if (Gdiplus::Bitmap* scaled = createScaledBackgroundBitmap(image, g_listItemWidth, g_listItemHeight)) {
+			delete image;
+			image = scaled;
+			createPremultipliedDibLayer(layer, scaled);
+		}
+	};
+	bakeListItemBackground(g_listItemBgImage, g_listItemBgLayer);
+	bakeListItemBackground(g_listItemBgImageSelected, g_listItemBgLayerSelected);
 	updateSkinWindowRegion();
 
 	if (hEditFont) {
@@ -356,11 +368,10 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 
 	const int paddingRight = (std::max)(0, g_skinJson.value("editbox_padding_right", 4));
 	SendMessage(g_editHwnd, EM_SETMARGINS, EC_RIGHTMARGIN, MAKELPARAM(0, paddingRight));
-	
-	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
+
 	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER);
 	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER);
-	
+
 	// Each control gets a cache created against its own DC. CachedBitmap is
 	// device-specific and cannot safely be shared between these windows.
 	g_BgCachedBitmap = createBackgroundCachedBitmap(g_BgImage, g_mainHwnd,
@@ -368,11 +379,20 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	g_BgScaledBitmap = createScaledBackgroundBitmap(g_BgImage, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	delete g_BgImage;
 	g_BgImage = nullptr;
+	// 主窗口背景图层：有背景图用缩放好的图，否则用背景色；window_bg_color 为空表示不绘制背景，保持原有路径
+	if (g_BgScaledBitmap) {
+		createPremultipliedDibLayer(g_mainBgLayer, g_BgScaledBitmap);
+	} else if (const std::string bgColorStr = g_skinJson.value("window_bg_color", "#FFFFFF"); !bgColorStr.empty()) {
+		createSolidColorDibLayer(g_mainBgLayer, ApplySkinWindowOpacity(HexToGdiplusColor(bgColorStr)),
+								MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
+	}
 
 	g_editBgCachedBitmap = createBackgroundCachedBitmap(g_editBgImage, g_editHwnd,
 													  editWidth, editHeight);
 	g_listViewBgCachedBitmap = createBackgroundCachedBitmap(g_listViewBgImage, g_listViewHwnd,
 														g_listViewWidth, g_listViewHeight);
+	// 编辑框的背景图层在这条消息里合成（需要主窗口背景和控件位置都已就绪，所以放在上面之后）
+	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 
 	g_listViewHideScrollbar = g_skinJson.value("listview_hide_scrollbar", false);
 	// 这里是调节列表item宽度重要的地方，调好了横向滚动条就不存在

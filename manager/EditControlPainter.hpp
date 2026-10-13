@@ -6,6 +6,7 @@
 #include <gdiplus.h>
 #include "common/GlobalState.hpp"
 #include "BackgroundLayerPainter.hpp"
+#include "../util/PaintProfiler.hpp"
 
 inline UINT_PTR g_caretTimerId = 1001;
 inline bool g_caretOn = true; // 由定时器翻转
@@ -54,8 +55,26 @@ static void InvalidateEditPaintCache() {
 	g_editCharPositionCache.hwnd = nullptr;
 }
 
-static void drawBackground(HWND hwnd, Gdiplus::Graphics& graphics, const RECT& rc) {
+// 皮肤更新后重新合成编辑框的背景图层（主窗口背景裁剪 + 编辑框背景图/背景色）。
+// 必须在 RefreshEditPaintStyle 和控件定位之后调用
+static void RebuildEditBackgroundLayer(const HWND hwnd) {
+	if (g_skinJson == nullptr || !hwnd || !IsWindow(hwnd)) {
+		g_editBgLayer.reset();
+		return;
+	}
+	RECT windowRect{};
+	GetWindowRect(hwnd, &windowRect);
+	createChildBackgroundLayer(g_editBgLayer, hwnd, windowRect.right - windowRect.left,
+								windowRect.bottom - windowRect.top, g_editBgImage, g_editPaintStyle.background);
+}
+
+static void drawBackground(HWND hwnd, const HDC hdc, Gdiplus::Graphics& graphics, const RECT& rc) {
 	const Gdiplus::Rect rect(rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+	if (g_editBgLayer) {
+		// 预合成好的背景一次 BitBlt 覆盖（含 alpha），不需要先清透明再叠加
+		blitDibLayer(hdc, g_editBgLayer, rc.left, rc.top, g_editBgLayer.width, g_editBgLayer.height, 0, 0);
+		return;
+	}
 	if (g_skinJson == nullptr) {
 		const Gdiplus::SolidBrush bgBrush(HexToGdiplusColor("#EEEEEE"));
 		graphics.FillRectangle(&bgBrush, rect);
@@ -100,6 +119,11 @@ static std::vector<Gdiplus::REAL> GetCharPositions(HWND hwnd, HFONT hFont, const
 static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	RECT rc;
 	GetClientRect(hwnd, &rc);
+	const PaintStopwatch stopwatch;
+	struct PaintLogger {
+		const PaintStopwatch& stopwatch;
+		~PaintLogger() { PaintProfileLog(L"edit paint ", PaintProfileFormatMs(stopwatch.elapsedMs()), L" ms"); }
+	} paintLogger{stopwatch};
 
 	Gdiplus::Graphics graphics(hdc);
 	graphics.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
@@ -108,7 +132,7 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	const HFONT hFont = reinterpret_cast<HFONT>(SendMessageW(hwnd, WM_GETFONT, 0, 0));
 	const Gdiplus::Font font(hdc, hFont);
 
-	drawBackground(hwnd, graphics, rc);
+	drawBackground(hwnd, hdc, graphics, rc);
 
 	// 内边距：左右由原生 EM_SETMARGINS 负责（见 SkinHelper），这里只取左边距用于空文本时的 hint/光标；
 	// 单行编辑框没有原生的上边距，editbox_padding_top 在绘制时整体下移实现

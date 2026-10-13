@@ -287,8 +287,7 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow) {
 		return;
 	}
 	if (isShow) {
-		ShowMainWindowSimple();
-		g_pluginManager->OnMainWindowShowNotifi(true);
+		// 在刷新皮肤方法里决定窗口显示
 	} else {
 		ShowWindow(g_mainHwnd, SW_HIDE);
 	}

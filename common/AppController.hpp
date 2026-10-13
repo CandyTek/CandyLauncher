@@ -14,6 +14,7 @@
 
 #include "manager/ProcessManager.hpp"
 #include "util/FullScreenDetectUtil.hpp"
+#include "util/PaintProfiler.hpp"
 
 #if defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG) 
 constexpr bool needOpenDebugCmd = false;
@@ -296,9 +297,25 @@ inline std::unordered_map<std::string, std::function<void()>> getAppLaunchAction
 }
 
 inline int MainWindowCustomPaint(PAINTSTRUCT ps, HDC hdc) {
+	const PaintStopwatch stopwatch;
+	struct PaintLogger {
+		const PaintStopwatch& stopwatch;
+		const RECT& rcPaint;
+		~PaintLogger() {
+			PaintProfileLog(L"main paint ", PaintProfileFormatMs(stopwatch.elapsedMs()), L" ms, rect ",
+							rcPaint.right - rcPaint.left, L"x", rcPaint.bottom - rcPaint.top);
+		}
+	} paintLogger{stopwatch, ps.rcPaint};
 	// 使用 GDI+ 绘制背景图
 	// 如果没有背景图，则填充纯色背景
 	if (g_skinJson != nullptr) {
+		if (g_mainBgLayer) {
+			// 皮肤加载时已合成好的预乘背景，BitBlt 直接覆盖重绘区域（alpha 一起复制），无需先清透明
+			blitDibLayer(hdc, g_mainBgLayer, ps.rcPaint.left, ps.rcPaint.top,
+						ps.rcPaint.right - ps.rcPaint.left, ps.rcPaint.bottom - ps.rcPaint.top,
+						ps.rcPaint.left, ps.rcPaint.top);
+			return -1;
+		}
 		// 窗口表面会保留上一次绘制的像素（WM_ERASEBKGND 不擦除），半透明背景直接叠加绘制会越叠越深，
 		// 所以先把重绘区域清成全透明，再绘制背景
 		{

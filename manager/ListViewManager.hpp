@@ -22,6 +22,7 @@
 #include "plugins/BaseLaunchAction.hpp"
 #include "plugins/PluginManager.hpp"
 #include "util/ColorUtil.hpp"
+#include "util/PaintProfiler.hpp"
 #include "BackgroundLayerPainter.hpp"
 
 #pragma comment(lib, "Shell32.lib")
@@ -199,6 +200,73 @@ private:
 inline ListViewSystemIconWarmer g_listViewSystemIconWarmer;
 
 inline bool listViewFontsInitialized = false;
+// 字体行高在资源初始化时测量一次，避免每个 item 绘制时都调用 Font::GetHeight
+inline float g_listItemFontHeight1 = 0.f;
+inline float g_listItemFontHeight2 = 0.f;
+inline float g_listItemFontHeightSelected1 = 0.f;
+inline float g_listItemFontHeightSelected2 = 0.f;
+// 副标题的换行/省略号格式，所有 item 共用
+inline std::unique_ptr<Gdiplus::StringFormat> g_listItemSubtitleFormat;
+
+// 列表项离屏缓冲（item 大小，所有行复用）：同一块预乘像素内存既选入 GDI 内存 DC（BitBlt/AlphaBlend/图标），
+// 也被 GDI+ Bitmap 包装（文字、纯色混合），两者交替使用时要分别 GdiFlush / Graphics::Flush
+struct ListItemBackBuffer {
+	HDC memDc = nullptr;
+	HBITMAP bitmap = nullptr;
+	void* bits = nullptr;
+	int width = 0;
+	int height = 0;
+	std::unique_ptr<Gdiplus::Bitmap> wrapper;
+
+	bool ensure(const int w, const int h) {
+		if (bitmap && width == w && height == h) return true;
+		reset();
+		if (w <= 0 || h <= 0) return false;
+		BITMAPINFO info{};
+		info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		info.bmiHeader.biWidth = w;
+		info.bmiHeader.biHeight = -h; // 自上而下
+		info.bmiHeader.biPlanes = 1;
+		info.bmiHeader.biBitCount = 32;
+		info.bmiHeader.biCompression = BI_RGB;
+		bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+		if (!bitmap || !bits) {
+			reset();
+			return false;
+		}
+		memDc = CreateCompatibleDC(nullptr);
+		if (!memDc) {
+			reset();
+			return false;
+		}
+		SelectObject(memDc, bitmap);
+		wrapper = std::make_unique<Gdiplus::Bitmap>(w, h, w * 4, PixelFormat32bppPARGB, static_cast<BYTE*>(bits));
+		if (wrapper->GetLastStatus() != Gdiplus::Ok) {
+			reset();
+			return false;
+		}
+		width = w;
+		height = h;
+		return true;
+	}
+
+	void reset() {
+		wrapper.reset();
+		if (memDc) {
+			DeleteDC(memDc);
+			memDc = nullptr;
+		}
+		if (bitmap) {
+			DeleteObject(bitmap);
+			bitmap = nullptr;
+		}
+		bits = nullptr;
+		width = 0;
+		height = 0;
+	}
+};
+
+inline ListItemBackBuffer g_listItemBackBuffer;
 
 typedef HRESULT (WINAPI *SHGetImageListPtr)(int iImageList, REFIID riid, void** ppv);
 
@@ -333,6 +401,33 @@ static void listViewInitializeGraphicsResources() {
 	g_listItemFontSelected2 = std::make_unique<Gdiplus::Font>(&fontFamilySelected2,
 															static_cast<float>(g_item_font_size_selected_2),
 															itemFontStyleSelected2, Gdiplus::UnitPixel);
+
+	// 行高与屏幕 DPI 相关，用屏幕 DC 测一次即可（列表窗口与屏幕 DPI 一致）
+	if (const HDC screenDc = GetDC(nullptr)) {
+		Gdiplus::Graphics graphics(screenDc);
+		g_listItemFontHeight1 = g_listItemFont1->GetHeight(&graphics);
+		g_listItemFontHeight2 = g_listItemFont2->GetHeight(&graphics);
+		g_listItemFontHeightSelected1 = g_listItemFontSelected1->GetHeight(&graphics);
+		g_listItemFontHeightSelected2 = g_listItemFontSelected2->GetHeight(&graphics);
+		ReleaseDC(nullptr, screenDc);
+	}
+
+	g_listItemSubtitleFormat = std::make_unique<Gdiplus::StringFormat>();
+	g_listItemSubtitleFormat->SetTrimming(Gdiplus::StringTrimmingEllipsisWord); // 以单词为单位的省略号
+	g_listItemSubtitleFormat->SetFormatFlags(Gdiplus::StringFormatFlagsLineLimit); // 限制行数
+}
+
+// 皮肤更新后重新合成列表的背景图层（主窗口背景裁剪 + 列表背景图/背景色）。
+// 必须在 listViewInitializeGraphicsResources 和控件定位之后调用
+static void RebuildListViewBackgroundLayer(const HWND hWnd) {
+	if (g_skinJson == nullptr || !hWnd || !IsWindow(hWnd)) {
+		g_listViewBgLayer.reset();
+		return;
+	}
+	RECT windowRect{};
+	GetWindowRect(hWnd, &windowRect);
+	createChildBackgroundLayer(g_listViewBgLayer, hWnd, windowRect.right - windowRect.left,
+								windowRect.bottom - windowRect.top, g_listViewBgImage, g_listViewBackgroundColor);
 }
 
 static void refreshAppLaunchAction() {
@@ -366,6 +461,7 @@ static void listViewCleanupGraphicsResources() {
 	g_listItemFont2.reset();
 	g_listItemFontSelected1.reset();
 	g_listItemFontSelected2.reset();
+	g_listItemSubtitleFormat.reset();
 
 	listViewFontsInitialized = false;
 }
@@ -429,7 +525,15 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 			ShowScrollBar(hWnd, SB_VERT, FALSE);
 		}
 		{
+			g_listPaintStats.reset();
+			const PaintStopwatch stopwatch;
 			const LRESULT result = DefSubclassProc(hWnd, message, wParam, lParam);
+			PaintProfileLog(L"list paint total ", PaintProfileFormatMs(stopwatch.elapsedMs()),
+							L" ms, bg ", PaintProfileFormatMs(g_listPaintStats.backgroundMs),
+							L" ms, items ", g_listPaintStats.items,
+							L" (itemBg ", PaintProfileFormatMs(g_listPaintStats.itemBgMs),
+							L" ms, text ", PaintProfileFormatMs(g_listPaintStats.textMs),
+							L" ms, icon ", PaintProfileFormatMs(g_listPaintStats.iconMs), L" ms)");
 			if (g_measureInputDisplayPending) {
 				g_measureInputDisplayPending = false;
 				MethodTimerEnd(L"test_list_paint");
@@ -451,6 +555,7 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 	case WM_LISTVIEW_REFRESH_RESOURCE:
 		listViewCleanupGraphicsResources();
 		listViewInitializeGraphicsResources(); // 确保字体和画刷已初始化
+		RebuildListViewBackgroundLayer(hWnd);
 		break;
 	case WM_LISTVIEW_SYSTEM_ICONS_READY:
 		if (g_listViewSystemIconWarmer.isCurrent(static_cast<UINT>(wParam))) {
@@ -693,6 +798,7 @@ static void listViewCleanup() {
 
 	// 清理 GDI+ 资源
 	listViewCleanupGraphicsResources();
+	g_listItemBackBuffer.reset();
 }
 
 static void setUnknownFileIcon(HDC hdc, const RECT rc) {
@@ -721,179 +827,148 @@ static void listViewDrawItem(const DRAWITEMSTRUCT* lpDrawItem) {
 	if (index < 0 || index >= static_cast<int>(filteredActions.size())) return;
 
 	std::shared_ptr<BaseAction> action = filteredActions[index];
-	HDC hdc = lpDrawItem->hDC;
+	const HDC hdc = lpDrawItem->hDC;
 	const RECT& rc = lpDrawItem->rcItem;
 
-	// 0. 首先获取 GDI+ 图形对象，后续所有操作都基于它
-	Gdiplus::Graphics graphics(hdc);
-	graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
-	graphics.SetInterpolationMode(Gdiplus::InterpolationMode::InterpolationModeHighQualityBicubic);
-	graphics.SetTextRenderingHint(Gdiplus::TextRenderingHint::TextRenderingHintAntiAliasGridFit);
-
-	// 1. ✨ 改用 GDI+ 填充背景
-	// 定义不透明的颜色 (A, R, G, B)，A=255 代表完全不透明
-	// Gdiplus::Color normalBgColor(255, 255, 255, 255);       // 不透明白色
-	// Gdiplus::Color selectedBgColor(255, 220, 235, 255);   // 不透明淡蓝色作为选中色
-
-	// 创建 GDI+ 画刷
-	// Gdiplus::SolidBrush bgBrush(listItemBgColor);
-	// 用 GDI+ 的 FillRectangle 填充背景
 	const int itemWidth = g_listItemWidth > 0 ? g_listItemWidth : (rc.right - rc.left);
 	const int itemHeight = g_listItemHeight > 0 ? g_listItemHeight : (rc.right - rc.left);
-	const Gdiplus::Rect rect(rc.left, rc.top, itemWidth, itemHeight);
-	// const Gdiplus::Rect rect(rc.left, rc.top, itemWidth, rc.bottom - rc.top);
-	UINT isSelected = lpDrawItem->itemState & ODS_SELECTED;
-	if (isSelected) {
-		if (g_listItemBgImageSelected) {
-			graphics.DrawImage(g_listItemBgImageSelected, rect);
-		} else {
-			graphics.FillRectangle(g_listItemBgColorBrushSelected.get(), rect);
+	const UINT isSelected = lpDrawItem->itemState & ODS_SELECTED;
+	++g_listPaintStats.items;
+	PaintStopwatch stageStopwatch;
+
+	// 离屏合成：窗口表面是 DWM 重定向表面，GDI+ 在上面做 alpha 混合和文字抗锯齿都要回读像素，很慢。
+	// 所以先把列表背景在本行位置的那一块复制到系统内存缓冲，在缓冲里叠项背景、文字、图标，最后一次 BitBlt 回窗口。
+	// 没有列表背景图层（皮肤尚未加载）时退回直接在窗口上绘制。
+	const bool offscreen = g_listViewBgLayer && g_listItemBackBuffer.ensure(itemWidth, itemHeight);
+	const HDC drawDc = offscreen ? g_listItemBackBuffer.memDc : hdc;
+	const int originX = offscreen ? 0 : rc.left;
+	const int originY = offscreen ? 0 : rc.top;
+	if (offscreen) {
+		// 先清零再复制，行比列表窗口宽时超出的部分保持透明
+		std::memset(g_listItemBackBuffer.bits, 0, static_cast<size_t>(itemWidth) * itemHeight * 4);
+		BitBlt(drawDc, 0, 0, itemWidth, itemHeight, g_listViewBgLayer.memDc, rc.left, rc.top, SRCCOPY);
+	}
+	// 函数任何一处返回前都把缓冲复制回窗口（图标分支里有提前 return）
+	struct BackBufferPresenter {
+		const bool enabled;
+		const HDC target;
+		const RECT& rc;
+		const int width;
+		const int height;
+
+		~BackBufferPresenter() {
+			if (!enabled) return;
+			BitBlt(target, rc.left, rc.top, width, height, g_listItemBackBuffer.memDc, 0, 0, SRCCOPY);
 		}
+	} presenter{offscreen, hdc, rc, itemWidth, itemHeight};
+
+	// 0. GDI+ 图形对象：离屏时建在与缓冲共享内存的 PARGB 位图上（这样混合和文字 alpha 才正确），否则建在窗口 DC 上
+	std::unique_ptr<Gdiplus::Graphics> graphicsHolder = offscreen
+		? std::make_unique<Gdiplus::Graphics>(g_listItemBackBuffer.wrapper.get())
+		: std::make_unique<Gdiplus::Graphics>(hdc);
+	Gdiplus::Graphics& graphics = *graphicsHolder;
+	graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
+	graphics.SetTextRenderingHint(Gdiplus::TextRenderingHint::TextRenderingHintAntiAliasGridFit);
+
+	// 1. 项背景：背景图已在皮肤加载时缩放到 item 大小并转成预乘 DIB，这里只做一次 GDI AlphaBlend
+	const Gdiplus::Rect rect(originX, originY, itemWidth, itemHeight);
+	const PremultipliedDibLayer& itemBgLayer = isSelected ? g_listItemBgLayerSelected : g_listItemBgLayer;
+	Gdiplus::Image* itemBgImage = isSelected ? g_listItemBgImageSelected : g_listItemBgImage;
+	if (itemBgLayer) {
+		alphaBlendDibLayer(drawDc, itemBgLayer, originX, originY);
+	} else if (itemBgImage) {
+		// 兜底：图片已经是 item 大小，1:1 复制即可
+		graphics.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+		graphics.DrawImage(itemBgImage, rect);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeDefault);
 	} else {
-		if (g_listItemBgImage) {
-			graphics.DrawImage(g_listItemBgImage, rect);
-		} else {
-			graphics.FillRectangle(g_listItemBgColorBrush.get(), rect);
-		}
+		graphics.FillRectangle(isSelected ? g_listItemBgColorBrushSelected.get() : g_listItemBgColorBrush.get(), rect);
+	}
+	// GDI 对 DIB 段的绘制会被批处理，切到 GDI+ 之前先刷掉，保证文字画在背景之上
+	GdiFlush();
+	if constexpr (kPaintProfileEnabled) {
+		graphics.Flush(Gdiplus::FlushIntentionSync);
+		g_listPaintStats.itemBgMs += stageStopwatch.elapsedMs();
+		stageStopwatch = PaintStopwatch();
 	}
 
-	// 3. 绘制文字 (你的代码已是 GDI+，保持即可)
+	// 2. 文字
 	Gdiplus::RectF titleRect;
 	Gdiplus::RectF subRect;
 	if (isSelected) {
-		const float titleHeight = g_listItemFontSelected1->GetHeight(&graphics);
-		const float subHeight = g_listItemFontSelected2->GetHeight(&graphics) * 2.2f; // 限制为两行
-		titleRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosSelectedX1),
-									static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosSelectedY1),
+		const float titleHeight = g_listItemFontHeightSelected1;
+		const float subHeight = g_listItemFontHeightSelected2 * 2.2f; // 限制为两行
+		titleRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(originX + g_itemTextPosSelectedX1),
+									static_cast<Gdiplus::REAL>(originY + g_itemTextPosSelectedY1),
 									static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosSelectedX1),
 									titleHeight);
-		subRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosSelectedX2),
-								static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosSelectedY2),
+		subRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(originX + g_itemTextPosSelectedX2),
+								static_cast<Gdiplus::REAL>(originY + g_itemTextPosSelectedY2),
 								static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosSelectedX2), subHeight);
 	} else {
-		const float titleHeight = g_listItemFont1->GetHeight(&graphics);
-		const float subHeight = g_listItemFont2->GetHeight(&graphics) * 2.2f; // 限制为两行
-		titleRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosX1),
-									static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosY1),
+		const float titleHeight = g_listItemFontHeight1;
+		const float subHeight = g_listItemFontHeight2 * 2.2f; // 限制为两行
+		titleRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(originX + g_itemTextPosX1),
+									static_cast<Gdiplus::REAL>(originY + g_itemTextPosY1),
 									static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosX1), titleHeight);
-		subRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_itemTextPosX2),
-								static_cast<Gdiplus::REAL>(rc.top + g_itemTextPosY2),
+		subRect = Gdiplus::RectF(static_cast<Gdiplus::REAL>(originX + g_itemTextPosX2),
+								static_cast<Gdiplus::REAL>(originY + g_itemTextPosY2),
 								static_cast<Gdiplus::REAL>(itemWidth - g_itemTextPosX2), subHeight);
 	}
 	const std::wstring& title = action->getTitle();
 	const std::wstring& subtitle = action->getSubTitle();
 
-	// 创建 StringFormat 对象来控制文本换行和省略号
-	Gdiplus::StringFormat stringFormat;
-	stringFormat.SetTrimming(Gdiplus::StringTrimmingEllipsisWord); // 以单词为单位的省略号
-	stringFormat.SetFormatFlags(Gdiplus::StringFormatFlagsLineLimit); // 限制行数
+	// 副标题换行/省略号格式在资源初始化时创建（g_listItemSubtitleFormat）
+	const Gdiplus::StringFormat* subtitleFormat = g_listItemSubtitleFormat.get();
 
-	// 确保你的文字画刷也是不透明的
 	if (isSelected) {
 		graphics.DrawString(title.c_str(), -1, g_listItemFontSelected1.get(), titleRect, nullptr,
 							g_listItemTextColorBrushSelected1.get());
-		graphics.DrawString(subtitle.c_str(), -1, g_listItemFontSelected2.get(), subRect, &stringFormat,
+		graphics.DrawString(subtitle.c_str(), -1, g_listItemFontSelected2.get(), subRect, subtitleFormat,
 							g_listItemTextColorBrushSelected2.get());
 	} else {
 		graphics.DrawString(title.c_str(), -1, g_listItemFont1.get(), titleRect, nullptr,
 							g_listItemTextColorBrush1.get());
-		graphics.DrawString(subtitle.c_str(), -1, g_listItemFont2.get(), subRect, &stringFormat,
+		graphics.DrawString(subtitle.c_str(), -1, g_listItemFont2.get(), subRect, subtitleFormat,
 							g_listItemTextColorBrush2.get());
 	}
 
-	// The icon is drawn with GDI/AlphaBlend below. Flush pending GDI+ commands first;
-	// otherwise a delayed GDI+ background/text flush can overwrite the icon when
-	// only the old and new selected rows are invalidated by keyboard navigation.
+	// 图标用 GDI 绘制，先把 GDI+ 的待处理命令刷掉，否则延迟刷新的文字/背景会盖住图标
 	graphics.Flush(Gdiplus::FlushIntentionSync);
+	if constexpr (kPaintProfileEnabled) {
+		g_listPaintStats.textMs += stageStopwatch.elapsedMs();
+		stageStopwatch = PaintStopwatch();
+	}
+	struct IconStageTimer {
+		const PaintStopwatch& stopwatch;
+		~IconStageTimer() { g_listPaintStats.iconMs += stopwatch.elapsedMs(); }
+	} iconStageTimer{stageStopwatch};
 
-	// 图标绘制
-
+	// 3. 图标
+	const int iconX = originX + (isSelected ? g_itemIconSelectedX : g_itemIconX);
+	const int iconY = originY + (isSelected ? g_itemIconSelectedY : g_itemIconY);
 	if (action->getIconBitmap()) {
-		// 假设 action->hIcon 是一个 32-bpp 的 HBITMAP
-		// 目标绘制位置
-		int iconX;
-		int iconY;
-		if (isSelected) {
-			iconX = rc.left + g_itemIconSelectedX;
-			iconY = rc.top + g_itemIconSelectedY;
-		} else {
-			iconX = rc.left + g_itemIconX;
-			iconY = rc.top + g_itemIconY;
-		}
-
-		// 创建一个与源位图兼容的内存 DC
-		HDC hMemDC = CreateCompatibleDC(hdc);
+		// 32-bpp 带 alpha 的 HBITMAP，用 AlphaBlend 按像素混合
+		HDC hMemDC = CreateCompatibleDC(drawDc);
 		HGDIOBJ oldBmp = SelectObject(hMemDC, action->getIconBitmap());
-
-		// 设置 AlphaBlend 的混合参数
-		BLENDFUNCTION blendFunc = {0};
-		blendFunc.BlendOp = AC_SRC_OVER; // 指定混合操作为“源覆盖目标”
-		blendFunc.BlendFlags = 0; // 必须为 0
-		blendFunc.SourceConstantAlpha = 255; // 使用源位图自身的 Alpha 通道，255 表示不使用全局 Alpha
-		blendFunc.AlphaFormat = AC_SRC_ALPHA; // 指明源位图带有 Alpha 通道
-
-		// 使用 AlphaBlend 进行绘制
-		AlphaBlend(
-			hdc, // 目标 DC
-			iconX, // 目标 X 坐标
-			iconY, // 目标 Y 坐标
-			LISTITEM_ICON_SIZE, // 目标宽度
-			LISTITEM_ICON_SIZE, // 目标高度
-			hMemDC, // 源 DC
-			0, // 源 X 坐标
-			0, // 源 Y 坐标
-			LISTITEM_ICON_SIZE, // 源宽度
-			LISTITEM_ICON_SIZE, // 源高度
-			blendFunc // 混合函数参数
-		);
-
-		// 清理资源
+		BLENDFUNCTION blendFunc{};
+		blendFunc.BlendOp = AC_SRC_OVER;
+		blendFunc.SourceConstantAlpha = 255; // 使用源位图自身的 alpha 通道
+		blendFunc.AlphaFormat = AC_SRC_ALPHA;
+		AlphaBlend(drawDc, iconX, iconY, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE,
+					hMemDC, 0, 0, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE, blendFunc);
 		SelectObject(hMemDC, oldBmp);
 		DeleteDC(hMemDC);
-	}
-	// else
-	// {
-	// 	if (isSelected)
-	// 	{
-	// 		ImageList_Draw(g_listFileImageList, unknown_file_icon_index, hdc, rc.left + g_itemIconSelectedX,
-	// 						rc.top + g_itemIconSelectedY,
-	// 						ILD_TRANSPARENT);
-	// 	}
-	// 	else
-	// 	{
-	// 		ImageList_Draw(g_listFileImageList, unknown_file_icon_index, hdc, rc.left + g_itemIconX,
-	// 						rc.top + g_itemIconY,
-	// 						ILD_TRANSPARENT);
-	// 	}
-	// }
-	// }
-	else {
+	} else {
 		int iconIndex = -1;
 		if (!g_listViewSystemIconWarmer.tryGet(action, iconIndex)) {
 			return;
 		}
 		if (g_listFileImageList && iconIndex >= 0) {
-			if (isSelected) {
-				ImageList_Draw(g_listFileImageList, iconIndex, hdc, rc.left + g_itemIconSelectedX,
-								rc.top + g_itemIconSelectedY,
-								ILD_TRANSPARENT);
-			} else {
-				ImageList_Draw(g_listFileImageList, iconIndex, hdc, rc.left + g_itemIconX,
-								rc.top + g_itemIconY,
-								ILD_TRANSPARENT);
-			}
-			// ImageList_Draw(hImageList, action->iImageIndex, hdc, rc.left + 4, rc.top + 4, ILD_TRANSPARENT);
-			// ImageList_Draw(hImageList, action->iImageIndex, hdc, rc.left + 4, rc.top + 4, ILD_TRANSPARENT);
+			ImageList_Draw(g_listFileImageList, iconIndex, drawDc, iconX, iconY, ILD_TRANSPARENT);
 		} else {
-			if (isSelected) {
-				ImageList_Draw(g_listFileImageList, unknown_file_icon_index, hdc, rc.left + g_itemIconSelectedX,
-								rc.top + g_itemIconSelectedY,
-								ILD_TRANSPARENT);
-			} else {
-				ImageList_Draw(g_listFileImageList, unknown_file_icon_index, hdc, rc.left + g_itemIconX,
-								rc.top + g_itemIconY,
-								ILD_TRANSPARENT);
-			}
+			ImageList_Draw(g_listFileImageList, unknown_file_icon_index, drawDc, iconX, iconY, ILD_TRANSPARENT);
 		}
 	}
 }
@@ -928,6 +1003,15 @@ static LRESULT listViewOnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 		HWND hWnd = lplvcd->nmcd.hdr.hwndFrom;
 		RECT rcClient;
 		GetClientRect(hWnd, &rcClient);
+		const PaintStopwatch stopwatch;
+
+		if (g_listViewBgLayer) {
+			// 预合成好的背景（主窗口背景裁剪 + 列表背景）一次 BitBlt 覆盖，含 alpha，超出客户区的部分被裁掉
+			blitDibLayer(hdc, g_listViewBgLayer, rcClient.left, rcClient.top,
+						g_listViewBgLayer.width, g_listViewBgLayer.height, 0, 0);
+			g_listPaintStats.backgroundMs += stopwatch.elapsedMs();
+			return CDRF_NOTIFYITEMDRAW;
+		}
 
 		Gdiplus::Graphics graphics(hdc);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeHighQuality);
@@ -946,6 +1030,10 @@ static LRESULT listViewOnCustomDraw(LPNMLVCUSTOMDRAW lplvcd) {
 				const Gdiplus::SolidBrush bgBrush(g_listViewBackgroundColor);
 				graphics.FillRectangle(&bgBrush, rect);
 			}
+		}
+		if constexpr (kPaintProfileEnabled) {
+			graphics.Flush(Gdiplus::FlushIntentionSync);
+			g_listPaintStats.backgroundMs += stopwatch.elapsedMs();
 		}
 
 		// 告诉我们已经处理了图纸，它不应进行默认背景绘画。它仍将发送有关项目的通知。
