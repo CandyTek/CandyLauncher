@@ -82,6 +82,20 @@ class TeeStreamBuf final : public std::streambuf {
 public:
 	explicit TeeStreamBuf(std::streambuf* original) : m_original(original) {}
 
+#ifdef _MSVC_STL_VERSION
+	// MSVC 的 basic_ostream::sentry 在每次 operator<< 期间调用 rdbuf()->_Lock()/_Unlock()，
+	// basic_filebuf 用它锁住底层 FILE，内部的 fputc/fwrite 依赖这把锁。
+	// 替换 rdbuf 后必须把锁转发给原始 filebuf，否则多线程同时写日志会损坏 FILE 的 _cnt 字段，
+	// Debug CRT 在 fwrite 中报 "Inconsistent Stream Count. Flush between consecutive read and write"。
+	void _Lock() override {
+		if (m_original) m_original->_Lock();
+	}
+
+	void _Unlock() override {
+		if (m_original) m_original->_Unlock();
+	}
+#endif
+
 protected:
 	int_type overflow(const int_type ch) override {
 		if (ch == traits_type::eof()) return traits_type::not_eof(ch);

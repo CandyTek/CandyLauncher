@@ -40,8 +40,17 @@ constexpr const wchar_t* OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY = L"openFolder
 inline std::queue<std::function<void()>> g_taskQueue;
 inline std::mutex g_taskQueueMutex;
 inline std::condition_variable g_taskQueueCV;
-// 用于插件索引系统正在运行的窗口
-inline std::thread g_pluginIndexedRunningAppsThread;
+// 索引工作线程。进程经 ExitProcess 退出（如托盘退出、崩溃）时不会调用 Shutdown，
+// DLL 卸载时全局 std::thread 若仍 joinable 会触发 std::terminate → abort；此时其他线程已被系统结束，只能 detach。
+struct DetachOnExitThread {
+	std::thread thread;
+
+	~DetachOnExitThread() {
+		if (thread.joinable()) thread.detach();
+	}
+};
+
+inline DetachOnExitThread g_pluginIndexedRunningAppsThread;
 inline std::atomic<bool> g_workerShouldStop{false};
 
 
@@ -80,10 +89,10 @@ inline void SubmitTask(std::function<void()> task) {
 
 
 inline void stopThreadPluginRunningApps() {
-	if (g_pluginIndexedRunningAppsThread.joinable()) {
+	if (g_pluginIndexedRunningAppsThread.thread.joinable()) {
 		g_workerShouldStop = true;
 		g_taskQueueCV.notify_all();
-		g_pluginIndexedRunningAppsThread.join();
+		g_pluginIndexedRunningAppsThread.thread.join();
 	}
 }
 
@@ -227,8 +236,10 @@ public:
 			RefreshActions();
 			GetHost().NotifyActionsChanged();
 		};
+		// 给已 joinable 的 std::thread 赋值会 std::terminate，先停掉上一次的线程
+		stopThreadPluginRunningApps();
 		g_workerShouldStop = false;
-		g_pluginIndexedRunningAppsThread = std::thread(WorkerThreadFunction);
+		g_pluginIndexedRunningAppsThread.thread = std::thread(WorkerThreadFunction);
 		return true;
 	}
 
