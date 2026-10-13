@@ -477,6 +477,14 @@
 			"defValue": 60
 		},
 		{
+			"key": "pref_usage_history_boost",
+			"title": "模糊匹配时常用条目靠前",
+			"title_en": "Fuzzy match: boost frequently used items",
+			"type": "bool",
+			"subPage": "feature",
+			"defValue": true
+		},
+		{
 			"key": "pref_max_search_results",
 			"title": "列表结果数量",
 			"title_en": "Maximum result count",

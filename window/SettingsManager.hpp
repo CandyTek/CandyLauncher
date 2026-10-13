@@ -95,6 +95,7 @@ static void initGlobalVariable() {
 	pref_hotkey_toggle_main_panel_mode = g_settings_map["pref_hotkey_toggle_main_panel_mode"].stringValue;
 	pref_hotkey_toggle_main_panel = g_settings_map["pref_hotkey_toggle_main_panel"].stringValue;
 	pref_fuzzy_match_score_threshold = g_settings_map["pref_fuzzy_match_score_threshold"].intValue;
+	pref_usage_history_boost = g_settings_map["pref_usage_history_boost"].boolValue;
 	if (!g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {
 		EDIT_HINT_TEXT = utf8_to_wide(g_settings_map["pref_search_box_placeholder"].stringValue);
 	}

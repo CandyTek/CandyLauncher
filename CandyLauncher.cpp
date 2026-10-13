@@ -171,6 +171,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	if (needOpenDebugCmd) AttachConsoleForDebug();
 	PinyinHelper::initPinyinLib(EXE_FOLDER_PATH);
+	// 启动次数记录，模糊匹配时给常用条目加分
+	g_usageHistory.Load(EXE_FOLDER_PATH + LR"(\usage_history.json)");
 	InitializeCustomButtonResources();
 	MainWindowRegisterClass(hInstance);
 	SettingWindowRegisterClass(hInstance);

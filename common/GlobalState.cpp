@@ -61,6 +61,7 @@ float window_position_offset_y = 0.5f;
 int lastWindowCenterX = -1;
 int lastWindowCenterY = -1;
 int64_t pref_fuzzy_match_score_threshold = 60;
+bool pref_usage_history_boost = true;
 
 
 // 皮肤

@@ -58,36 +58,7 @@ inline const SettingItem* FindSetting(const wchar_t* key, std::initializer_list<
 	return nullptr;
 }
 
-// Lower case + pinyin processing is the expensive part of a publish; titles rarely change between
-// refreshes, so the result is kept per source string. Dropped when the pinyin scheme changes.
-struct MatchTextCache {
-	std::shared_mutex mutex;
-	std::unordered_map<std::wstring, std::wstring> map;
-	const void* scheme = nullptr;
-	static constexpr size_t MAX_ENTRIES = 200000;
-
-	std::wstring Get(const std::wstring& source) {
-		{
-			std::shared_lock<std::shared_mutex> lock(mutex);
-			if (scheme == pCurrPinyin) {
-				const auto it = map.find(source);
-				if (it != map.end()) return it->second;
-			}
-		}
-		std::wstring processed = PluginManager::GetTheProcessedMatchingText(source);
-		std::unique_lock<std::shared_mutex> lock(mutex);
-		if (scheme != pCurrPinyin) {
-			map.clear();
-			scheme = pCurrPinyin;
-		} else if (map.size() >= MAX_ENTRIES) {
-			map.clear();
-		}
-		map.emplace(source, processed);
-		return processed;
-	}
-};
-
-inline MatchTextCache g_matchTextCache;
+// g_matchTextCache (manager/MatchTextBuilder.hpp) keeps the lower case + pinyin result per source string.
 
 // Reads item i of a CL_ActionDesc array published by a plugin built against any 2.x header:
 // the plugin's own struct size is the stride, missing trailing fields read as zero.
@@ -167,11 +138,19 @@ inline std::vector<std::shared_ptr<BaseAction>> BuildProxies(CL_PluginContext* h
 			proxy->stableKey = W(desc.stable_key);
 			if (!processMatchText) {
 				proxy->matchText = desc.match_text ? std::wstring(desc.match_text) : proxy->title;
+				proxy->matchTitle = MyToLower(proxy->title);
 			} else if (desc.match_text && (desc.flags & CL_ACTION_MATCH_TEXT_VERBATIM)) {
+				// 插件自己拼好了 matchText（通常已经过 process_match_text，标题的拼音在缓存里）；
+				// 结构化字段仍按标题取，这样标题命中不会被路径等附加内容稀释
 				proxy->matchText = desc.match_text;
+				g_matchTextCache.FillFields(*proxy, proxy->title);
+			} else if (!desc.match_text || proxy->title == desc.match_text) {
+				g_matchTextCache.FillAll(*proxy, proxy->title);
 			} else {
-				proxy->matchText = g_matchTextCache.Get(desc.match_text ? std::wstring(desc.match_text) : proxy->title);
+				proxy->matchText = g_matchTextCache.Get(desc.match_text)->text;
+				g_matchTextCache.FillFields(*proxy, proxy->title);
 			}
+			proxy->usageKey = ComputeUsageKey(h->pkgName, proxy->stableKey, proxy->title, proxy->subtitle);
 			proxy->iconIndex = desc.icon_index;
 			if (desc.icon_index < 0 && desc.icon_path && *desc.icon_path) {
 				proxy->lazyIcon = lazyIcons.at(desc.icon_path);
@@ -248,7 +227,7 @@ inline void CL_CALL GetActionArg(CL_PluginHandle, const CL_StrSink sink, void* c
 
 inline void CL_CALL ProcessMatchText(CL_PluginHandle, const wchar_t* source, const CL_StrSink sink, void* ctx) {
 	GuardVoid(L"process_match_text", [&] {
-		Emit(sink, ctx, g_matchTextCache.Get(W(source)));
+		Emit(sink, ctx, g_matchTextCache.Get(W(source))->text);
 	});
 }
 

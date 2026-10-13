@@ -522,7 +522,9 @@ static void refreshAppLaunchAction() {
 	auto base_launch_action1 = std::make_shared<BaseLaunchAction>(L"刷新列表", L"刷新索引列表", L"",
 																appLaunchActionCallBacks["refreshList"]);
 	base_launch_action1->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, 48, 48);
-	base_launch_action1->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action1->getTitle()));
+	g_matchTextCache.FillAll(*base_launch_action1, base_launch_action1->getTitle());
+	base_launch_action1->usageKey = ComputeUsageKey(L"host", L"", base_launch_action1->getTitle(),
+													base_launch_action1->getSubTitle());
 	// auto base_launch_action2 = std::make_shared<BaseLaunchAction>(L"刷新插件", L"重新加载所有插件动作", L"",
 																// appLaunchActionCallBacks["refreshPlugins"]);
 	// base_launch_action2->matchText = PinyinHelper::GetPinyinWithVariants(MyToLower(base_launch_action2->getTitle()));
@@ -801,6 +803,17 @@ inline void actionFilter(const std::wstring& keyword) {
 
 	// ConsolePrintln(L"项目数量" + std::to_wstring(allActions.size()));
 	TextMatch(keyword, allActions, filteredActions);
+#if defined(DEBUG) || defined(_DEBUG)
+	{
+		std::wstring top;
+		for (size_t i = 0; i < filteredActions.size() && i < 8; ++i) {
+			if (i) top += L" | ";
+			top += filteredActions[i]->getTitle();
+		}
+		Logi(L"TextMatch", L"query='", keyword, L"' candidates=", allActions.size(), L" results=",
+			filteredActions.size(), L" top: ", top);
+	}
+#endif
 	// 关键方法，用于提交列表数据更新
 	addActionDone();
 }

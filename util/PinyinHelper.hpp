@@ -125,55 +125,97 @@ public:
 		return result;
 	}
 
-	static std::wstring GetPinyinWithVariants(const std::wstring& str) {
-		std::wstring result;
-		// 拆分中英文
-		std::wstring enStr, chStr2;
+	// 一次拼音转换得到的全部搜索变体。拼音相关字段在没有中文时为空。
+	struct MatchVariants {
+		// 整串拼音：中文替换为（当前方案的）拼音，其余字符原样，无分隔；与原文相同时为空
+		std::wstring pinyin;
+		// 旧格式首字母：每个拼音项的首字符（非中文项也取首字符），只用于拼接 matchText
+		std::wstring pinyinInitials;
+		// 英文单词首字母（ExtractEnInitials），只用于拼接 matchText
+		std::wstring enInitials;
+		// 缩写：中文取拼音首字母，英文/数字单词取首字符，忽略分隔符。例如 "微信 wechat" -> "wxw"，
+		// "visual studio code" -> "vsc"。供模糊打分的首字母通道使用
+		std::wstring acronym;
+	};
+
+	// 只调用一次 hanziToPinyin，同时产出 matchText 需要的旧变体和模糊打分需要的新字段
+	static MatchVariants BuildMatchVariants(const std::wstring& str) {
+		MatchVariants v;
+		if (str.empty()) return v;
+
+		bool hasChinese = false;
+		std::wstring enStr;
 		for (const wchar_t ch : str) {
-			if (IsChineseChar(ch)) chStr2 += ch;
+			if (IsChineseChar(ch)) hasChinese = true;
 			else enStr += ch;
 		}
 
-		const std::vector<std::wstring> strPinyins = GetFullPinyinSequence(str);
-		// const std::vector<std::wstring> chstrPinyins = GetPinyinInitialSequence(str);
-
-		std::wstring chResultStr;
-		for (const std::wstring& item : strPinyins) {
-			chResultStr += item;
-		}
-		if (chResultStr != str) {
-			result += chResultStr + L" " + GetFirstChars(strPinyins);
+		// 无中文时无需拼音库：缩写直接从单词首字符得到
+		if (!hasChinese || g2p_man == nullptr) {
+			v.enInitials = ExtractEnInitials(enStr);
+			v.acronym = ExtractFirstAlphabetFromWords(str);
+			return v;
 		}
 
+		const Pinyin::PinyinResVector res = g2p_man->hanziToPinyin(
+			wide_to_utf8(str),
+			Pinyin::ManTone::Style::NORMAL,
+			Pinyin::Error::Default,
+			false
+		);
 
-		// result.insert(result.end(), temp.begin(), temp.end());
-		// result.insert(result.end(), temp2.begin(), temp2.end());
+		std::wstring full;
+		bool newWord = true;
+		for (const auto& item : res) {
+			std::wstring piece;
+			if (item.error || pCurrPinyin == nullptr) {
+				piece = utf8_to_wide(item.pinyin);
+			} else if (const auto it = pCurrPinyin->find(item.pinyin); it != pCurrPinyin->end()) {
+				piece = it->second;
+			} else {
+				piece = utf8_to_wide(item.pinyin);
+			}
+			full += piece;
+			if (!piece.empty()) v.pinyinInitials += piece[0];
 
-		// for (const auto& pinyin : temp)
-		// {
-		// 	result += pinyin;
-		// }
-		// for (const auto& pinyin : temp2)
-		// {
-		// 	result += pinyin;
-		// }
+			if (!item.error) {
+				// 一个汉字就是一个词
+				if (!piece.empty()) v.acronym += piece[0];
+				newWord = true;
+				continue;
+			}
+			// 非中文片段：按单词取首字符
+			for (const wchar_t ch : piece) {
+				if (iswalnum(ch)) {
+					if (newWord) {
+						v.acronym += ch;
+						newWord = false;
+					}
+				} else {
+					newWord = true;
+				}
+			}
+		}
+		if (full != str) v.pinyin = std::move(full);
+		v.enInitials = ExtractEnInitials(enStr);
+		return v;
+	}
 
-
+	// 拼接给 matchText 用的旧格式："原文 全拼 拼音首字母英文首字母"（保持与历史版本一致）
+	static std::wstring ComposeMatchText(const std::wstring& str, const MatchVariants& v) {
+		std::wstring result;
+		if (!v.pinyin.empty()) {
+			result += v.pinyin + L" " + v.pinyinInitials;
+		}
 		// 添加英文部分的缩写形式
-		if (const std::wstring convert_en_words_to_abbr_words = ExtractEnInitials(enStr); convert_en_words_to_abbr_words.length() >
-			1)
-			result += convert_en_words_to_abbr_words + L" ";
-
-		// std::wstring outputdebug;
-		// outputdebug += str;
-		// outputdebug += L" ";
-		// outputdebug += MyTrim(result);
-		// std::wcout << outputdebug << std::endl;
-
+		if (v.enInitials.length() > 1) {
+			result += v.enInitials + L" ";
+		}
 		// 去除多余空格
 		return str + L" " + MyTrim(result);
-		// std::wstring temp = str + L" " + MyTrim(result);
-		// ConsolePrintln(temp);
-		// return temp;
+	}
+
+	static std::wstring GetPinyinWithVariants(const std::wstring& str) {
+		return ComposeMatchText(str, BuildMatchVariants(str));
 	}
 };

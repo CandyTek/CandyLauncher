@@ -20,7 +20,9 @@
 #include "../util/BaseTools.hpp"
 #include "util/FileUtil.hpp"
 #include "util/json.hpp"
+#include "manager/MatchTextBuilder.hpp"
 #include "manager/TextMatchHelper.hpp"
+#include "manager/UsageHistory.hpp"
 #include "util/PinyinHelper.hpp"
 #include "util/MainTools.hpp"
 #include "util/MyToastUtil.hpp"
@@ -293,8 +295,8 @@ public:
 
 
 	static std::wstring GetTheProcessedMatchingText(const std::wstring& source) {
-		// 这里可以执行一些处理，比如拼音转换、文本清理等
-		return PinyinHelper::GetPinyinWithVariants(MyToLower(sanitizeVisible(source))); // 假设使用了 PinyinHelper 处理
+		// 小写 + 清理 + 拼音变体，见 manager/MatchTextBuilder.hpp
+		return BuildProcessedMatchText(source).text;
 	}
 
 	bool LoadPlugin(const std::wstring& dllPath) {
@@ -567,6 +569,7 @@ public:
 		if (!dynamic_cast<PluginActionProxy*>(action.get())) {
 			const auto action1 = std::dynamic_pointer_cast<BaseLaunchAction>(action);
 			if (!action1) return false;
+			RecordUsage(*action1);
 			action1->Invoke();
 			return true;
 		}
@@ -576,7 +579,14 @@ public:
 		if (!info || !CL_PLUGIN_HAS(*info, on_action_execute)) {
 			return false;
 		}
+		RecordUsage(*action);
 		return info->api->on_action_execute(info->self, userData, arg.c_str()) != 0;
+	}
+
+	// 使用历史只在开启“按使用频率提升排序”时记录
+	static void RecordUsage(const BaseAction& action) {
+		if (!pref_usage_history_boost || action.usageKey == 0) return;
+		g_usageHistory.Record(action.usageKey);
 	}
 
 	static void DispatchSettingItemExecute(const uint16_t pluginId, const std::string& key, HWND parentHwnd) {

@@ -91,6 +91,9 @@ add_executable(CandyLauncher WIN32
 		util/ClipboardUtil.hpp
 		util/MyJsonUtil.hpp
 		manager/TextMatchHelper.hpp
+		manager/FuzzyScorer.hpp
+		manager/MatchTextBuilder.hpp
+		manager/UsageHistory.hpp
 		model/ScoredAction.hpp
 		util/MyToastUtil.hpp
 		util/TaskWorker.hpp

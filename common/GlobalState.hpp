@@ -85,6 +85,8 @@ extern int lastWindowCenterY;
 //const int COLOR_UI_BG_VALUE = 255;
 extern int LISTITEM_ICON_SIZE;
 extern int64_t pref_fuzzy_match_score_threshold;
+// 模糊匹配时按使用历史给常用条目加分（manager/UsageHistory.hpp）
+extern bool pref_usage_history_boost;
 extern ULONGLONG APP_STARTUP_TIME;
 
 
