@@ -157,10 +157,12 @@ private:
                             static_cast<LPARAM>(static_cast<uint32_t>(queryId >> 32))) != FALSE;
     }
 
-    // 任意线程。takeOver：发布到 m_results 并让 UI 线程整表显示（替换占位）；否则追加到当前列表
+    // 任意线程。takeOver：发布到 m_results 并让 UI 线程整表显示（替换占位）；否则追加到当前列表。
+    // 接管时空结果也要投递，否则 "查询中" 占位或上一次的旧结果会一直留在列表里
     void DeliverResults(const uint64_t queryId, const std::wstring& scriptId,
                         std::vector<std::shared_ptr<NodeJsAction>> items, const bool takeOver) {
-        if (items.empty() || queryId != GetHost().GetCurrentQueryId()) return;
+        if (queryId != GetHost().GetCurrentQueryId()) return;
+        if (!takeOver && items.empty()) return;
         if (takeOver) {
             {
                 std::lock_guard<std::mutex> lock(m_stateMutex);
@@ -180,16 +182,20 @@ private:
                 params.contains("results") && params["results"].is_array()) {
 
                 std::string jsPluginId = params["pluginId"];
-                auto actions = ParseActionsFromJson(jsPluginId, params["results"]);
 
-                // 通知不带查询 id，按当前输入对应的查询投递；输入已变化时主程序会丢弃
+                // node-host 在知道来源查询时会带上 queryId；旧查询的异步推送不能被当成当前查询的结果
                 uint64_t queryId = 0;
                 bool takeOver = false;
                 {
                     std::lock_guard<std::mutex> lock(m_stateMutex);
+                    if (params.contains("queryId") && params["queryId"].is_number_unsigned() &&
+                        params["queryId"].get<uint64_t>() != m_currentQueryId) {
+                        return;
+                    }
                     queryId = m_currentQueryId;
                     takeOver = m_currentTakeOver;
                 }
+                auto actions = ParseActionsFromJson(jsPluginId, params["results"]);
                 DeliverResults(queryId, utf8_to_wide(jsPluginId), std::move(actions), takeOver);
             }
         } else if (method == "changeQuery") {
@@ -470,11 +476,9 @@ public:
                 }
             }
 
-            if (!finalResults.empty()) {
-                MethodTimerEnd(L"nodejsplugin query");
-                // 关键：异步完成后刷新结果
-                DeliverResults(queryId, futuresPtr->at(0).first, std::move(finalResults), takeOver);
-            }
+            MethodTimerEnd(L"nodejsplugin query");
+            // 关键：异步完成后刷新结果；接管列表时即使为空（无结果 / 脚本出错）也要投递以清掉占位
+            DeliverResults(queryId, futuresPtr->at(0).first, std::move(finalResults), takeOver);
         }));
     }
 

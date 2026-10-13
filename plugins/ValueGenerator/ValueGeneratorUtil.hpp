@@ -76,16 +76,17 @@ public:
 		PredefinedNamespaces[L"ns:x500"] = { 0x6ba7b814, 0x9dad, 0x11d1, {0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8} };
 	}
 
-	// UUID v1: 基于时间的 UUID
-	static GUID V1() {
-		GUID guid;
-		UuidCreate(&guid);
-		return guid;
+	// UUID v1: 基于时间的 UUID。UuidCreate 生成的是 v4，时间版要用 UuidCreateSequential；
+	// 没有网卡时返回 RPC_S_UUID_LOCAL_ONLY，同样是有效结果
+	static bool V1(GUID& guid) {
+		guid = GUID{};
+		const RPC_STATUS status = UuidCreateSequential(&guid);
+		return status == RPC_S_OK || status == RPC_S_UUID_LOCAL_ONLY;
 	}
 
 	// UUID v3: 基于 MD5 的命名空间 UUID
-	static GUID V3(const GUID& namespaceGuid, const std::wstring& name) {
-		return GenerateNameBasedUUID(namespaceGuid, name, 3);
+	static bool V3(const GUID& namespaceGuid, const std::wstring& name, GUID& result) {
+		return GenerateNameBasedUUID(namespaceGuid, name, 3, result);
 	}
 
 	// UUID v4: 随机 UUID
@@ -102,8 +103,8 @@ public:
 	}
 
 	// UUID v5: 基于 SHA1 的命名空间 UUID
-	static GUID V5(const GUID& namespaceGuid, const std::wstring& name) {
-		return GenerateNameBasedUUID(namespaceGuid, name, 5);
+	static bool V5(const GUID& namespaceGuid, const std::wstring& name, GUID& result) {
+		return GenerateNameBasedUUID(namespaceGuid, name, 5, result);
 	}
 
 	// UUID v7: 基于时间排序的 UUID (使用时间戳 + 随机数)
@@ -155,57 +156,82 @@ public:
 	}
 
 private:
-	// 生成基于名称的 UUID (v3 使用 MD5, v5 使用 SHA1)
-	static GUID GenerateNameBasedUUID(const GUID& namespaceGuid, const std::wstring& name, int version) {
-		GUID result;
+	// Windows GUID 的 Data1/Data2/Data3 在内存中是小端，RFC 9562 要求按网络字节序（大端）参与哈希
+	static void GuidToNetworkBytes(const GUID& guid, uint8_t out[16]) {
+		out[0] = static_cast<uint8_t>(guid.Data1 >> 24);
+		out[1] = static_cast<uint8_t>(guid.Data1 >> 16);
+		out[2] = static_cast<uint8_t>(guid.Data1 >> 8);
+		out[3] = static_cast<uint8_t>(guid.Data1);
+		out[4] = static_cast<uint8_t>(guid.Data2 >> 8);
+		out[5] = static_cast<uint8_t>(guid.Data2);
+		out[6] = static_cast<uint8_t>(guid.Data3 >> 8);
+		out[7] = static_cast<uint8_t>(guid.Data3);
+		memcpy(out + 8, guid.Data4, 8);
+	}
 
-		// 将命名空间 GUID 转换为字节数组（按网络字节序）
+	static GUID GuidFromNetworkBytes(const uint8_t bytes[16]) {
+		GUID guid{};
+		guid.Data1 = (static_cast<unsigned long>(bytes[0]) << 24) | (static_cast<unsigned long>(bytes[1]) << 16) |
+			(static_cast<unsigned long>(bytes[2]) << 8) | bytes[3];
+		guid.Data2 = static_cast<unsigned short>((bytes[4] << 8) | bytes[5]);
+		guid.Data3 = static_cast<unsigned short>((bytes[6] << 8) | bytes[7]);
+		memcpy(guid.Data4, bytes + 8, 8);
+		return guid;
+	}
+
+	// SHA1(data) 的前 16 字节；任一 CryptoAPI 调用失败返回 false
+	static bool Sha1Prefix16(const std::vector<uint8_t>& data, uint8_t out[16]) {
+		HCRYPTPROV hProv = 0;
+		HCRYPTHASH hHash = 0;
+		bool ok = false;
+		if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+			if (CryptCreateHash(hProv, CALG_SHA1, 0, 0, &hHash)) {
+				if (CryptHashData(hHash, data.data(), static_cast<DWORD>(data.size()), 0)) {
+					BYTE hashData[20];
+					DWORD hashLen = sizeof(hashData);
+					if (CryptGetHashParam(hHash, HP_HASHVAL, hashData, &hashLen, 0) && hashLen >= 16) {
+						memcpy(out, hashData, 16);
+						ok = true;
+					}
+				}
+				CryptDestroyHash(hHash);
+			}
+			CryptReleaseContext(hProv, 0);
+		}
+		return ok;
+	}
+
+	// 生成基于名称的 UUID (v3 使用 MD5, v5 使用 SHA1)，见 RFC 9562 §5.3 / §5.5
+	static bool GenerateNameBasedUUID(const GUID& namespaceGuid, const std::wstring& name, int version, GUID& result) {
+		result = GUID{};
+
+		// 先转 UTF-8 再按实际字节数分配：UTF-16 长度 * 2 装不下 3 字节的 BMP 字符
+		const std::string utf8Name = wide_to_utf8(name);
 		std::vector<uint8_t> data;
-		data.resize(16 + name.length() * 2);
+		data.reserve(16 + utf8Name.size());
+		uint8_t namespaceBytes[16];
+		GuidToNetworkBytes(namespaceGuid, namespaceBytes);
+		data.insert(data.end(), namespaceBytes, namespaceBytes + 16);
+		data.insert(data.end(), utf8Name.begin(), utf8Name.end());
 
-		// 复制命名空间 GUID (按网络字节序)
-		memcpy(data.data(), &namespaceGuid, 16);
-
-		// 复制名称(使用 UTF-8)
-		std::string utf8Name = wide_to_utf8(name);
-		memcpy(data.data() + 16, utf8Name.c_str(), utf8Name.length());
-		data.resize(16 + utf8Name.length());
-
+		uint8_t digest[16];
 		if (version == 3) {
-			// MD5
-			std::string dataStr(data.begin(), data.end());
-			std::string hash = websocketpp::md5::md5_hash_string(dataStr);
-
-			// 将哈希的前 16 字节转换为 GUID
-			memcpy(&result, hash.c_str(), 16);
+			const std::string hash = websocketpp::md5::md5_hash_string(std::string(data.begin(), data.end()));
+			if (hash.size() < 16) return false;
+			memcpy(digest, hash.data(), 16);
 		}
 		else if (version == 5) {
-			// SHA1 使用 Windows Crypto API
-			HCRYPTPROV hProv = 0;
-			HCRYPTHASH hHash = 0;
-
-			if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-				if (CryptCreateHash(hProv, CALG_SHA1, 0, 0, &hHash)) {
-					if (CryptHashData(hHash, data.data(), static_cast<DWORD>(data.size()), 0)) {
-						DWORD hashLen = 20;
-						std::vector<BYTE> hashData(hashLen);
-						if (CryptGetHashParam(hHash, HP_HASHVAL, hashData.data(), &hashLen, 0)) {
-							// 将哈希的前 16 字节转换为 GUID
-							memcpy(&result, hashData.data(), 16);
-						}
-					}
-					CryptDestroyHash(hHash);
-				}
-				CryptReleaseContext(hProv, 0);
-			}
+			if (!Sha1Prefix16(data, digest)) return false;
+		}
+		else {
+			return false;
 		}
 
-		// 设置版本号
-		result.Data3 = (result.Data3 & 0x0FFF) | (version << 12);
-		// 设置变体
-		result.Data4[0] = (result.Data4[0] & 0x3F) | 0x80;
-
-		return result;
+		// 版本号在第 6 字节高 4 位，变体在第 8 字节高 2 位（均按网络字节序）
+		digest[6] = static_cast<uint8_t>((digest[6] & 0x0F) | (version << 4));
+		digest[8] = static_cast<uint8_t>((digest[8] & 0x3F) | 0x80);
+		result = GuidFromNetworkBytes(digest);
+		return true;
 	}
 };
 
@@ -417,7 +443,11 @@ public:
 		try {
 			switch (version) {
 				case 1:
-					guidResult = GUIDGenerator::V1();
+					if (!GUIDGenerator::V1(guidResult)) {
+						errorMessage = L"生成基于时间的 UUID 失败";
+						isSuccessful = false;
+						return false;
+					}
 					break;
 				case 3:
 					if (!hasNamespace) {
@@ -425,7 +455,11 @@ public:
 						isSuccessful = false;
 						return false;
 					}
-					guidResult = GUIDGenerator::V3(namespaceGuid, guidName);
+					if (!GUIDGenerator::V3(namespaceGuid, guidName, guidResult)) {
+						errorMessage = L"计算 MD5 失败";
+						isSuccessful = false;
+						return false;
+					}
 					break;
 				case 4:
 					guidResult = GUIDGenerator::V4();
@@ -436,7 +470,11 @@ public:
 						isSuccessful = false;
 						return false;
 					}
-					guidResult = GUIDGenerator::V5(namespaceGuid, guidName);
+					if (!GUIDGenerator::V5(namespaceGuid, guidName, guidResult)) {
+						errorMessage = L"计算 SHA1 失败";
+						isSuccessful = false;
+						return false;
+					}
 					break;
 				case 7:
 					guidResult = GUIDGenerator::V7();

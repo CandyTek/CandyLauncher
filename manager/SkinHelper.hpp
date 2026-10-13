@@ -267,7 +267,8 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 			g_skinJson = nlohmann::json::parse(GUARANTEED_SKIN_JSON);
 			std::filesystem::path fullPath(skinPath);
 		} catch (const nlohmann::json::parse_error& e2) {
-			Loge(L"SkinHelper", L"JSON 解析错误: ", e2.what());
+			Loge(L"SkinHelper", L"A fatal mistake, JSON pause: ", e2.what());
+			throw;
 			return false;
 		}
 	}

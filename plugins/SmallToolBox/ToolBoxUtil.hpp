@@ -38,27 +38,36 @@ inline bool IsHexColor(const std::string& str) {
 	return true;
 }
 
-// 检查是否是有效的 RGB 格式 R,G,B
-inline bool IsRgbColor(const std::string& str) {
-	size_t comma1 = str.find(',');
-	size_t comma2 = str.find(',', comma1 + 1);
+// 解析一个 RGB 分量：去掉首尾空白后必须是 1~3 位纯数字且不超过 255。
+// std::stoi 只解析数字前缀，"12junk" / "1.5" 会被当成 12 / 1，所以这里要求整段都被消费
+inline bool ParseRgbComponent(const std::string& text, int& value) {
+	const std::string digits = TrimString(text);
+	if (digits.empty() || digits.size() > 3) return false;
+	value = 0;
+	for (const char c : digits) {
+		if (c < '0' || c > '9') return false;
+		value = value * 10 + (c - '0');
+	}
+	return value <= 255;
+}
 
-	if (comma1 == std::string::npos || comma2 == std::string::npos) return false;
+// 把 R,G,B 拆成三个分量，格式不合法返回 false
+inline bool ParseRgbColor(const std::string& str, int& r, int& g, int& b) {
+	const size_t comma1 = str.find(',');
+	if (comma1 == std::string::npos) return false;
+	const size_t comma2 = str.find(',', comma1 + 1);
+	if (comma2 == std::string::npos) return false;
 	if (str.find(',', comma2 + 1) != std::string::npos) return false; // 不能有第三个逗号
 
-	try {
-		std::string r = str.substr(0, comma1);
-		std::string g = str.substr(comma1 + 1, comma2 - comma1 - 1);
-		std::string b = str.substr(comma2 + 1);
+	return ParseRgbComponent(str.substr(0, comma1), r) &&
+		ParseRgbComponent(str.substr(comma1 + 1, comma2 - comma1 - 1), g) &&
+		ParseRgbComponent(str.substr(comma2 + 1), b);
+}
 
-		int rVal = std::stoi(r);
-		int gVal = std::stoi(g);
-		int bVal = std::stoi(b);
-
-		return (rVal >= 0 && rVal <= 255) && (gVal >= 0 && gVal <= 255) && (bVal >= 0 && bVal <= 255);
-	} catch (...) {
-		return false;
-	}
+// 检查是否是有效的 RGB 格式 R,G,B
+inline bool IsRgbColor(const std::string& str) {
+	int r, g, b;
+	return ParseRgbColor(str, r, g, b);
 }
 
 // 将 #RRGGBB 转换为 R,G,B
@@ -72,12 +81,8 @@ inline std::string HexToRgb(const std::string& hex) {
 
 // 将 R,G,B 转换为 #RRGGBB
 inline std::string RgbToHex(const std::string& rgb) {
-	size_t comma1 = rgb.find(',');
-	size_t comma2 = rgb.find(',', comma1 + 1);
-
-	int r = std::stoi(rgb.substr(0, comma1));
-	int g = std::stoi(rgb.substr(comma1 + 1, comma2 - comma1 - 1));
-	int b = std::stoi(rgb.substr(comma2 + 1));
+	int r = 0, g = 0, b = 0;
+	if (!ParseRgbColor(rgb, r, g, b)) return std::string();
 
 	char hex[8];
 	sprintf_s(hex, 8, "#%02X%02X%02X", r, g, b);

@@ -75,8 +75,10 @@ private:
 
 		for (auto& engine : g_searchEngines)
 		{
+			// 文本参数条目：执行时用 arg 现场拼 URL（custom_action_id 1），不缓存任何具体查询
 			auto action = std::make_shared<WebSearchAction>();
 			action->sourceUrl = engine.url;
+			action->custom_action_id = 1;
 			action->title = engine.name + L" (" + engine.key + L")";
 			action->subtitle = engine.url;
 			action->stableKey = engine.url;
@@ -189,14 +191,25 @@ public:
 		}
 		if (L"search" == key)
 		{
-			// 主程序在 AddTransient 时复制条目，所以要先更新再加入
-			for (auto& a : allEngineActions)
+			// 每次输入新建条目（custom_action_id 0，URL 已拼好），不能改写 textArgActions 里共享的引擎条目，
+			// 否则之后 "textarg " 会打开上一次 search 的 URL
+			std::vector<std::shared_ptr<WebSearchAction>> items;
+			for (const auto& engine : allEngineActions)
 			{
-				if (!a || a->sourceUrl.empty()) continue;
-				a->searchUrl = BuildSearchUrl(a->sourceUrl, query);
-				a->subtitle = a->searchUrl;
+				if (!engine || engine->sourceUrl.empty()) continue;
+				auto action = std::make_shared<WebSearchAction>();
+				action->sourceUrl = engine->sourceUrl;
+				action->searchUrl = BuildSearchUrl(engine->sourceUrl, query);
+				action->title = engine->title;
+				action->subtitle = action->searchUrl;
+				action->stableKey = engine->stableKey;
+				items.push_back(action);
 			}
-			sink.AddTransient(results, textArgActions);
+			for (const auto& a : textArgActions)
+			{
+				if (a && a->sourceUrl.empty()) items.push_back(a);
+			}
+			sink.AddTransient(results, items);
 		}
 	}
 
@@ -238,35 +251,26 @@ public:
 			return SetClipboardText(arg);
 		}
 
-		if (a->searchUrl.empty())
+		switch (a->custom_action_id)
 		{
-			if (a->custom_action_id == 11)
+		case 11:
+			return LaunchWebSearchUrl(arg, useSubBrowser);
+		case 12:
 			{
-				std::wstring url = arg;
-				return LaunchWebSearchUrl(url, useSubBrowser);
-			}else if (a->custom_action_id == 12)
-			{
-				std::string url =getContainsUrl(arg);
-				if (!url.empty())
-				{
-					return LaunchWebSearchUrl(url, useSubBrowser);
-				}
+				const std::string url = getContainsUrl(arg);
+				return !url.empty() && LaunchWebSearchUrl(url, useSubBrowser);
 			}
+		case 1:
+			// 文本参数：用 arg 拼引擎 URL
+			if (a->sourceUrl.empty()) return false;
+			return LaunchWebSearchUrl(BuildSearchUrl(a->sourceUrl, arg), useSubBrowser);
+		case 0:
+			// "gg 关键词" / "search 关键词"：URL 已在拦截输入时拼好
+			if (a->searchUrl.empty()) return false;
+			return LaunchWebSearchUrl(a->searchUrl, useSubBrowser);
+		default:
+			return false;
 		}
-		else
-		{
-			if (a->custom_action_id == 1)
-			{
-				std::wstring url = BuildSearchUrl(a->sourceUrl, arg);
-				return LaunchWebSearchUrl(url, useSubBrowser);
-			}
-			else if (a->custom_action_id == 0)
-			{
-				return LaunchWebSearchUrl(a->searchUrl, useSubBrowser);
-			}
-		}
-
-		return false;
 	}
 
 	void Shutdown() override

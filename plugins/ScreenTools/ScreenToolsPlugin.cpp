@@ -15,6 +15,9 @@
 #include <vector>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <atomic>
+#include <functional>
+#include <mutex>
 #include <thread>
 
 #include "stb_image_write.h"
@@ -33,6 +36,78 @@ namespace
     };
 
     Image Capture(RECT rect);
+
+    // 截图 / 识别在独立线程上运行。线程全部登记在这里，Shutdown 时关掉它们的窗口并等待结束，
+    // 否则插件实例销毁、DLL 卸载后线程还会继续执行已释放的代码
+    std::atomic<bool> g_stopping{false};
+    std::mutex g_workersMutex;
+
+    struct Worker
+    {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> finished;
+    };
+
+    std::vector<Worker> g_workers;
+
+    bool StartWorker(std::function<void()> fn)
+    {
+        std::lock_guard<std::mutex> lock(g_workersMutex);
+        if (g_stopping) return false;
+        for (auto it = g_workers.begin(); it != g_workers.end();)
+        {
+            if (*it->finished)
+            {
+                it->thread.join();
+                it = g_workers.erase(it);
+            }
+            else ++it;
+        }
+        auto finished = std::make_shared<std::atomic<bool>>(false);
+        std::thread thread([fn = std::move(fn), finished]
+        {
+            fn();
+            *finished = true;
+        });
+        g_workers.push_back({std::move(thread), std::move(finished)});
+        return true;
+    }
+
+    BOOL CALLBACK CloseThreadWindowProc(const HWND hwnd, LPARAM)
+    {
+        // 选区窗口走 DefWindowProc 销毁并结束消息循环，MessageBox 也会随之关闭
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        return TRUE;
+    }
+
+    void StopWorkers()
+    {
+        std::vector<Worker> workers;
+        {
+            std::lock_guard<std::mutex> lock(g_workersMutex);
+            g_stopping = true;
+            workers.swap(g_workers);
+        }
+        for (auto& worker : workers)
+        {
+            const HANDLE handle = worker.thread.native_handle();
+            const DWORD threadId = GetThreadId(handle);
+            // 工作线程可能正通过 SetWindowText 同步发消息给 UI 线程，等待期间必须处理 sent message，
+            // 否则在 UI 线程上 join 会死锁；PM_NOREMOVE 只派发 sent message，不消费队列里的其它消息
+            while (!*worker.finished)
+            {
+                EnumThreadWindows(threadId, CloseThreadWindowProc, 0);
+                const DWORD wait = MsgWaitForMultipleObjects(1, &handle, FALSE, 50, QS_SENDMESSAGE);
+                if (wait == WAIT_OBJECT_0 + 1)
+                {
+                    MSG msg;
+                    PeekMessageW(&msg, nullptr, 0, 0, PM_NOREMOVE);
+                }
+                else if (wait == WAIT_OBJECT_0 || wait == WAIT_FAILED) break;
+            }
+            worker.thread.join();
+        }
+    }
 
     struct Selection
     {
@@ -386,7 +461,7 @@ namespace
     {
         RECT area{};
         Image frozen;
-        if (!SelectArea(area, &frozen))
+        if (!SelectArea(area, &frozen) || g_stopping)
         {
             // if (frozen.pixels.empty()) MessageBoxW(nullptr, L"截图失败", L"识别二维码", MB_ICONERROR);
             return;
@@ -409,7 +484,7 @@ namespace
             if (!result.empty()) result += "\r\n";
             result += code;
         }
-        if (!m_host) return;
+        if (!m_host || g_stopping) return;
         m_host->SetEditText(
             utf8_to_wide(makeCompactJsonWithoutBraces(result)) + (isValidUrl(result) ? L"urlarg " : L"textarg "));
         m_host->ShowMainWindow(SW_SHOW, true);
@@ -464,7 +539,7 @@ namespace
     void CaptureLongImage()
     {
         RECT area{};
-        if (!SelectArea(area)) return;
+        if (!SelectArea(area) || g_stopping) return;
         POINT center{(area.left + area.right) / 2, (area.top + area.bottom) / 2};
         HWND target = WindowFromPoint(center);
         if (target) SetForegroundWindow(GetAncestor(target, GA_ROOT));
@@ -472,7 +547,7 @@ namespace
         Image first = Capture(area);
         if (first.pixels.empty())
         {
-            MessageBoxW(nullptr, L"截图失败", L"截长图", MB_ICONERROR);
+            if (!g_stopping) MessageBoxW(nullptr, L"截图失败", L"截长图", MB_ICONERROR);
             return;
         }
         Image previous = first;
@@ -482,6 +557,7 @@ namespace
             30000, static_cast<int>((256ull * 1024 * 1024) / (static_cast<size_t>(first.width) * 4)));
         for (int frame = 1; frame < 30 && outputHeight < maxHeight; ++frame)
         {
+            if (g_stopping) return;
             ScrollAt(center);
             Sleep(500);
             Image next = Capture(area);
@@ -496,6 +572,7 @@ namespace
             outputHeight += added;
             previous = std::move(next);
         }
+        if (g_stopping) return;
         PWSTR pictures = nullptr;
         if (FAILED(SHGetKnownFolderPath(FOLDERID_Pictures, 0, nullptr, &pictures)))
         {
@@ -541,9 +618,10 @@ namespace
         if (!ok || !MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
         {
             DeleteFileW(temp.c_str());
-            MessageBoxW(nullptr, L"保存 PNG 失败", L"截长图", MB_ICONERROR);
+            if (!g_stopping) MessageBoxW(nullptr, L"保存 PNG 失败", L"截长图", MB_ICONERROR);
             return;
         }
+        if (g_stopping) return;
         std::wstring message = L"已保存到：\n" + path.wstring();
         if (outputHeight == first.height) message += L"\n\n未检测到可拼接的滚动内容，仅保存了首屏。";
         MessageBoxW(nullptr, message.c_str(), L"截长图", MB_ICONINFORMATION);
@@ -567,7 +645,20 @@ public:
     bool Initialize() override
     {
         host = &GetHost();
+        g_stopping = false;
         return true;
+    }
+
+    // host 指针在 Shutdown 等待所有工作线程结束之后才置空，所以线程里用它是安全的
+    void StartQrScan() const
+    {
+        const candy::Host* h = host;
+        StartWorker([h] { ReadQrCode(h); });
+    }
+
+    static void StartLongCapture()
+    {
+        StartWorker([] { CaptureLongImage(); });
     }
 
     void InitScreenToolsHotkeys() const
@@ -575,25 +666,13 @@ public:
         g_hotkeyMgr.Clear();
 
         const std::wstring qrcodeHotkey = host->GetString(L"com.candytek.screentools.hotkey_qrcode_scan");
-        if (!g_hotkeyMgr.AddHotkey(0x2800, qrcodeHotkey, [this](int)
-        {
-            std::thread([this]()
-            {
-                ReadQrCode(host);
-            }).detach();
-        }))
+        if (!g_hotkeyMgr.AddHotkey(0x2800, qrcodeHotkey, [this](int) { StartQrScan(); }))
         {
             Loge(L"ScreenTools", L"Invalid hotkey for qrcode scan: (", qrcodeHotkey, L")");
         }
 
         const std::wstring longHotkey = host->GetString(L"com.candytek.screentools.hotkey_long_ss");
-        if (!g_hotkeyMgr.AddHotkey(0x2801, longHotkey, [](int)
-        {
-            std::thread([]()
-            {
-                CaptureLongImage();
-            }).detach();
-        }))
+        if (!g_hotkeyMgr.AddHotkey(0x2801, longHotkey, [](int) { StartLongCapture(); }))
         {
             Loge(L"ScreenTools", L"Invalid hotkey for long screenshot: (", longHotkey, L")");
         }
@@ -636,6 +715,8 @@ public:
 
     void Shutdown() override
     {
+        // 先拒绝新操作并等正在进行的截图 / 识别结束，再停热键线程，最后才能让 host 失效
+        StopWorkers();
         g_hotkeyMgr.Clear();
         actions.ClearLocal();
         host = nullptr;
@@ -645,20 +726,8 @@ public:
     {
         const auto selected = actions.Find(userData);
         if (!selected) return false;
-        if (selected->id == L"long")
-        {
-            std::thread([]()
-            {
-                CaptureLongImage();
-            }).detach();
-        }
-        else if (selected->id == L"qr")
-        {
-            std::thread([this]()
-            {
-                ReadQrCode(host);
-            }).detach();
-        }
+        if (selected->id == L"long") StartLongCapture();
+        else if (selected->id == L"qr") StartQrScan();
         else return false;
         return true;
     }

@@ -479,14 +479,10 @@ public:
 		}
 
 		try {
-			// 初始化 COM
+			// 初始化 COM。S_FALSE（本线程已初始化）同样增加了计数，退出时也要 CoUninitialize；
+			// RPC_E_CHANGED_MODE 是失败，不配对
 			HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-			bool comInitialized = SUCCEEDED(hr);
-
-			// 如果已经初始化（S_FALSE），也是成功的
-			if (hr == S_FALSE || hr == RPC_E_CHANGED_MODE) {
-				comInitialized = false; // 不需要在退出时调用 CoUninitialize
-			}
+			const bool comInitialized = SUCCEEDED(hr);
 
 			// 创建搜索管理器 - 尝试不同的 CLSCTX 选项
 			ISearchManager* searchManager = nullptr;

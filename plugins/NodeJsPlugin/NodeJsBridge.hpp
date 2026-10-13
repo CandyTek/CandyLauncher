@@ -8,6 +8,7 @@
 #include <future>
 #include <atomic>
 #include <functional>
+#include <stdexcept>
 #include <unordered_map>
 #include "../../util/json.hpp"
 #include "../../util/StringUtil.hpp"
@@ -28,12 +29,26 @@ private:
     typedef std::function<void(const std::string& method, const nlohmann::json& params)> NotificationHandler;
     NotificationHandler m_notificationHandler;
 
-    void WriteLine(std::string line) {
+    bool WriteLine(std::string line) {
         line += '\n';
         std::lock_guard<std::mutex> lock(m_writeMutex);
-        if (!m_hStdInWrite) return;
-        DWORD bytesWritten;
-        WriteFile(m_hStdInWrite, line.c_str(), (DWORD)line.size(), &bytesWritten, nullptr);
+        if (!m_hStdInWrite) return false;
+        DWORD bytesWritten = 0;
+        return WriteFile(m_hStdInWrite, line.c_str(), (DWORD)line.size(), &bytesWritten, nullptr) &&
+            bytesWritten == line.size();
+    }
+
+    // 让所有等待回复的 future 抛出异常，查询线程才不会永远卡在 get() 上
+    void FailPendingRequests(const char* reason) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto& [id, promise] : m_pendingRequests) {
+            try {
+                promise.set_exception(std::make_exception_ptr(std::runtime_error(reason)));
+            } catch (const std::future_error&) {
+                // promise 已经有值，忽略
+            }
+        }
+        m_pendingRequests.clear();
     }
 
     void ReaderThread() {
@@ -43,6 +58,10 @@ private:
 
         while (m_running) {
             if (!ReadFile(m_hStdOutRead, buffer, sizeof(buffer) - 1, &bytesRead, nullptr) || bytesRead == 0) {
+                // node 退出或管道断开：之后的请求不会再有回复
+                if (m_running) Loge(L"NodeJsBridge", L"node host exited unexpectedly");
+                m_running = false;
+                FailPendingRequests("node host exited");
                 break;
             }
             buffer[bytesRead] = '\0';
@@ -106,12 +125,22 @@ public:
         sa.bInheritHandle = TRUE;
         sa.lpSecurityDescriptor = nullptr;
 
-        HANDLE hStdInRead, hStdOutWrite;
-        if (!CreatePipe(&m_hStdOutRead, &hStdOutWrite, &sa, 0)) return false;
-        if (!SetHandleInformation(m_hStdOutRead, HANDLE_FLAG_INHERIT, 0)) return false;
+        // 启动的任一步失败都要关掉已创建的管道两端，并把成员置空，否则 Stop() 会再关一次过期句柄
+        HANDLE hStdInRead = nullptr, hStdOutWrite = nullptr;
+        const auto fail = [&] {
+            if (m_hStdOutRead) CloseHandle(m_hStdOutRead);
+            if (hStdOutWrite) CloseHandle(hStdOutWrite);
+            if (hStdInRead) CloseHandle(hStdInRead);
+            if (m_hStdInWrite) CloseHandle(m_hStdInWrite);
+            m_hStdOutRead = nullptr;
+            m_hStdInWrite = nullptr;
+            return false;
+        };
+        if (!CreatePipe(&m_hStdOutRead, &hStdOutWrite, &sa, 0)) return fail();
+        if (!SetHandleInformation(m_hStdOutRead, HANDLE_FLAG_INHERIT, 0)) return fail();
 
-        if (!CreatePipe(&hStdInRead, &m_hStdInWrite, &sa, 0)) return false;
-        if (!SetHandleInformation(m_hStdInWrite, HANDLE_FLAG_INHERIT, 0)) return false;
+        if (!CreatePipe(&hStdInRead, &m_hStdInWrite, &sa, 0)) return fail();
+        if (!SetHandleInformation(m_hStdInWrite, HANDLE_FLAG_INHERIT, 0)) return fail();
 
         STARTUPINFOW si = { sizeof(STARTUPINFOW) };
         si.cb = sizeof(STARTUPINFOW);
@@ -128,11 +157,7 @@ public:
         cmdBuffer.push_back(L'\0');
 
         if (!CreateProcessW(nullptr, cmdBuffer.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            return false;
+            return fail();
         }
 
         m_hProcess = pi.hProcess;
@@ -152,6 +177,12 @@ public:
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_running) {
+                // 桥接已停止：直接返回一个带异常的 future，调用方不用再等
+                std::promise<nlohmann::json> dead;
+                dead.set_exception(std::make_exception_ptr(std::runtime_error("node host is not running")));
+                return dead.get_future();
+            }
             id = m_nextRequestId++;
             future = m_pendingRequests[id].get_future();
         }
@@ -162,7 +193,15 @@ public:
         request["method"] = method;
         request["params"] = params;
 
-        WriteLine(request.dump());
+        if (!WriteLine(request.dump())) {
+            // 写入失败不会有回复，立即让这个请求失败
+            std::lock_guard<std::mutex> lock(m_mutex);
+            const auto it = m_pendingRequests.find(id);
+            if (it != m_pendingRequests.end()) {
+                it->second.set_exception(std::make_exception_ptr(std::runtime_error("failed to write to node host")));
+                m_pendingRequests.erase(it);
+            }
+        }
         return future;
     }
 
@@ -203,7 +242,6 @@ public:
             m_readerThread.join();
         }
 
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_pendingRequests.clear();
+        FailPendingRequests("node host stopped");
     }
 };

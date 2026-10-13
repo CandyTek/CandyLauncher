@@ -70,7 +70,8 @@ rl.on('line', async (line) => {
             if (plugin.isModule) {
                 try {
                     if (plugin.instance && plugin.instance.query) {
-                        const results = await plugin.instance.query({}, { Search: query });
+                        // ctx 原样传回 API.ShowResults / RenderResponse，让异步推送带上来源查询 id
+                        const results = await plugin.instance.query({ queryId }, { Search: query });
                         sendResponse(id, { success: true, data: results });
                     } else {
                         sendResponse(id, { success: true, data: [] });
@@ -113,7 +114,7 @@ rl.on('line', async (line) => {
                         const method = output.method.replace('Flow.Launcher.', '');
                         if (method === 'RenderResponse') {
                             const results = output.parameters[0].result || output.parameters[0];
-                            sendNotification('showResults', { pluginId, results });
+                            sendNotification('showResults', { pluginId, queryId, results });
                         } else if (method === 'ChangeQuery') {
                             sendNotification('changeQuery', { query: output.parameters[0], requery: output.parameters[1] });
                         }
@@ -213,12 +214,13 @@ function createMockAPI(pluginId, pluginDir) {
         },
         Log: async (ctx, type, msg) => process.stderr.write(`[JS LOG][${pluginId}] ${type}: ${msg}\n`),
         OnSettingChanged: async () => {},
+        // ctx 是 query 时传入的 { queryId }；脚本传了别的东西就不带 id，C++ 侧按当前查询处理
         ShowResults: async (ctx, results) => {
-            sendNotification('showResults', { pluginId, results });
+            sendNotification('showResults', { pluginId, queryId: ctx && ctx.queryId, results });
         },
         // Support Flow Launcher helper libraries
         RenderResponse: async (ctx, results) => {
-            sendNotification('showResults', { pluginId, results: results.result || results });
+            sendNotification('showResults', { pluginId, queryId: ctx && ctx.queryId, results: results.result || results });
         },
         ChangeQuery: async (ctx, query, requery = false) => {
             sendNotification('changeQuery', { query, requery });

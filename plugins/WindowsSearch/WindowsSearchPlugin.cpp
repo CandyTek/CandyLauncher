@@ -129,11 +129,10 @@ public:
 
 		// Windows Search 插件不需要预加载数据，搜索是实时的
 		// 但我们可以测试一下 COM 是否能正常工作
+		// S_OK 和 S_FALSE 都是成功，每次成功的 CoInitializeEx 都要配对一次 CoUninitialize；
+		// RPC_E_CHANGED_MODE 是失败，没有增加计数
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-		bool comInitialized = SUCCEEDED(hr);
-		if (hr == S_FALSE || hr == RPC_E_CHANGED_MODE) {
-			comInitialized = false;
-		}
+		const bool comInitialized = SUCCEEDED(hr);
 
 		ISearchManager* testManager = nullptr;
 		hr = CoCreateInstance(CLSID_CSearchManager, nullptr, CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER, IID_ISearchManager,
@@ -220,21 +219,15 @@ public:
 		// 占位条目没有路径，不做任何事
 		if (!action1 || action1->path.empty()) return false;
 
-		try {
-			// 检查是否是打开设置的 action
-			if (action1->path == L"OpenSettingsAction") {
-				// 打开 Windows 设置 -> 搜索 -> Windows 搜索
-				// 使用 ms-settings URI scheme
-				ShellExecuteW(NULL, L"open", L"ms-settings:cortana-windowssearch", NULL, NULL, SW_SHOWNORMAL);
-				return true;
-			}
-
-			// 打开文件或文件夹
-			ShellExecuteW(NULL, L"open", action1->path.c_str(), NULL, NULL, SW_SHOWNORMAL);
-		} catch (...) {
+		// ShellExecute 的返回值大于 32 才是成功；文件已删除 / 没有关联程序时不能当作已执行
+		const wchar_t* target = action1->path == L"OpenSettingsAction"
+			? L"ms-settings:cortana-windowssearch" // 打开 Windows 设置 -> 搜索 -> Windows 搜索
+			: action1->path.c_str();
+		const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(NULL, L"open", target, NULL, NULL, SW_SHOWNORMAL));
+		if (result <= 32) {
+			Loge(L"WindowsSearch", L"ShellExecute failed (", result, L"): ", target);
 			return false;
 		}
-
 		return true;
 	}
 
