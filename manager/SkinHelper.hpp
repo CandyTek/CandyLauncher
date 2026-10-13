@@ -162,20 +162,17 @@ static void updateSkinWindowRegion() {
 	const int height = MAIN_WINDOW_HEIGHT;
 	if (width <= 0 || height <= 0) return;
 	const int threshold = std::clamp(g_skinJson.value("window_shape_alpha_threshold", 6), 0, 255);
-	Gdiplus::Bitmap mask(width, height, PixelFormat32bppARGB);
-	Gdiplus::Graphics graphics(&mask);
-	graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
-	graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-	// graphics.DrawImage(g_BgImage, Gdiplus::Rect(0, 0, width, height));
-
 	Gdiplus::BitmapData bitmapData{};
 	Gdiplus::Rect bounds(0, 0, width, height);
-	if (mask.LockBits(&bounds, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &bitmapData) != Gdiplus::Ok) {
+	// 背景图已经按窗口大小缩放，直接读取其 alpha，避免再创建和绘制一张遮罩。
+	if (g_BgScaledBitmap->LockBits(&bounds, Gdiplus::ImageLockModeRead,
+			PixelFormat32bppPARGB, &bitmapData) != Gdiplus::Ok) {
 		Loge(L"SkinHelper", L"无法读取背景图片的透明区域");
 		return;
 	}
 
 	std::vector<RECT> runs;
+	runs.reserve(static_cast<size_t>(height));
 	for (int y = 0; y < height; ++y) {
 		const auto* row = static_cast<const BYTE*>(bitmapData.Scan0) + y * bitmapData.Stride;
 		int start = -1;
@@ -188,7 +185,7 @@ static void updateSkinWindowRegion() {
 			}
 		}
 	}
-	mask.UnlockBits(&bitmapData);
+	g_BgScaledBitmap->UnlockBits(&bitmapData);
 	if (runs.empty()) {
 		Loge(L"SkinHelper", L"背景图片没有可见像素，窗口形状未更新");
 		return;
@@ -355,8 +352,6 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	};
 	bakeListItemBackground(g_listItemBgImage, g_listItemBgLayer);
 	bakeListItemBackground(g_listItemBgImageSelected, g_listItemBgLayerSelected);
-	updateSkinWindowRegion();
-
 	if (hEditFont) {
 		SendMessage(g_editHwnd, WM_SETFONT, reinterpret_cast<WPARAM>(hEditFont), TRUE);
 	}
@@ -380,6 +375,7 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true) 
 	g_BgScaledBitmap = createScaledBackgroundBitmap(g_BgImage, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	delete g_BgImage;
 	g_BgImage = nullptr;
+	updateSkinWindowRegion();
 	// 主窗口背景图层：有背景图用缩放好的图，否则用背景色；window_bg_color 为空表示不绘制背景，保持原有路径
 	if (g_BgScaledBitmap) {
 		createPremultipliedDibLayer(g_mainBgLayer, g_BgScaledBitmap);
