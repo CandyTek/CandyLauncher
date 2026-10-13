@@ -111,17 +111,16 @@ inline std::pair<WorkspaceEnvironment, std::string> ParseVSCodeAuthority(const s
 	return {env, machineName};
 }
 
-// URL decode function
-inline std::string UrlDecode(const std::string& str) {
+// 百分号解码单个 URI 组件。只解码合法的 %XX，残缺或非十六进制的转义原样保留；
+// "+" 在 URI 路径里就是加号（"C:/Projects/C++"），不是表单编码的空格，不能换成空格
+inline std::string PercentDecode(const std::string& str) {
 	std::string result;
+	result.reserve(str.length());
 	for (size_t i = 0; i < str.length(); ++i) {
-		if (str[i] == '%' && i + 2 < str.length()) {
-			int value;
-			std::sscanf(str.substr(i + 1, 2).c_str(), "%x", &value);
-			result += static_cast<char>(value);
+		if (str[i] == '%' && i + 2 < str.length() &&
+			isxdigit(static_cast<unsigned char>(str[i + 1])) && isxdigit(static_cast<unsigned char>(str[i + 2]))) {
+			result += static_cast<char>(std::stoi(str.substr(i + 1, 2), nullptr, 16));
 			i += 2;
-		} else if (str[i] == '+') {
-			result += ' ';
 		} else {
 			result += str[i];
 		}
@@ -150,8 +149,12 @@ inline std::shared_ptr<VscAction> ParseVSCodeUri(
 		return nullptr;
 	}
 
-	// Parse the URI
-	Rfc3986Uri rfc3986Uri = Rfc3986Uri::Parse(UrlDecode(uri));
+	// 先按原始文本切分 URI，再解码各组件：先解码的话 "a%23b" 里的 # 会被当成 fragment 分隔符，
+	// "%3F" 会被当成 query 分隔符，路径被截断后再去检查文件是否存在就找不到了
+	Rfc3986Uri rfc3986Uri = Rfc3986Uri::Parse(uri);
+	rfc3986Uri.path = PercentDecode(rfc3986Uri.path);
+	// 远程 URI 的 authority 形如 "ssh-remote%2Bhost"，解码后才能按 "+" 拆出环境和机器名
+	rfc3986Uri.authority = PercentDecode(rfc3986Uri.authority);
 
 	if (rfc3986Uri.path.empty()) {
 		return nullptr;

@@ -340,22 +340,28 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 	return 0;
 }
 
+static bool g_shortcutFixClassRegistered = false;
+
 // 注册快捷方式修复窗口类
 static void RegisterShortcutFixClass() {
-	static bool registered = false;
-	if (registered) return;
+	if (g_shortcutFixClassRegistered) return;
 
 	WNDCLASSEXW wc = {};
 	wc.cbSize = sizeof(WNDCLASSEXW);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = ShortcutFixWndProc;
-	wc.hInstance = GetModuleHandle(nullptr);
+	wc.hInstance = FolderModuleHandle();
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH) (COLOR_WINDOW + 1);
 	wc.lpszClassName = L"ShortcutFixWndClass";
 
-	RegisterClassExW(&wc);
-	registered = true;
+	g_shortcutFixClassRegistered = RegisterFolderWindowClass(wc);
+}
+
+static void UnregisterShortcutFixClass() {
+	if (!g_shortcutFixClassRegistered) return;
+	UnregisterClassW(L"ShortcutFixWndClass", FolderModuleHandle());
+	g_shortcutFixClassRegistered = false;
 }
 
 // 显示快捷方式修复窗口
@@ -386,7 +392,7 @@ static void ShowShortcutFixWindow(HWND hwnd,std::vector<FileInfo>& list) {
 			x, y, windowWidth, windowHeight,
 			hwnd,
 			nullptr,
-			GetModuleHandle(nullptr),
+			FolderModuleHandle(),
 			nullptr
 	);
 

@@ -288,8 +288,8 @@ static std::vector<RegistryEntry> FindSubKey(HKEY parentKey, const std::wstring&
 					RegQueryInfoKeyW(subKey, nullptr, nullptr, nullptr, &subKeyCount,
 								nullptr, nullptr, &valueCount, nullptr, nullptr, nullptr, nullptr);
 
-					result.clear();  // 清空之前的部分匹配
-					result.push_back(RegistryEntry(subKey, fullPath, subKeyCount, valueCount));
+					result.clear();  // 清空之前的部分匹配（它们持有的句柄随条目销毁关闭）
+					result.push_back(RegistryEntry(subKey, fullPath, subKeyCount, valueCount, true));
 					return result;
 				} else {
 					result.clear();
@@ -308,7 +308,7 @@ static std::vector<RegistryEntry> FindSubKey(HKEY parentKey, const std::wstring&
 				RegQueryInfoKeyW(subKey, nullptr, nullptr, nullptr, &subKeyCount,
 							nullptr, nullptr, &valueCount, nullptr, nullptr, nullptr, nullptr);
 
-				result.push_back(RegistryEntry(subKey, fullPath, subKeyCount, valueCount));
+				result.push_back(RegistryEntry(subKey, fullPath, subKeyCount, valueCount, true));
 			} else {
 				result.push_back(RegistryEntry(fullPath, L"Access denied"));
 			}
@@ -355,16 +355,11 @@ static std::vector<RegistryEntry> SearchForSubKey(HKEY baseKey, const std::wstri
 	HKEY currentKey = baseKey;
 	std::wstring currentPath = basePath;
 	std::vector<RegistryEntry> result;
-	bool needCloseKey = false;
+	// 逐级深入时保持当前层级的键打开；换到下一级后上一级的键随旧 owner 自动关闭
+	std::shared_ptr<void> currentOwner;
 
 	for (size_t i = 0; i < parts.size(); i++) {
 		result = FindSubKey(currentKey, currentPath, parts[i]);
-
-		// 关闭之前打开的键（但不关闭根键）
-		if (needCloseKey && currentKey != baseKey) {
-			RegCloseKey(currentKey);
-			needCloseKey = false;
-		}
 
 		if (result.empty()) {
 			return result;
@@ -375,7 +370,7 @@ static std::vector<RegistryEntry> SearchForSubKey(HKEY baseKey, const std::wstri
 			if (result[0].key) {
 				currentKey = result[0].key;
 				currentPath = result[0].keyPath;
-				needCloseKey = true;
+				currentOwner = result[0].keyOwner;
 			} else {
 				// 有异常，返回错误
 				return result;
@@ -389,10 +384,12 @@ static std::vector<RegistryEntry> SearchForSubKey(HKEY baseKey, const std::wstri
 	return result;
 }
 
-// 从注册表键获取所有值
-static std::vector<RegistryEntry> GetValuesFromKey(HKEY key, const std::wstring& keyPath,
+// 从注册表键获取所有值；值条目与 keyEntry 共享键句柄的所有权
+static std::vector<RegistryEntry> GetValuesFromKey(const RegistryEntry& keyEntry,
 												const std::wstring& searchValue = L"") {
 	std::vector<RegistryEntry> result;
+	const HKEY key = keyEntry.key;
+	const std::wstring& keyPath = keyEntry.keyPath;
 
 	try {
 		DWORD valueCount = 0;
@@ -448,7 +445,7 @@ static std::vector<RegistryEntry> GetValuesFromKey(HKEY key, const std::wstring&
 			std::wstring fullValueData = GetValueString(key, valName, type);
 			std::wstring typeStr = GetValueTypeName(type);
 
-			result.push_back(RegistryEntry(key, keyPath, valName, fullValueData, typeStr));
+			result.push_back(RegistryEntry(keyEntry, valName, fullValueData, typeStr));
 		}
 
 	} catch (const std::exception& e) {

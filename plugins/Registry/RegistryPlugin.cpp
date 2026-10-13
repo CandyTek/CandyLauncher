@@ -102,7 +102,7 @@ private:
 
 			// 如果搜索值名称且只找到一个键
 			if (searchForValue && entries.size() == 1 && entries[0].key) {
-				auto valueEntries = GetValuesFromKey(entries[0].key, entries[0].keyPath, valuePart);
+				auto valueEntries = GetValuesFromKey(entries[0], valuePart);
 				return ConvertRegistryEntriesToActions(valueEntries, true);
 			}
 

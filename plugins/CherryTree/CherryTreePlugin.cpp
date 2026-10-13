@@ -1,12 +1,12 @@
 ﻿#include <chrono>
 #include <filesystem>
 #include <memory>
-#include <thread>
 #include <utility>
 
 #include "CherryTreeAction.hpp"
 #include "CherryTreePluginData.hpp"
 #include "CherryTreeUtil.hpp"
+#include "../../util/BackgroundWorkTracker.hpp"
 #include "../../util/ClipboardUtil.hpp"
 #include "../../util/StringUtil.hpp"
 
@@ -14,6 +14,8 @@ class CherryTreePlugin : public candy::Plugin {
 private:
 	candy::ActionSet<CherryTreeAction> notes{0};
 	std::wstring startStr = L"c ";
+	// 粘贴线程要睡两次再发按键；Shutdown 时取消并 join，否则 DLL 卸载后线程醒来会跑进已释放的代码
+	BackgroundWorkTracker pasteWorkers;
 	// 影响索引的设置项变化后需要重新索引（主程序保存设置后不会自动刷新插件）
 	// 设置了激活命令时，笔记只通过激活命令显示，不参与全局搜索
 	uint32_t NoteSetFlags() const {
@@ -81,6 +83,7 @@ public:
 	}
 
 	void Shutdown() override {
+		pasteWorkers.Shutdown();
 		notes.ClearLocal();
 		m_host = nullptr;
 	}
@@ -105,14 +108,15 @@ public:
 
 		std::wstring text = action1->text;
 
-		std::thread([text = std::move(text)]() {
+		// 插件正在卸载时 Run 返回 false，不再粘贴
+		return pasteWorkers.Run([this, text = std::move(text)]() {
 			if (!CopyTextToClipboard(nullptr, text)) {
 				Loge(L"CherryTree Plugin", L"Failed to copy action text to clipboard");
 				return;
 			}
 
-			// Give the clipboard time to lock/settle
-			std::this_thread::sleep_for(std::chrono::milliseconds(200));
+			// Give the clipboard time to lock/settle; cancelled by Shutdown
+			if (!pasteWorkers.Wait(200)) return;
 
 			// Release any physical Shift/Ctrl keys the user might still be holding down
 			// to prevent modifier clashing
@@ -125,7 +129,7 @@ public:
 			releaseModifiers[1].ki.dwFlags = KEYEVENTF_KEYUP;
 			SendInput(2, releaseModifiers, sizeof(INPUT));
 
-			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			if (!pasteWorkers.Wait(50)) return;
 
 			// Send Shift + Insert cleanly
 			INPUT inputs[4]{};
@@ -156,8 +160,7 @@ public:
 			keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
 			keybd_event(VK_LSHIFT, 0, KEYEVENTF_KEYUP, 0);
 			keybd_event(VK_RSHIFT, 0, KEYEVENTF_KEYUP, 0);
-		}).detach();
-		return true;
+		});
 	}
 };
 

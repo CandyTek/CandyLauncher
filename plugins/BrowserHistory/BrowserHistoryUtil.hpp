@@ -92,10 +92,12 @@ struct RawHistoryRow {
 };
 
 // 从 Chromium 类浏览器（Chrome/Edge）的 History SQLite 数据库读取历史记录
-// 先在单线程内取出原始行（SQLite 游标不能并行），再并行转换字符串与生成匹配文本
+// 先在单线程内取出原始行（SQLite 游标不能并行），再并行转换字符串与生成匹配文本。
+// matchUrl 是本次刷新开始时抓取的设置快照：并行构造期间设置回调可能改写设置，不能边读全局变量边构造
 static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromiumHistoryFromDB(
 	const std::string& historyDbPath,
 	const std::wstring& browserIconPath,
+	const bool matchUrl,
 	int maxResults = 2000) {
 	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
@@ -182,7 +184,7 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromiumHistoryFrom
 				// 在插件内并行处理匹配文本，主程序原样使用
 				action->matchTextVerbatim = true;
 				try {
-					if (isMatchTextUrl) {
+					if (matchUrl) {
 						action->matchText = m_host->ProcessMatchText(action->title) + action->url;
 					} else {
 						action->matchText = m_host->ProcessMatchText(action->title);
@@ -208,7 +210,7 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromiumHistoryFrom
 }
 
 // 获取 Chrome 历史记录
-static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromeHistory(int maxResults = 2000) {
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromeHistory(const bool matchUrl, int maxResults = 2000) {
 	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
@@ -228,11 +230,11 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromeHistory(int m
 		browserIconPath = LR"(C:\Program Files\Internet Explorer\iexplore.exe)";
 	}
 
-	return GetChromiumHistoryFromDB(historyPath, browserIconPath, maxResults);
+	return GetChromiumHistoryFromDB(historyPath, browserIconPath, matchUrl, maxResults);
 }
 
 // 获取 Edge 历史记录
-static std::vector<std::shared_ptr<BrowserHistoryAction>> GetEdgeHistory(int maxResults = 2000) {
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetEdgeHistory(const bool matchUrl, int maxResults = 2000) {
 	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
@@ -251,12 +253,13 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetEdgeHistory(int max
 		browserIconPath = LR"(C:\Program Files\Internet Explorer\iexplore.exe)";
 	}
 
-	return GetChromiumHistoryFromDB(historyPath, browserIconPath, maxResults);
+	return GetChromiumHistoryFromDB(historyPath, browserIconPath, matchUrl, maxResults);
 }
 
 // 从自定义路径获取历史记录
 static std::vector<std::shared_ptr<BrowserHistoryAction>> GetHistoryFromCustomPath(
 	const std::string& profilePath,
+	const bool matchUrl,
 	int maxResults = 2000) {
 	namespace fs = std::filesystem;
 	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
@@ -283,7 +286,7 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetHistoryFromCustomPa
 			browserIconPath = LR"(C:\Program Files\Internet Explorer\iexplore.exe)";
 		}
 
-		return GetChromiumHistoryFromDB(historyPath.string(), browserIconPath, maxResults);
+		return GetChromiumHistoryFromDB(historyPath.string(), browserIconPath, matchUrl, maxResults);
 	} catch (const std::exception& e) {
 		Loge(L"BrowserHistory", L"Exception in GetHistoryFromCustomPath: ", e.what());
 	}
@@ -291,8 +294,9 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetHistoryFromCustomPa
 	return result;
 }
 
-// 获取所有配置的浏览器历史记录，各浏览器并发读取，结果按配置顺序合并
-static std::vector<std::shared_ptr<BrowserHistoryAction>> GetAllBrowserHistory() {
+// 获取所有配置的浏览器历史记录，各浏览器并发读取，结果按配置顺序合并。
+// matchUrl 由调用方在刷新开始时读取一次，整次刷新用同一个值
+static std::vector<std::shared_ptr<BrowserHistoryAction>> GetAllBrowserHistory(const bool matchUrl) {
 	std::vector<std::shared_ptr<BrowserHistoryAction>> result;
 
 	// 从配置读取浏览器列表和最大结果数
@@ -308,13 +312,13 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetAllBrowserHistory()
 		std::string trimmedBrowser = MyTrim(browser);
 		if (trimmedBrowser.empty()) continue;
 
-		futures.push_back(std::async(std::launch::async, [trimmedBrowser, maxResults]() -> std::vector<std::shared_ptr<BrowserHistoryAction>> {
+		futures.push_back(std::async(std::launch::async, [trimmedBrowser, matchUrl, maxResults]() -> std::vector<std::shared_ptr<BrowserHistoryAction>> {
 			try {
 				if (trimmedBrowser == "chrome") {
-					return GetChromeHistory(maxResults);
+					return GetChromeHistory(matchUrl, maxResults);
 				}
 				if (trimmedBrowser == "edge") {
-					return GetEdgeHistory(maxResults);
+					return GetEdgeHistory(matchUrl, maxResults);
 				}
 				// 自定义路径
 				char expandedPath[MAX_PATH];
@@ -322,7 +326,7 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetAllBrowserHistory()
 				if (GetFileAttributesA(expandedPath) == INVALID_FILE_ATTRIBUTES) {
 					return {};
 				}
-				return GetHistoryFromCustomPath(expandedPath, maxResults);
+				return GetHistoryFromCustomPath(expandedPath, matchUrl, maxResults);
 			} catch (...) {
 				return {};
 			}

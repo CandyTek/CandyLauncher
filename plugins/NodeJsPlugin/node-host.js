@@ -2,6 +2,7 @@ const readline = require('readline');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const { StringDecoder } = require('string_decoder');
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -10,8 +11,46 @@ const rl = readline.createInterface({
 });
 
 const plugins = {};
-// CLI 模式查询正在运行的子进程，key 为 C++ 侧的 queryId；收到 cancel 时直接杀掉
+// CLI 模式查询正在运行的子进程：C++ 侧 queryId -> { 请求 id -> 取消函数 }。
+// 同一个 queryId 可能同时匹配多个脚本、每个脚本一个子进程，收到 cancel 时要全部杀掉；
+// 某个子进程结束时只能移除自己那一项，不能把别的脚本的子进程当成已取消
 const activeQueries = {};
+
+function trackQueryChild(queryKey, requestId, cancel) {
+    if (queryKey === undefined) return;
+    if (!activeQueries[queryKey]) activeQueries[queryKey] = {};
+    activeQueries[queryKey][requestId] = cancel;
+}
+
+function untrackQueryChild(queryKey, requestId) {
+    if (queryKey === undefined) return;
+    const children = activeQueries[queryKey];
+    if (!children) return;
+    delete children[requestId];
+    if (Object.keys(children).length === 0) delete activeQueries[queryKey];
+}
+
+// 子进程 stdout 的一个 data 块不一定是完整的一行，也可能把一个多字节 UTF-8 字符拆开：
+// 用流式解码器拼接，只把以换行结尾的完整行交给 onLine，close 时冲掉最后一段没有换行的内容
+function createLineReader(onLine) {
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    return {
+        push(data) {
+            pending += decoder.write(data);
+            let index;
+            while ((index = pending.indexOf('\n')) >= 0) {
+                onLine(pending.slice(0, index));
+                pending = pending.slice(index + 1);
+            }
+        },
+        end() {
+            pending += decoder.end();
+            if (pending) onLine(pending);
+            pending = '';
+        }
+    };
+}
 
 rl.on('line', async (line) => {
     if (!line.trim()) return;
@@ -20,12 +59,14 @@ rl.on('line', async (line) => {
         const { method, params, id } = request;
 
         if (method === 'cancel') {
-            // 通知，没有 id：输入已变化，停止该查询（模块模式无法中断，C++ 侧会丢弃过期结果）
+            // 通知，没有 id：输入已变化，停止该查询的全部子进程（模块模式无法中断，C++ 侧会丢弃过期结果）
             const key = String(params && params.queryId);
-            const active = activeQueries[key];
-            if (active) {
+            const children = activeQueries[key];
+            if (children) {
                 delete activeQueries[key];
-                try { active.child.kill(); } catch (e) {}
+                for (const cancel of Object.values(children)) {
+                    try { cancel(); } catch (e) {}
+                }
             }
             return;
         }
@@ -96,16 +137,36 @@ rl.on('line', async (line) => {
                 }
             };
 
-            const child = spawn('node', [plugin.entry, JSON.stringify(flowRequest)], {
-                cwd: plugin.dir,
-                env: { ...process.env, FLOW_LAUNCHER_API_VER: '1.0.0' }
+            const queryKey = queryId !== undefined ? String(queryId) : undefined;
+            // 子进程的 error 和 close 都可能触发，一个请求只能回复一次
+            let settled = false;
+            let cancelled = false;
+            const settle = (result) => {
+                if (settled) return;
+                settled = true;
+                untrackQueryChild(queryKey, id);
+                sendResponse(id, result);
+            };
+
+            let child;
+            try {
+                child = spawn('node', [plugin.entry, JSON.stringify(flowRequest)], {
+                    cwd: plugin.dir,
+                    env: { ...process.env, FLOW_LAUNCHER_API_VER: '1.0.0' }
+                });
+            } catch (e) {
+                settle({ success: false, error: 'Failed to start script: ' + e.message });
+                return;
+            }
+            trackQueryChild(queryKey, id, () => {
+                cancelled = true;
+                try { child.kill(); } catch (e) {}
             });
-            const queryKey = String(queryId);
-            if (queryId !== undefined) activeQueries[queryKey] = { child };
 
             let stdout = '';
+            const stderrDecoder = new StringDecoder('utf8');
             let stderr = '';
-            
+
             const handlePluginOutput = (line) => {
                 if (!line.trim()) return;
                 try {
@@ -116,7 +177,8 @@ rl.on('line', async (line) => {
                             const results = output.parameters[0].result || output.parameters[0];
                             sendNotification('showResults', { pluginId, queryId, results });
                         } else if (method === 'ChangeQuery') {
-                            sendNotification('changeQuery', { query: output.parameters[0], requery: output.parameters[1] });
+                            // 带上来源查询 id，C++ 侧据此丢弃用户已经输入新内容之后才到的改写请求
+                            sendNotification('changeQuery', { queryId, query: output.parameters[0], requery: output.parameters[1] });
                         }
                         return true; // Handled as notification
                     }
@@ -126,25 +188,26 @@ rl.on('line', async (line) => {
                 }
             };
 
-            child.stdout.on('data', (data) => { 
-                const chunk = data.toString();
-                const lines = chunk.split('\n');
-                lines.forEach(line => {
-                    if (!handlePluginOutput(line)) {
-                        stdout += line + '\n';
-                    }
-                });
+            const stdoutReader = createLineReader((line) => {
+                if (!handlePluginOutput(line)) {
+                    stdout += line + '\n';
+                }
             });
-            child.stderr.on('data', (data) => { stderr += data; });
+            child.stdout.on('data', (data) => stdoutReader.push(data));
+            child.stderr.on('data', (data) => { stderr += stderrDecoder.write(data); });
+            // 找不到 node、无法创建进程等异步错误没有监听器会直接终止本宿主进程
+            child.on('error', (e) => {
+                settle({ success: false, error: 'Failed to run script: ' + e.message });
+            });
             child.on('close', (code) => {
-                const wasCancelled = queryId !== undefined && !activeQueries[queryKey];
-                delete activeQueries[queryKey];
-                if (wasCancelled) {
-                    sendResponse(id, { success: false, error: 'cancelled' });
+                stdoutReader.end();
+                stderr += stderrDecoder.end();
+                if (cancelled) {
+                    settle({ success: false, error: 'cancelled' });
                     return;
                 }
                 if (code !== 0 && !stdout.trim()) {
-                    sendResponse(id, { success: false, error: `Process exited with code ${code}. Stderr: ${stderr}` });
+                    settle({ success: false, error: `Process exited with code ${code}. Stderr: ${stderr}` });
                     return;
                 }
                 try {
@@ -162,9 +225,9 @@ rl.on('line', async (line) => {
                     }
 
                     const results = lastValidOutput ? (lastValidOutput.result || lastValidOutput.data) : [];
-                    sendResponse(id, { success: true, data: results });
+                    settle({ success: true, data: results });
                 } catch (e) {
-                    sendResponse(id, { success: false, error: `Failed to parse output. Stdout: ${stdout}. Stderr: ${stderr}` });
+                    settle({ success: false, error: `Failed to parse output. Stdout: ${stdout}. Stderr: ${stderr}` });
                 }
             });
 
@@ -188,11 +251,26 @@ rl.on('line', async (line) => {
                 return;
             }
 
-            const child = spawn('node', [plugin.entry, JSON.stringify(actionData)], {
-                cwd: plugin.dir
+            let settled = false;
+            const settle = (result) => {
+                if (settled) return;
+                settled = true;
+                sendResponse(id, result);
+            };
+            let child;
+            try {
+                child = spawn('node', [plugin.entry, JSON.stringify(actionData)], {
+                    cwd: plugin.dir
+                });
+            } catch (e) {
+                settle({ success: false, error: 'Failed to start script: ' + e.message });
+                return;
+            }
+            child.on('error', (e) => {
+                settle({ success: false, error: 'Failed to run script: ' + e.message });
             });
             child.on('close', () => {
-                sendResponse(id, { success: true });
+                settle({ success: true });
             });
         }
     } catch (error) {
@@ -222,8 +300,9 @@ function createMockAPI(pluginId, pluginDir) {
         RenderResponse: async (ctx, results) => {
             sendNotification('showResults', { pluginId, queryId: ctx && ctx.queryId, results: results.result || results });
         },
+        // 同样带上来源查询 id（ctx 不是 query 传入的对象时没有 id，C++ 侧照旧接受）
         ChangeQuery: async (ctx, query, requery = false) => {
-            sendNotification('changeQuery', { query, requery });
+            sendNotification('changeQuery', { queryId: ctx && ctx.queryId, query, requery });
         }
     };
 }

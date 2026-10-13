@@ -10,11 +10,40 @@
 #include <memory>
 #include <regex>
 #include <sstream>
+#include <iomanip>
 #include <locale>
 #include <cctype>
 #include <cmath>
 #include "UnitConversionData.hpp"
 #include "../../util/StringUtil.hpp"
+
+// 格式化转换结果：整数直接输出，其余最多 14 位有效数字并去掉小数部分的尾随零
+inline std::wstring FormatNumber(double value) {
+	std::wostringstream woss;
+
+	// 检查是否是整数
+	if (std::floor(value) == value && std::abs(value) < 1e15) {
+		woss << std::fixed << std::setprecision(0) << value;
+		return woss.str();
+	}
+
+	// 使用科学记数法或固定小数点
+	woss << std::setprecision(14) << std::noshowpoint << value;
+	std::wstring result = woss.str();
+
+	// 只去掉小数部分的尾随零。科学记数法时零可能在指数里（1.25e+20），指数一个字符都不能动，
+	// 否则 1.25e+20 会被改成 1.25e+2，显示和复制的数值都差了 18 个量级
+	const size_t exponentPos = result.find_first_of(L"eE");
+	std::wstring mantissa = result.substr(0, exponentPos);
+	const std::wstring exponent = exponentPos == std::wstring::npos ? L"" : result.substr(exponentPos);
+	if (mantissa.find(L'.') != std::wstring::npos) {
+		mantissa.erase(mantissa.find_last_not_of(L'0') + 1, std::wstring::npos);
+		if (!mantissa.empty() && mantissa.back() == L'.') {
+			mantissa.pop_back();
+		}
+	}
+	return mantissa + exponent;
+}
 
 
 // 结构体定义
@@ -87,40 +116,54 @@ public:
 		return result;
 	}
 
-	// 改为查找并提取数字和文本 Token
-	static std::vector<std::string> RegexTokenizer(const std::string& input) {
-		std::vector<std::string> result;
-		try {
-			// 这个正则表达式会匹配两种模式：
-			// 1. \d+(\.\d+)?  -> 匹配一个或多个数字，后面可选地跟着一个小数点和更多数字 (例如 "1", "12.5")
-			// 2. [a-zA-Z]+     -> 匹配一个或多个英文字母 (例如 "ft", "cm")
-			std::regex pattern(R"(\d+(\.\d+)?|[a-zA-Z]+)");
-
-			auto words_begin = std::sregex_iterator(input.begin(), input.end(), pattern);
-			auto words_end = std::sregex_iterator();
-
-			for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
-				result.push_back(i->str());
-			}
-		} catch (const std::regex_error& e) {
-			// 即使是合法的正则，也最好加上异常处理，这是一种好的编程习惯
-			Loge(L"UnitConverter", L"Regex error in RegexTokenizer: ", e.what());
+	// text 开头完整数字的长度：可选符号、整数或小数（"10"、"1.5"、".5"）、可选指数（"1e3"、"2.5E-2"）；
+	// 开头不是数字时返回 0
+	static size_t NumberPrefixLength(const std::string& text) {
+		const size_t size = text.size();
+		size_t pos = 0;
+		if (pos < size && (text[pos] == '+' || text[pos] == '-')) ++pos;
+		size_t digits = 0;
+		while (pos < size && isdigit(static_cast<unsigned char>(text[pos]))) { ++pos; ++digits; }
+		if (pos < size && text[pos] == '.') {
+			++pos;
+			while (pos < size && isdigit(static_cast<unsigned char>(text[pos]))) { ++pos; ++digits; }
 		}
-		return result;
+		if (digits == 0) return 0;
+		if (pos < size && (text[pos] == 'e' || text[pos] == 'E')) {
+			size_t exponentEnd = pos + 1;
+			if (exponentEnd < size && (text[exponentEnd] == '+' || text[exponentEnd] == '-')) ++exponentEnd;
+			size_t exponentDigits = 0;
+			while (exponentEnd < size && isdigit(static_cast<unsigned char>(text[exponentEnd]))) { ++exponentEnd; ++exponentDigits; }
+			// "1em" 里的 e 是单位的一部分，不是指数
+			if (exponentDigits > 0) pos = exponentEnd;
+		}
+		return pos;
 	}
 
+	// 整个 text 必须是一个数字；std::stod 接受 "10junk" 这样的前缀，这里不接受
+	static bool ParseNumber(const std::string& text, double& value) {
+		if (text.empty() || NumberPrefixLength(text) != text.size()) return false;
+		try {
+			size_t consumed = 0;
+			value = std::stod(text, &consumed);
+			return consumed == text.size();
+		} catch (...) {
+			return false;
+		}
+	}
+
+	// "10m to cm" 的 "10m" 拆成数字和单位。数字部分保留符号、小数点和指数（"-10m"、".5m"、"1e3m"），
+	// 单位取数字后面的全部字符（"°C"、"km/h"、"o.z" 这类不全是字母的单位也能保留）
 	static void InputSpaceInserter(std::vector<std::string>& split) {
 		if (split.size() != 3) return;
 
-		// 使用新的 Tokenizer 函数
-		auto parsed = RegexTokenizer(split[0]);
-		// 如果成功分割成 "1" 和 "ft" 这样的两部分
-		if (parsed.size() > 1) {
-			std::vector<std::string> newSplit = {parsed[0], parsed[1]};
-			// 将原 split 中剩余的元素 ("in", "cm") 追加进来
-			newSplit.insert(newSplit.end(), split.begin() + 1, split.end());
-			split = newSplit;
-		}
+		const size_t numberLength = NumberPrefixLength(split[0]);
+		if (numberLength == 0 || numberLength == split[0].size()) return;
+
+		std::vector<std::string> newSplit = {split[0].substr(0, numberLength), split[0].substr(numberLength)};
+		// 将原 split 中剩余的元素 ("in", "cm") 追加进来
+		newSplit.insert(newSplit.end(), split.begin() + 1, split.end());
+		split = newSplit;
 	}
 
 	// 处理英尺英寸简写 (e.g., 1', 1'2")
@@ -316,13 +359,10 @@ public:
 		OunceHandler(split);
 		SquareHandler(split);
 
-		// 尝试解析数值
-		try {
-			double value = std::stod(split[0]);
-			return std::make_unique<ConvertModel>(value, split[1], split[3]);
-		} catch (...) {
-			return nullptr;
-		}
+		// 尝试解析数值；"10junk m to cm" 这种数字后带垃圾字符的输入不接受
+		double value = 0.0;
+		if (!ParseNumber(split[0], value)) return nullptr;
+		return std::make_unique<ConvertModel>(value, split[1], split[3]);
 	}
 };
 

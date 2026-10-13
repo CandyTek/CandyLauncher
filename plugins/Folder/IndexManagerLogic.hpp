@@ -272,20 +272,26 @@ static LRESULT CALLBACK ExcludedItemsWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 	return 0;
 }
 
+static bool g_excludedItemsClassRegistered = false;
+
 static void RegisterExcludedItemsWindowClass() {
-	static bool registered = false;
-	if (registered) return;
+	if (g_excludedItemsClassRegistered) return;
 
 	WNDCLASSEXW wc = {};
 	wc.cbSize = sizeof(WNDCLASSEXW);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = ExcludedItemsWndProc;
-	wc.hInstance = GetModuleHandle(nullptr);
+	wc.hInstance = FolderModuleHandle();
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wc.lpszClassName = L"ExcludedItemsWndClass";
-	RegisterClassExW(&wc);
-	registered = true;
+	g_excludedItemsClassRegistered = RegisterFolderWindowClass(wc);
+}
+
+static void UnregisterExcludedItemsWindowClass() {
+	if (!g_excludedItemsClassRegistered) return;
+	UnregisterClassW(L"ExcludedItemsWndClass", FolderModuleHandle());
+	g_excludedItemsClassRegistered = false;
 }
 
 static void ShowExcludedItemsWindow(HWND parent, const TraverseOptions& config) {
@@ -313,7 +319,7 @@ static void ShowExcludedItemsWindow(HWND parent, const TraverseOptions& config) 
 		x, y, windowWidth, windowHeight,
 		parent,
 		nullptr,
-		GetModuleHandle(nullptr),
+		FolderModuleHandle(),
 		nullptr
 	);
 

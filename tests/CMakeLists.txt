@@ -92,6 +92,14 @@ target_link_libraries(ScreenToolsZxingQrTest PRIVATE screen_tools_zxing_qr gdipl
 add_test(NAME ScreenToolsZxingQrTest COMMAND ScreenToolsZxingQrTest
 	${CMAKE_SOURCE_DIR}/plugins/ScreenTools2/test.png)
 
+add_executable(UnitConverterTest UnitConverterTest.cpp ../plugins/UnitConverter/UnitConverterUtil.hpp)
+set_target_properties(UnitConverterTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+target_include_directories(UnitConverterTest PRIVATE ${CMAKE_SOURCE_DIR})
+if (MSVC)
+	target_compile_options(UnitConverterTest PRIVATE /utf-8)
+endif ()
+add_test(NAME UnitConverterTest COMMAND UnitConverterTest)
+
 add_executable(CalcEngineTest CalcEngineTest.cpp ../plugins/CalcExprtk/CalcEngine.hpp)
 set_target_properties(CalcEngineTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 target_include_directories(CalcEngineTest PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/3rdparty/ExprTk)

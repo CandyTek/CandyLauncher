@@ -50,6 +50,8 @@ private:
     bool m_currentTakeOver = false;     // 本次输入是否由拦截接管了列表（有关键字脚本匹配）
     std::wstring m_lastResultScriptId;  // m_results 里的结果来自哪个脚本
     std::wstring m_pendingEditText;     // changeQuery 通知要写入输入框的文本
+    uint64_t m_pendingEditQueryId = 0;  // 发出该 changeQuery 的查询 id；0 表示不来自查询（如执行条目时）
+    bool m_hasPendingEdit = false;      // 是否有尚未写入输入框的 changeQuery 文本
     std::vector<std::future<void>> m_workers;
 
     // 结果图标缓存：图片路径 -> 位图，条目只拿副本；同一次发布里相同路径通过 iconKey 共享
@@ -200,11 +202,20 @@ private:
             }
         } else if (method == "changeQuery") {
             if (params.contains("query") && params["query"].is_string()) {
+                uint64_t queryId = 0;
                 {
                     std::lock_guard<std::mutex> lock(m_stateMutex);
+                    // 来自查询的 ChangeQuery 带有发起查询的 id：用户已经输入了新内容时，慢脚本的改写请求要丢掉，
+                    // 否则会把用户正在输入的文本替换掉。执行条目时发出的 ChangeQuery 没有 id，照旧接受
+                    if (params.contains("queryId") && params["queryId"].is_number_unsigned()) {
+                        queryId = params["queryId"].get<uint64_t>();
+                        if (queryId != m_currentQueryId) return;
+                    }
                     m_pendingEditText = utf8_to_wide(params["query"]);
+                    m_pendingEditQueryId = queryId;
+                    m_hasPendingEdit = true;
                 }
-                PostToUiThread(WM_NODEJS_CHANGE_QUERY, 0);
+                PostToUiThread(WM_NODEJS_CHANGE_QUERY, queryId);
             }
         }
     }
@@ -215,12 +226,17 @@ private:
         GetHost().ShowActionSet(m_results.Id());
     }
 
-    void OnChangeQueryMessage() {
+    void OnChangeQueryMessage(const uint64_t queryId) {
         std::wstring text;
         {
             std::lock_guard<std::mutex> lock(m_stateMutex);
+            // 更新的 changeQuery 已经覆盖了待写入文本时，这条旧消息什么都不做
+            if (!m_hasPendingEdit || m_pendingEditQueryId != queryId) return;
+            m_hasPendingEdit = false;
             text.swap(m_pendingEditText);
         }
+        // 消息排队期间输入可能又变了，再核对一次发起查询是否仍是当前查询
+        if (queryId != 0 && queryId != GetHost().GetCurrentQueryId()) return;
         GetHost().SetEditText(text);
     }
 
@@ -239,7 +255,11 @@ private:
             }
             return 0;
         case WM_NODEJS_CHANGE_QUERY:
-            if (self) self->OnChangeQueryMessage();
+            if (self) {
+                const uint64_t queryId = static_cast<uint64_t>(static_cast<uint32_t>(wparam)) |
+                    (static_cast<uint64_t>(static_cast<uint32_t>(lparam)) << 32);
+                self->OnChangeQueryMessage(queryId);
+            }
             return 0;
         case WM_NCDESTROY:
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);

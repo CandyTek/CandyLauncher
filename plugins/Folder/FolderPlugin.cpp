@@ -229,6 +229,7 @@ public:
 
 	bool Initialize() override {
 		m_host = &GetHost();
+		g_folderWork.Reset();
 		EnsureAutomationActionIndex();
 		GetHost().RegisterAppCommand(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY, OpenIndexedManagerCommand, nullptr);
 		// 索引管理器 / 自动化编辑器保存后在它们自己的线程上调用：发布集合后通知主程序重建可见列表
@@ -244,11 +245,18 @@ public:
 	}
 
 
+	// 主程序在 UI 线程上调用，之后 delete 本实例并 FreeLibrary：
+	// 这里必须让所有引用本 DLL 代码的东西（窗口过程、后台线程、持有 this 的回调）都先结束
 	void Shutdown() override {
 		if (m_host) {
 			GetHost().UnregisterAppCommand(OPEN_FOLDER_INDEXED_MANAGER_CALLBACK_KEY);
 			stopThreadPluginRunningApps();
 		}
+		// 先关窗口：编辑器保存会再投递刷新线程，关掉后不会再有新任务
+		CloseAutomationActionWindow();
+		CloseIndexManagerWindows();
+		// 取消自动化 delay 等待，等启动 / 自动化 / 保存后刷新线程全部结束（刷新回调持有 this）
+		g_folderWork.Shutdown();
 		g_refreshFolderPlugin = nullptr;
 		fileActions.ClearLocal();
 		automationEditor.ClearLocal();

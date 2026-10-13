@@ -480,8 +480,9 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				g_configDirty = false;
 				DestroyWindow(g_indexManagerHwnd);
 				if (g_refreshFolderPlugin) {
+					// 回调里持有插件 this，必须由 g_folderWork 跟踪，Shutdown 会在销毁插件前等它结束
 					auto cb = g_refreshFolderPlugin;
-					std::thread([cb]() { cb(); }).detach();
+					g_folderWork.Run([cb]() { cb(); });
 				}
 				return 0;
 			} else if (LOWORD(wParam) == IDM_EXCLUDE_ITEM) {
@@ -804,7 +805,8 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 	case WM_DESTROY:
 		{
-			HWND hOwner = GetWindow(hwnd, GW_OWNER);
+			// 插件卸载时是被动关闭，不要把主窗口拉到前台
+			HWND hOwner = g_folderWindowsClosing ? nullptr : GetWindow(hwnd, GW_OWNER);
 			if (hOwner) {
 				ShowWindow(hOwner, SW_SHOW);
 				SetForegroundWindow(hOwner);
@@ -862,11 +864,11 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 }
 
 static HBITMAP gBmpMainIcon = nullptr;
+static bool g_indexManagerClassRegistered = false;
 
 // 注册索引管理器窗口类
 static void RegisterIndexManagerClass() {
-	static bool registered = false;
-	if (registered) return;
+	if (g_indexManagerClassRegistered) return;
 
 	if (gBmpMainIcon == nullptr) {
 		gBmpMainIcon = LoadShell32IconProperAsBitmap(4, 16, 16);
@@ -876,14 +878,36 @@ static void RegisterIndexManagerClass() {
 	wc.cbSize = sizeof(WNDCLASSEXW);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = IndexManagerWndProc;
-	wc.hInstance = GetModuleHandle(nullptr);
+	wc.hInstance = FolderModuleHandle();
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wc.lpszClassName = L"IndexManagerWndClass";
 	wc.hIcon = BitmapToIcon(gBmpMainIcon);
 
-	RegisterClassExW(&wc);
-	registered = true;
+	g_indexManagerClassRegistered = RegisterFolderWindowClass(wc);
+}
+
+// 插件卸载：销毁索引管理器及其附属窗口并注销窗口类。窗口过程和消息钩子都在本 DLL 里，
+// 留着的话卸载后一次重绘 / 关闭消息就会调进已释放的代码
+static void CloseIndexManagerWindows() {
+	g_folderWindowsClosing = true;
+	if (g_excludedItemsHwnd && IsWindow(g_excludedItemsHwnd)) DestroyWindow(g_excludedItemsHwnd);
+	g_excludedItemsHwnd = nullptr;
+	if (g_shortcutFixHwnd && IsWindow(g_shortcutFixHwnd)) DestroyWindow(g_shortcutFixHwnd);
+	g_shortcutFixHwnd = nullptr;
+	if (g_indexManagerHwnd && IsWindow(g_indexManagerHwnd)) DestroyWindow(g_indexManagerHwnd);
+	g_indexManagerHwnd = nullptr;
+	if (g_indexMgrKeyHook) {
+		UnhookWindowsHookEx(g_indexMgrKeyHook);
+		g_indexMgrKeyHook = nullptr;
+	}
+	g_folderWindowsClosing = false;
+	if (g_indexManagerClassRegistered) {
+		UnregisterClassW(L"IndexManagerWndClass", FolderModuleHandle());
+		g_indexManagerClassRegistered = false;
+	}
+	UnregisterExcludedItemsWindowClass();
+	UnregisterShortcutFixClass();
 }
 
 // 显示索引管理器窗口
@@ -912,7 +936,7 @@ static void ShowIndexedManagerWindow(HWND parent) {
 		x, y, windowWidth, windowHeight,
 		parent,
 		nullptr,
-		GetModuleHandle(nullptr),
+		FolderModuleHandle(),
 		nullptr
 	);
 

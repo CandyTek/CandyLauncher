@@ -3,11 +3,11 @@
 #include "util/json.hpp"
 #include "util/FileUtil.hpp"
 #include "util/LogUtil.hpp"
+#include "FolderPluginData.hpp"
 #include <windows.h>
 #include <shellapi.h>
 #include <filesystem>
 #include <fstream>
-#include <thread>
 
 struct AutomationStep {
 	std::wstring path;
@@ -115,17 +115,20 @@ inline bool SaveAutomationDocument(const std::wstring& path, const AutomationDoc
 	}
 }
 
+// 在插件跟踪的后台线程上依次执行步骤；插件卸载时 delay 等待被取消，剩余步骤不再执行
 inline void RunAutomationDocument(const std::wstring& path) {
-	std::thread([path]() {
+	const bool started = g_folderWork.Run([path]() {
 		AutomationDocument document;
 		std::wstring error;
 		if (!LoadAutomationDocument(path, document, error)) {
 			Loge(L"FolderPlugin", L"Automation load failed: ", path, L" ", error);
+			if (g_folderWork.IsCancelled()) return;
 			MessageBoxW(nullptr, error.c_str(), L"自动化动作组", MB_OK | MB_ICONERROR);
 			return;
 		}
 		for (const auto& step : document.steps) {
-			if (step.delayMs) Sleep(step.delayMs);
+			if (step.delayMs && !g_folderWork.Wait(step.delayMs)) return;
+			if (g_folderWork.IsCancelled()) return;
 			const bool custom = !step.command.empty();
 			const std::wstring executable = custom ? L"cmd.exe" : step.path;
 			const std::wstring arguments = custom ? L"/d /c " + step.command : step.params;
@@ -136,5 +139,6 @@ inline void RunAutomationDocument(const std::wstring& path) {
 				Loge(L"FolderPlugin", L"Automation step failed: ", executable, L" code=", reinterpret_cast<INT_PTR>(result));
 			}
 		}
-	}).detach();
+	});
+	if (!started) Logw(L"FolderPlugin", L"Automation ignored, plugin is shutting down: ", path);
 }

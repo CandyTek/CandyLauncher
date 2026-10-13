@@ -84,10 +84,11 @@ public:
 	void InvokeWithTarget(const wchar_t* target, bool isForceAdmin) {
 		const std::wstring arg = m_host ? m_host->GetActionArg() : L"";
 		std::wstring safeTarget = target == nullptr ? arg : std::wstring(target) + L" " + arg;
-		// 设置项在主线程读取；条目可能在刷新后被释放，线程里只用拷贝的字符串
+		// 设置项在主线程读取；条目可能在刷新后被释放，线程里只用拷贝的字符串。
+		// 线程由 g_folderWork 跟踪，插件卸载前会等待它结束（ShellExecute 可能弹 UAC 等待很久）
 		const bool runAsAdmin = (m_host && m_host->GetBool(L"pref_run_item_as_admin", false)) || isForceAdmin;
-		std::thread([targetFilePath = targetFilePath, workingDirectory = workingDirectory,
-					target = std::move(safeTarget), runAsAdmin]() {
+		const bool started = g_folderWork.Run([targetFilePath = targetFilePath, workingDirectory = workingDirectory,
+											target = std::move(safeTarget), runAsAdmin]() {
 			// open 使用 nullptr 走默认动词：部分类型（如 .cpl 只有 cplopen/runas）没有 "open" 动词，会返回 1155
 			HINSTANCE hInst = ShellExecuteW(
 				nullptr, runAsAdmin ? L"runas" : nullptr,
@@ -97,6 +98,8 @@ public:
 			//	 system(temp);
 			INT_PTR result = reinterpret_cast<INT_PTR>(hInst);
 			if (result <= 32) {
+				// 插件正在卸载时不再弹错误框，让 Shutdown 尽快 join 到本线程
+				if (g_folderWork.IsCancelled()) return;
 				// 当使用管理员模式打开失败后，回退到正常模式打开
 				if (runAsAdmin) {
 					if (result == SE_ERR_NOASSOC) // 1155
@@ -116,7 +119,8 @@ public:
 					ReportShellExecuteError(reinterpret_cast<INT_PTR>(hInst), targetFilePath);
 				}
 			}
-		}).detach();
+		});
+		if (!started) Logw(L"FolderPlugin", L"Launch ignored, plugin is shutting down: ", targetFilePath);
 	}
 
 	// 运行命令

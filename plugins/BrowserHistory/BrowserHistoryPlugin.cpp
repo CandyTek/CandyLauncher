@@ -1,4 +1,5 @@
 ﻿#include <windows.h>
+#include <atomic>
 #include <memory>
 #include <thread>
 
@@ -11,6 +12,8 @@ class BrowserHistoryPlugin : public candy::Plugin {
 private:
 	candy::ActionSet<BrowserHistoryAction> history{0};
 	std::wstring startStr = L"h ";
+	// 匹配文本是否包含 URL。UI 线程的设置回调写、刷新线程读，每次刷新开始时读一次快照传下去
+	std::atomic<bool> matchTextUrl{true};
 	// 设置项变化后在这个线程上重建索引
 	std::thread refreshThread;
 
@@ -21,7 +24,8 @@ private:
 
 	// 读取全部浏览器历史并发布，可在工作线程调用
 	void RefreshHistory() {
-		auto items = GetAllBrowserHistory();
+		const bool matchUrl = matchTextUrl.load();
+		auto items = GetAllBrowserHistory(matchUrl);
 		Logi(L"BrowserHistory", L"Loaded ", items.size(), L" history items");
 		history.Publish(GetHost(), std::move(items));
 	}
@@ -45,7 +49,7 @@ public:
 	void OnUserSettingsLoaded() override {
 		const candy::Host& host = GetHost();
 		startStr = host.GetString(L"com.candytek.browserhistoryplugin.start_str", L"h ");
-		isMatchTextUrl = host.GetBool(L"com.candytek.browserhistoryplugin.matchtext_url", true);
+		matchTextUrl = host.GetBool(L"com.candytek.browserhistoryplugin.matchtext_url", true);
 		history.SetFlags(host, HistorySetFlags());
 		// 2.2 主程序只在输入以激活命令开头时调用 OnInterceptInput；旧主程序上照旧每次都调用
 		if (startStr.empty()) host.SetTriggerKeywords({});
@@ -59,7 +63,7 @@ public:
 			key != L"com.candytek.browserhistoryplugin.max_results") {
 			return;
 		}
-		isMatchTextUrl = GetHost().GetBool(L"com.candytek.browserhistoryplugin.matchtext_url", true);
+		matchTextUrl = GetHost().GetBool(L"com.candytek.browserhistoryplugin.matchtext_url", true);
 		JoinRefreshThread();
 		refreshThread = std::thread([this] {
 			RefreshHistory();

@@ -87,31 +87,6 @@ public:
 		m_host = nullptr;
 	}
 
-	// 格式化数字显示
-	static std::wstring FormatNumber(double value) {
-		std::wostringstream woss;
-
-		// 检查是否是整数
-		if (std::floor(value) == value && std::abs(value) < 1e15) {
-			woss << std::fixed << std::setprecision(0) << value;
-		} else {
-			// 使用科学记数法或固定小数点
-			woss << std::setprecision(14) << std::noshowpoint << value;
-			std::wstring result = woss.str();
-
-			// 移除尾随的零
-			if (result.find(L'.') != std::wstring::npos) {
-				result.erase(result.find_last_not_of(L'0') + 1, std::wstring::npos);
-				if (result.back() == L'.') {
-					result.pop_back();
-				}
-			}
-			return result;
-		}
-
-		return woss.str();
-	}
-
 	// 设置了激活命令时接管结果列表；留空时由 OnQuery 把结果追加到正常搜索结果后面
 	void OnInterceptInput(const std::wstring& input, candy::ResultSink& sink) override {
 		if (startStr.empty() || !StartsWith(input, startStr)) return;

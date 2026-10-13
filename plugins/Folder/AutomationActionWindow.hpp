@@ -31,6 +31,8 @@ struct State {
 };
 
 inline HWND g_window = nullptr;
+// 窗口类是否已用本 DLL 的模块句柄注册；插件卸载时注销并复位，重新加载后才能注册到新的窗口过程
+inline bool g_automationClassRegistered = false;
 
 inline std::wstring Read(HWND control) {
 	int length = GetWindowTextLengthW(control);
@@ -198,8 +200,9 @@ inline bool Save(HWND hwnd, State* state) {
 	DrawSteps(state);
 	SetWindowTextW(hwnd, (L"自动化动作组编辑器 — " + path.filename().wstring()).c_str());
 	if (g_refreshFolderPlugin) {
+		// 回调里持有插件 this，必须由 g_folderWork 跟踪，Shutdown 会在销毁插件前等它结束
 		auto refresh = g_refreshFolderPlugin;
-		std::thread([refresh]() { refresh(); }).detach();
+		g_folderWork.Run([refresh]() { refresh(); });
 	}
 	MessageBoxW(hwnd, (L"已保存：" + path.wstring()).c_str(), L"自动化动作组", MB_OK | MB_ICONINFORMATION);
 	return true;
@@ -498,21 +501,30 @@ inline void ShowAutomationActionWindow(HWND parent) {
 		SetForegroundWindow(g_window);
 		return;
 	}
-	static bool registered = false;
-	if (!registered) {
+	if (!g_automationClassRegistered) {
 		WNDCLASSEXW cls{};
 		cls.cbSize = sizeof(cls);
 		cls.lpfnWndProc = WindowProc;
-		cls.hInstance = GetModuleHandleW(nullptr);
+		cls.hInstance = FolderModuleHandle();
 		cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
 		cls.lpszClassName = kClassName;
-		if (!RegisterClassExW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
-		registered = true;
+		if (!RegisterFolderWindowClass(cls)) return;
+		g_automationClassRegistered = true;
 	}
 	int width = 810, height = 700;
 	g_window = CreateWindowExW(WS_EX_ACCEPTFILES, kClassName, L"自动化动作组编辑器 — 新建",
 		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		(GetSystemMetrics(SM_CXSCREEN) - width) / 2, (GetSystemMetrics(SM_CYSCREEN) - height) / 2,
-		width, height, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+		width, height, parent, nullptr, FolderModuleHandle(), nullptr);
 	if (g_window) { ShowWindow(g_window, SW_SHOW); UpdateWindow(g_window); }
+}
+
+// 插件卸载：销毁编辑器窗口并注销窗口类，窗口过程在本 DLL 里，卸载后不能再被消息调用到
+inline void CloseAutomationActionWindow() {
+	if (g_window && IsWindow(g_window)) DestroyWindow(g_window);
+	g_window = nullptr;
+	if (g_automationClassRegistered) {
+		UnregisterClassW(kClassName, FolderModuleHandle());
+		g_automationClassRegistered = false;
+	}
 }

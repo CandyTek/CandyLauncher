@@ -3,5 +3,3 @@
 #include "plugins/sdk/CandyPluginSdk.hpp"
 
 inline const candy::Host* m_host = nullptr;
-
-inline bool isMatchTextUrl = true;

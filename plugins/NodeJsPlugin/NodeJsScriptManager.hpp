@@ -29,7 +29,9 @@ public:
         if (j.contains("Entry") && j["Entry"].is_string()) m_entry = utf8_to_wide(j["Entry"]);
         else if (j.contains("ExecuteFileName") && j["ExecuteFileName"].is_string()) m_entry = utf8_to_wide(j["ExecuteFileName"]);
 
+        // "*" 是通配符（任何输入都路由到该脚本），匹配和注册触发词时都按 L"*" 原样识别，不能补空格
         const auto normalize_keyword = [](std::wstring kw) {
+            if (kw == L"*") return kw;
             if (!kw.empty() && !iswspace(kw.back())) {
                 kw += L' ';
             }
