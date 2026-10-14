@@ -53,7 +53,8 @@ int64_t pref_max_search_results = 0;
 int last_open_window_position_x = 0;
 int last_open_window_position_y = 0;
 int unknown_file_icon_index = 0;
-int LISTITEM_ICON_SIZE = 48;
+int LISTITEM_ICON_SIZE = LISTITEM_ICON_BASE_SIZE;
+UINT g_mainWindowDpi = 96;
 
 float window_position_offset_x = 0.5f;
 float window_position_offset_y = 0.5f;

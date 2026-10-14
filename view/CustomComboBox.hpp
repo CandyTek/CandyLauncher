@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <commctrl.h>
+#include "../util/DpiUtil.hpp"
 
 
 // ComboBox brushes
@@ -43,19 +44,20 @@ static HBRUSH GetComboBoxBrush(ComboBoxInfo* comboInfo) {
 	return hBrushComboNormal;
 }
 
-// Draw dropdown arrow
-static void DrawDropdownArrow(HDC hdc, RECT rect, bool isHovered, bool isDropped) {
-	int centerX = rect.right - 20;
+// Draw dropdown arrow（尺寸为 96 DPI 下的值，按 dpi 缩放）
+static void DrawDropdownArrow(HDC hdc, RECT rect, bool isHovered, bool isDropped, const UINT dpi = Dpi::kBaseDpi) {
+	const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
+	int centerX = rect.right - S(20);
 	int centerY = rect.top + (rect.bottom - rect.top) / 2;
 
 	COLORREF arrowColor = isHovered || isDropped ? RGB(0, 120, 215) : RGB(100, 100, 100);
-	HPEN hPen = CreatePen(PS_SOLID, 2, arrowColor);
+	HPEN hPen = CreatePen(PS_SOLID, S(2), arrowColor);
 	HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
 
 	// Draw down arrow
-	MoveToEx(hdc, centerX - 4, centerY - 2, NULL);
-	LineTo(hdc, centerX, centerY + 2);
-	LineTo(hdc, centerX + 4, centerY - 2);
+	MoveToEx(hdc, centerX - S(4), centerY - S(2), NULL);
+	LineTo(hdc, centerX, centerY + S(2));
+	LineTo(hdc, centerX + S(4), centerY - S(2));
 
 	SelectObject(hdc, hOldPen);
 	DeleteObject(hPen);
@@ -110,6 +112,9 @@ static LRESULT CALLBACK EnhancedComboBoxSubclassProc(HWND hWnd, UINT uMsg, WPARA
 
 			RECT rect;
 			GetClientRect(hWnd, &rect);
+			// 像素常量都是 96 DPI 下的值，按控件所在窗口的 DPI 缩放
+			const UINT dpi = Dpi::WindowDpi(hWnd);
+			const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
 
 			// Use double buffering
 			HDC memDC = CreateCompatibleDC(hdc);
@@ -130,26 +135,27 @@ static LRESULT CALLBACK EnhancedComboBoxSubclassProc(HWND hWnd, UINT uMsg, WPARA
 				}
 			}
 
-			HPEN hPen = CreatePen(PS_SOLID, 2, borderColor);
+			HPEN hPen = CreatePen(PS_SOLID, S(2), borderColor);
 			HPEN hOldPen = (HPEN)SelectObject(memDC, hPen);
 			HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, GetStockObject(NULL_BRUSH));
 
-			// 手动画 4 条边，保证 2px 一致
+			// 手动画 4 条边，保证 2px 一致（画笔中心线离边缘 1px，缩放后同比例）
+			const int inset = S(1);
 			// 上
-			MoveToEx(memDC, rect.left, rect.top+1, NULL);
-			LineTo(memDC, rect.right, rect.top+1);
+			MoveToEx(memDC, rect.left, rect.top + inset, NULL);
+			LineTo(memDC, rect.right, rect.top + inset);
 
 			// 左
-			MoveToEx(memDC, rect.left+1, rect.top, NULL);
-			LineTo(memDC, rect.left+1, rect.bottom);
+			MoveToEx(memDC, rect.left + inset, rect.top, NULL);
+			LineTo(memDC, rect.left + inset, rect.bottom);
 
 			// 右
-			MoveToEx(memDC, rect.right - 1, rect.top, NULL);
-			LineTo(memDC, rect.right - 1, rect.bottom);
+			MoveToEx(memDC, rect.right - inset, rect.top, NULL);
+			LineTo(memDC, rect.right - inset, rect.bottom);
 
 			// 下
-			MoveToEx(memDC, rect.left, rect.bottom - 1, NULL);
-			LineTo(memDC, rect.right, rect.bottom - 1);
+			MoveToEx(memDC, rect.left, rect.bottom - inset, NULL);
+			LineTo(memDC, rect.right, rect.bottom - inset);
 
 			SelectObject(memDC, hOldBrush);
 			SelectObject(memDC, hOldPen);
@@ -157,7 +163,7 @@ static LRESULT CALLBACK EnhancedComboBoxSubclassProc(HWND hWnd, UINT uMsg, WPARA
 
 			// Draw dropdown arrow
 			if (comboInfo) {
-				DrawDropdownArrow(memDC, rect, comboInfo->isHovered, comboInfo->isDropped);
+				DrawDropdownArrow(memDC, rect, comboInfo->isHovered, comboInfo->isDropped, dpi);
 			}
 
 			// Get current selection text
@@ -173,7 +179,7 @@ static LRESULT CALLBACK EnhancedComboBoxSubclassProc(HWND hWnd, UINT uMsg, WPARA
 					SetTextColor(memDC, RGB(0, 0, 0));
 					HFONT oldFont = (HFONT)SelectObject(memDC, hFontDefault);
 
-					RECT textRect = {rect.left + 8, rect.top, rect.right - 30, rect.bottom};
+					RECT textRect = {rect.left + S(8), rect.top, rect.right - S(30), rect.bottom};
 					DrawTextW(memDC, text.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
 					SelectObject(memDC, oldFont);

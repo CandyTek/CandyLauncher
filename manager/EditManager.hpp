@@ -8,6 +8,7 @@
 #include "../common/Constants.hpp"
 #include "ListViewManager.hpp"
 #include "EditControlPainter.hpp"
+#include "../util/DpiUtil.hpp"
 #include <gdiplus.h>
 
 #pragma comment(lib, "comctl32.lib")
@@ -63,9 +64,11 @@ private:
 
 		RECT itemRect{};
 		if (!ListView_GetItemRect(g_listViewHwnd, index, &itemRect, LVIR_BOUNDS)) return;
-		POINT pt{itemRect.left + (itemRect.right - itemRect.left) / 2,
+		// 列表客户区坐标（主窗口自己的像素）；插件菜单在不感知上下文里弹出，坐标要换算到该坐标空间
+		const POINT itemCenter{itemRect.left + (itemRect.right - itemRect.left) / 2,
 			itemRect.top + (itemRect.bottom - itemRect.top) / 2};
-		ClientToScreen(g_listViewHwnd, &pt);
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
+		const POINT pt = Dpi::ChildClientPointToThreadScreen(g_listViewHwnd, itemCenter);
 
 		const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 		if (shiftDown ^ pref_switch_list_right_click_with_shift_right_click) {

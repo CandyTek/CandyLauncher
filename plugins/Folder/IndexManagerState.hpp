@@ -11,6 +11,7 @@
 #include "FileSystemTraverserWrapper.hpp"
 #include "FolderPluginConfigUtils.hpp"
 #include "util/BaseTools.hpp"
+#include "util/DpiUtil.hpp"
 #include "util/FileSystemTraverser.hpp"
 #include "view/EditScrollSynchronizer.hpp"
 #include "window/RenameDialog.hpp"
@@ -75,6 +76,22 @@ static bool g_showFileIcons = true;
 
 static int centerPanelX = leftPanelWidth + 4;
 static int centerPanelLabelHeight = 20;
+
+// 索引管理器窗口自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：上面几个布局值是 96 DPI 下的值，
+// 窗口创建和 WM_DPICHANGED 时用 ApplyIndexManagerDpi 按窗口 DPI 换算后写回，其余像素常量经 IM() 换算
+static UINT g_indexManagerDpi = Dpi::kBaseDpi;
+
+static int IM(const int value96) {
+	return Dpi::Scale(value96, g_indexManagerDpi);
+}
+
+static void ApplyIndexManagerDpi(const UINT dpi) {
+	g_indexManagerDpi = dpi;
+	leftPanelWidth = IM(170);
+	centerPanelEditHeight = IM(25);
+	centerPanelX = leftPanelWidth + IM(4);
+	centerPanelLabelHeight = IM(20);
+}
 
 static int g_sizeChangePosY = 0;
 

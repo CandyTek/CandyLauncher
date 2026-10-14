@@ -222,7 +222,9 @@ static Gdiplus::Bitmap* GetBlankBitmap(int targetW, int targetH, RECT* outConten
 }
 
 // -------------------- 核心函数：读取 .9.png 并按目标尺寸绘制 --------------------
-static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, int targetH, RECT* outContentPadding = nullptr) {
+// scale：固定段（圆角、边框等不可伸展区域）的放大比例，用于高 DPI（如 1.5 = 150%）；1.0 时输出与之前完全一致
+static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, int targetH, RECT* outContentPadding = nullptr,
+											const double scale = 1.0) {
 	using namespace Gdiplus;
 	if (!path || targetW <= 0 || targetH <= 0)
 	{
@@ -255,21 +257,23 @@ static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, 
 	// 内容 padding
 	ParseContentPadding(src.get(), cw, ch, outContentPadding);
 
-	// 固定段统一缩放比例：任一方向放不下固定段时，两个方向按同一比例缩小
-	double fixedScale = 1.0;
+	// 固定段统一缩放比例：先按 DPI 比例放大，任一方向放不下固定段时，两个方向按同一比例缩小
+	double fixedScale = scale > 0.0 ? scale : 1.0;
 	const int sumFixedX = SumFixedLength(xSegs);
 	const int sumFixedY = SumFixedLength(ySegs);
-	if (sumFixedX > targetW) fixedScale = std::min(fixedScale, (double)targetW / sumFixedX);
-	if (sumFixedY > targetH) fixedScale = std::min(fixedScale, (double)targetH / sumFixedY);
-	if (outContentPadding && fixedScale < 1.0) {
+	if (sumFixedX > 0 && sumFixedX * fixedScale > targetW) fixedScale = (double)targetW / sumFixedX;
+	if (sumFixedY > 0 && sumFixedY * fixedScale > targetH) fixedScale = std::min(fixedScale, (double)targetH / sumFixedY);
+	if (outContentPadding && fixedScale != 1.0) {
 		outContentPadding->left = (LONG)std::lround(outContentPadding->left * fixedScale);
 		outContentPadding->top = (LONG)std::lround(outContentPadding->top * fixedScale);
 		outContentPadding->right = (LONG)std::lround(outContentPadding->right * fixedScale);
 		outContentPadding->bottom = (LONG)std::lround(outContentPadding->bottom * fixedScale);
 	}
 
-	// 先把内容区（去掉 1px 引导线）复制出来，避免插值时采样到黑色引导线
-	Bitmap content(cw, ch, PixelFormat32bppARGB);
+	// 先把内容区（去掉 1px 引导线）复制出来，避免插值时采样到黑色引导线。
+	// DPI 放大时固定段要做高质量重采样，用预乘格式避免透明边缘出现深色杂边
+	const bool resampleFixed = scale != 1.0;
+	Bitmap content(cw, ch, resampleFixed ? PixelFormat32bppPARGB : PixelFormat32bppARGB);
 	{
 		Graphics cg(&content);
 		cg.SetCompositingMode(CompositingModeSourceCopy);
@@ -311,8 +315,9 @@ static Gdiplus::Bitmap* RenderNinePatchToSize(const wchar_t* path, int targetW, 
 				dx += dstW;
 				continue;
 			}
-			// 尺寸不变的格子原样复制，保证圆角像素精确
-			g.SetInterpolationMode(InterpolationModeNearestNeighbor);
+			// 尺寸不变的格子原样复制，保证圆角像素精确；DPI 放大时固定段（圆角、边框）用高质量插值重采样
+			const bool resampled = resampleFixed && (!xSegs[c].stretch || !ySegs[r].stretch);
+			g.SetInterpolationMode(resampled ? InterpolationModeHighQualityBicubic : InterpolationModeNearestNeighbor);
 			g.DrawImage(&content, Rect(dx, dy, dstW, dstH), srcX, srcY, srcW, srcH, UnitPixel, &attrs);
 			dx += dstW;
 		}

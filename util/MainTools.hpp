@@ -28,12 +28,21 @@
 
 #include "HotkeyUtils.hpp"
 #include "ShortCutDetectUtil.hpp"
+#include "DpiUtil.hpp"
 
 struct MonitorData {
 	HMONITOR hMonitor;
 	MONITORINFOEX mi;
 	bool isPrimary;
 };
+
+// 主窗口即将弹出到某台显示器前调用：按该显示器的 DPI 重新加载皮肤，这样下面用 MAIN_WINDOW_WIDTH/HEIGHT
+// 算出的位置才是最终尺寸的位置（由 CandyLauncher.cpp 挂接到 SkinHelper 的 applyMainWindowDpi）
+inline void (*g_prepareMainWindowForMonitor)(HMONITOR) = nullptr;
+
+static void prepareMainWindowForMonitor(const HMONITOR monitor) {
+	if (g_prepareMainWindowForMonitor && monitor) g_prepareMainWindowForMonitor(monitor);
+}
 
 static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
 	std::vector<MonitorData>* monitors = reinterpret_cast<std::vector<MonitorData>*>(dwData);
@@ -50,6 +59,8 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT l
 }
 
 static void HideWindow() {
+	// 下面记录的窗口位置要和弹出时计算的位置在同一坐标空间（主窗口的 DPI 上下文）里比较
+	Dpi::ThreadContextScope dpiScope(Dpi::ContextOfWindow(g_mainHwnd));
 	// 不需要设置什么线程延时去关闭什么的，归根结底是alt键触发了控件的一些东西，屏蔽就好
 	if (!pref_preserve_last_search_term) {
 		SetWindowText(g_editHwnd, L"");
@@ -83,6 +94,7 @@ static void showMainWindowInCursorScreen(HWND hWnd) {
 
 	// 获取鼠标所在的显示器
 	HMONITOR hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+	prepareMainWindowForMonitor(hMonitor);
 
 	// 获取该显示器的信息
 	MONITORINFO mi = {};
@@ -140,13 +152,12 @@ static void showMainWindowInIndexScreen(HWND hWnd, int index) {
 	if (monitors.empty()) {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
 					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
+		return;
 	}
 
-	if (monitors.size() > static_cast<size_t>(index)) {
-		mi = monitors[index].mi;
-	} else {
-		mi = monitors[0].mi;
-	}
+	const MonitorData& target = monitors.size() > static_cast<size_t>(index) ? monitors[index] : monitors[0];
+	mi = target.mi;
+	prepareMainWindowForMonitor(target.hMonitor);
 	// 计算位置
 	const int centerX = static_cast<int>(mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - MAIN_WINDOW_WIDTH) *
 		window_position_offset_x);
@@ -180,6 +191,7 @@ static void showMainWindowInForegroundRect(HWND hWnd) {
 
 		Logi(L"MainTools", L"foregroundWindow location: (", x, L", ", y, L")");
 		Logi(L"MainTools", L"foregroundWindow size: ", width, L" x ", height);
+		prepareMainWindowForMonitor(MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST));
 
 		const int centerX = static_cast<int>(x + (width - MAIN_WINDOW_WIDTH) * window_position_offset_x);
 		const int centerY = static_cast<int>(y + (height - MAIN_WINDOW_HEIGHT) * window_position_offset_y);
@@ -250,6 +262,7 @@ static void showMainWindowInForegroundAppScreen2(HWND hWnd) {
 		showMainWindowInCursorScreen(hWnd);
 		return;
 	}
+	prepareMainWindowForMonitor(targetMonitor);
 
 	// 获取目标显示器信息
 	MONITORINFO mi = {};
@@ -294,6 +307,7 @@ static void showMainWindowInForegroundAppScreen(HWND hWnd) {
 
 	// 获取窗口所在的显示器
 	HMONITOR hMonitor = MonitorFromWindow(hForeground, MONITOR_DEFAULTTONEAREST);
+	prepareMainWindowForMonitor(hMonitor);
 
 	// 获取该显示器的信息
 	MONITORINFO mi = {};
@@ -317,11 +331,14 @@ static void showMainWindowInForegroundAppScreen(HWND hWnd) {
 }
 
 static void MyMoveWindow(HWND hWnd) {
+	// 可能从钩子回调、托盘菜单等不感知上下文调用；显示器枚举、DPI 查询和 SetWindowPos 都要在主窗口的坐标空间里做
+	Dpi::ThreadContextScope dpiScope(Dpi::ContextOfWindow(hWnd));
 	std::string pref_window_popup_position = g_settings_map["pref_window_popup_position"].stringValue;
 
 	if (pref_window_popup_position == "currect_cursor_on_screen") {
 		showMainWindowInCursorScreen(hWnd);
 	} else if (pref_window_popup_position == "last_time_opened_pos") {
+		prepareMainWindowForMonitor(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST));
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
 					SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_NOMOVE);
 	} else if (pref_window_popup_position == "currect_window_on_screen") {
@@ -586,6 +603,8 @@ inline void SetControlFont(HWND hCtrl, HFONT hFont) {
 	SendMessageW(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
 }
 
+// 注意：dxyLineButton 在 Per-Monitor 子窗口里不随 DPI 缩放（150% 下仍报 17，实际是 26），
+// 主窗口列表的列宽改用 Dpi::SystemMetricForDpi(SM_CXVSCROLL, g_mainWindowDpi)，见 SkinHelper
 static int GetWindowVScrollBarThumbWidth(HWND hwnd, bool bAutoShow) {
 	SCROLLBARINFO sb = {0};
 	sb.cbSize = sizeof(SCROLLBARINFO);
@@ -781,6 +800,7 @@ inline std::vector<std::wstring> GetWStringArray(const nlohmann::json& j, const 
 }
 
 inline void ShowMainWindowSimple() {
+	Dpi::ThreadContextScope dpiScope(Dpi::ContextOfWindow(g_mainHwnd));
 	RestoreWindowIfMinimized(g_mainHwnd);
 	SetFocus(g_editHwnd);
 	MyMoveWindow(g_mainHwnd);
@@ -845,8 +865,9 @@ static RECT LoadWindowRectFromRegistry() {
 	return rect;
 }
 
-// 保存窗口位置
+// 保存窗口位置（主窗口自己坐标空间的物理像素，读取时也在同一上下文里）
 static void SaveWindowRectToRegistry(HWND hWnd) {
+	Dpi::ThreadContextScope dpiScope(Dpi::ContextOfWindow(hWnd));
 	RECT rect;
 	if (GetWindowRect(hWnd, &rect)) {
 		HKEY hKey;

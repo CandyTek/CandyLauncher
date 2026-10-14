@@ -37,8 +37,9 @@ static void RefreshEditPaintStyle() {
 	g_editPaintStyle.hint = GetColor("editbox_hint_color", "#888888");
 	g_editPaintStyle.caret = g_skinJson != nullptr && g_skinJson.contains("editbox_caret_color")
 		? GetColor("editbox_caret_color", "#222222") : g_editPaintStyle.font;
+	// 皮肤里的内边距是 96 DPI 下的值，按主窗口 DPI 换算
 	g_editPaintStyle.paddingTop = g_skinJson != nullptr
-		? static_cast<Gdiplus::REAL>(g_skinJson.value("editbox_padding_top", 0)) : 0.f;
+		? MainDpiScaleF(g_skinJson.value("editbox_padding_top", 0)) : 0.f;
 }
 
 struct EditCharPositionCache {
@@ -189,7 +190,8 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 		drawChars(fontColor, 0, s);
 		if (s != e) {
 			const Gdiplus::SolidBrush selectionBgBrush(g_editPaintStyle.selectionBackground);
-			graphics.FillRectangle(&selectionBgBrush, Gdiplus::RectF(xs[s], paddingTop + 2.f, xs[e] - xs[s], fontH - 2.f));
+			const Gdiplus::REAL inset = MainDpiScaleF(2.0);
+			graphics.FillRectangle(&selectionBgBrush, Gdiplus::RectF(xs[s], paddingTop + inset, xs[e] - xs[s], fontH - inset));
 			drawChars(g_editPaintStyle.selectionFont, s, e);
 		}
 		drawChars(fontColor, e, textLength);
@@ -205,6 +207,6 @@ static void PaintEdit(const HWND hwnd, const HDC hdc) {
 	// 有选区时不绘制光标
 	if (s == e && g_caretOn && GetFocus() == hwnd) {
 		const Gdiplus::SolidBrush caretBrush(g_editPaintStyle.caret);
-		graphics.FillRectangle(&caretBrush, Gdiplus::RectF(caretX, paddingTop + fontH * 0.1f, 2.f, fontH * 0.9f));
+		graphics.FillRectangle(&caretBrush, Gdiplus::RectF(caretX, paddingTop + fontH * 0.1f, MainDpiScaleF(2.0), fontH * 0.9f));
 	}
 }

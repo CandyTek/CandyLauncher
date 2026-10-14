@@ -6,6 +6,7 @@
 
 #include "util/BitmapUtil.hpp"
 #include "util/ClipboardUtil.hpp"
+#include "util/DpiUtil.hpp"
 #include "qrcodegen.hpp"
 #include <gdiplus.h>
 
@@ -179,6 +180,11 @@ static LRESULT CALLBACK QRCodeWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
 
+    case WM_DPICHANGED:
+        // 窗口以 Per-Monitor V2 创建，内容每次重绘都按客户区和窗口 DPI 计算，只需移到建议矩形
+        Dpi::ApplySuggestedRect(hwnd, lParam);
+        return 0;
+
     case WM_PAINT: {
         if (!pData || !pData->bmp) break;
 
@@ -203,9 +209,10 @@ static LRESULT CALLBACK QRCodeWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         g.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
         g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 
-        // 预留文本高度（估算）
-        int margin = 16;
-        int textPad = pData->text.empty() ? 0 : 80;
+        // 预留文本高度（估算），边距、字号都是 96 DPI 下的值，按窗口 DPI 缩放
+        const UINT dpi = Dpi::WindowDpi(hwnd);
+        int margin = Dpi::Scale(16, dpi);
+        int textPad = pData->text.empty() ? 0 : Dpi::Scale(80, dpi);
 
         // 计算目标方形区域（保持等比）
         int availW = std::max(1, cw - margin * 2);
@@ -221,12 +228,12 @@ static LRESULT CALLBACK QRCodeWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         if (!pData->text.empty()) {
             Gdiplus::RectF textRc(
                 (Gdiplus::REAL)margin,
-                (Gdiplus::REAL)(dy + side + 8),
+                (Gdiplus::REAL)(dy + side + Dpi::Scale(8, dpi)),
                 (Gdiplus::REAL)(cw - margin * 2),
-                (Gdiplus::REAL)(ch - (dy + side + 8) - margin)
+                (Gdiplus::REAL)(ch - (dy + side + Dpi::Scale(8, dpi)) - margin)
             );
             Gdiplus::FontFamily ff(L"Segoe UI");
-            Gdiplus::Font font(&ff, 14.0f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+            Gdiplus::Font font(&ff, Dpi::ScaleF(14.0f, dpi), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
             Gdiplus::StringFormat fmt;
             fmt.SetAlignment(Gdiplus::StringAlignmentCenter);
             fmt.SetLineAlignment(Gdiplus::StringAlignmentNear);
@@ -262,6 +269,8 @@ static LRESULT CALLBACK QRCodeWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
 // --------- 显示窗口（自适应缩放） ----------
 inline void ShowQRCodeWindow(const qrcodegen::QrCode& qr, const std::string& textUtf8) {
+    // 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）；主程序调用插件时处于不感知上下文，这里切回来
+    Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
     // 初始化 GDI+
     Gdiplus::GdiplusStartupInput gsi;
     ULONG_PTR token{};
@@ -287,8 +296,9 @@ inline void ShowQRCodeWindow(const qrcodegen::QrCode& qr, const std::string& tex
     UnregisterClassW(kClass, wc.hInstance);
     RegisterClassW(&wc);
 
-    // 建一个合适的初始大小，后续用户拖动自动缩放
-    int w = 520, h = 560; // 上下左右留白 + 预留文本
+    // 建一个合适的初始大小（按主显示器 DPI 换算），后续用户拖动自动缩放
+    const UINT dpi = Dpi::PrimaryMonitorDpi();
+    int w = Dpi::Scale(520, dpi), h = Dpi::Scale(560, dpi); // 上下左右留白 + 预留文本
     HWND hwnd = CreateWindowExW(
         WS_EX_APPWINDOW,
         kClass, L"二维码",

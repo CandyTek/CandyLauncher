@@ -6,6 +6,7 @@
 #include <string>
 #include <commctrl.h>
 #include "../util/FontUtil.hpp"
+#include "../util/DpiUtil.hpp"
 
 // Button styles enumeration
 enum ButtonStyle {
@@ -41,9 +42,10 @@ struct ButtonInfo {
 
 // Global button list
 
-// Font handles
+// Font handles（按 g_customButtonFontDpi 创建，设置窗口换 DPI 时重建）
 inline HFONT hFontDefault = nullptr;
 inline HFONT hFontButton = nullptr;
+inline UINT g_customButtonFontDpi = 0;
 
 // Button brushes
 inline HBRUSH hBrushPrimaryHover = nullptr;
@@ -60,21 +62,17 @@ inline HBRUSH hBrushButtonDanger = nullptr;
 inline HBRUSH hBrushButtonExpand = nullptr;
 inline HBRUSH hBrushButtonExpandHover = nullptr;
 
-// Initialize button resources
-static void InitializeCustomButtonResources() {
+// Initialize button resources。字体按 dpi 创建：设置窗口在高 DPI 显示器上打开或收到 WM_DPICHANGED 时
+// 用新 DPI 再调用一次即可重建（调用前控件须已销毁或随后重新 WM_SETFONT）
+static void InitializeCustomButtonResources(const UINT dpi = Dpi::kBaseDpi) {
 	// Initialize fonts
-	if (!hFontDefault) {
-		hFontDefault = CreateFontW(
-			20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, ResolveFontFamily(L"Microsoft YaHei UI").c_str());
-	}
-
-	if (!hFontButton) {
-		hFontButton = CreateFontW(
-			20, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
-			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, ResolveFontFamily(L"Microsoft YaHei UI").c_str());
+	if (!hFontDefault || !hFontButton || g_customButtonFontDpi != dpi) {
+		if (hFontDefault) DeleteObject(hFontDefault);
+		if (hFontButton) DeleteObject(hFontButton);
+		const std::wstring face = ResolveFontFamily(L"Microsoft YaHei UI");
+		hFontDefault = Dpi::CreateScaledFont(20, FW_NORMAL, face.c_str(), dpi);
+		hFontButton = Dpi::CreateScaledFont(20, FW_MEDIUM, face.c_str(), dpi);
+		g_customButtonFontDpi = dpi;
 	}
 
 	// Initialize brushes
@@ -115,41 +113,43 @@ static HBRUSH GetButtonBrush(ButtonInfo* btnInfo) {
 	}
 }
 
-// 绘制折叠箭头
-static void DrawExpandArrow(HDC hdc, RECT rect, bool isExpanded, bool isHovered) {
+// 绘制折叠箭头（尺寸为 96 DPI 下的值，按 dpi 缩放）
+static void DrawExpandArrow(HDC hdc, RECT rect, bool isExpanded, bool isHovered, const UINT dpi = Dpi::kBaseDpi) {
+	const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
 	// 计算箭头位置
-	int centerX = rect.left + 12; // 左侧留12px边距
+	int centerX = rect.left + S(12); // 左侧留12px边距
 	int centerY = rect.top + (rect.bottom - rect.top) / 2;
 
 	// 设置画笔和画刷
 	COLORREF arrowColor = isHovered ? RGB(0, 120, 215) : RGB(100, 100, 100);
-	HPEN hPen = CreatePen(PS_SOLID, 2, arrowColor);
+	HPEN hPen = CreatePen(PS_SOLID, S(2), arrowColor);
 	HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
 
 	// 绘制箭头
 	if (isExpanded) {
 		// 向下箭头 ▼
-		MoveToEx(hdc, centerX - 4, centerY - 2, NULL);
-		LineTo(hdc, centerX, centerY + 2);
-		LineTo(hdc, centerX + 4, centerY - 2);
+		MoveToEx(hdc, centerX - S(4), centerY - S(2), NULL);
+		LineTo(hdc, centerX, centerY + S(2));
+		LineTo(hdc, centerX + S(4), centerY - S(2));
 	} else {
 		// 向右箭头 ▶
-		MoveToEx(hdc, centerX - 2, centerY - 4, NULL);
-		LineTo(hdc, centerX + 2, centerY);
-		LineTo(hdc, centerX - 2, centerY + 4);
+		MoveToEx(hdc, centerX - S(2), centerY - S(4), NULL);
+		LineTo(hdc, centerX + S(2), centerY);
+		LineTo(hdc, centerX - S(2), centerY + S(4));
 	}
 
 	SelectObject(hdc, hOldPen);
 	DeleteObject(hPen);
 }
 
-// 绘制简化开关(用于组合控件) - 复用Win8风格
-static void DrawSwitchWin8UI(HDC hdc, int x, int y, bool isOn, bool isHovered) {
+// 绘制简化开关(用于组合控件) - 复用Win8风格（尺寸为 96 DPI 下的值，按 dpi 缩放）
+static void DrawSwitchWin8UI(HDC hdc, int x, int y, bool isOn, bool isHovered, const UINT dpi = Dpi::kBaseDpi) {
+	const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
 	// Win8.1 风格尺寸（扁平、矩形）
-	constexpr int switchWidth = 48;
-	constexpr int switchHeight = 20;
-	constexpr int thumbW = 12;
-	constexpr int thumbH = 22;
+	const int switchWidth = S(48);
+	const int switchHeight = S(20);
+	const int thumbW = S(12);
+	const int thumbH = S(22);
 
 	// 创建双缓冲
 	HDC memDC = CreateCompatibleDC(hdc);
@@ -175,9 +175,9 @@ static void DrawSwitchWin8UI(HDC hdc, int x, int y, bool isOn, bool isHovered) {
 	// 计算几何矩形
 	RECT outerRect = {0, 0, switchWidth, switchHeight};
 	RECT trackRect = outerRect;
-	InflateRect(&trackRect, -1, -1);
+	InflateRect(&trackRect, -S(1), -S(1));
 	RECT realTrackRect = outerRect;
-	InflateRect(&realTrackRect, -3, -3);
+	InflateRect(&realTrackRect, -S(3), -S(3));
 
 	// thumb 位置（在 track 内左右平移）
 	const int travel = (trackRect.right - trackRect.left) - thumbW;
@@ -188,7 +188,7 @@ static void DrawSwitchWin8UI(HDC hdc, int x, int y, bool isOn, bool isHovered) {
 	RECT thumbRect = {thumbX, thumbY, thumbX + thumbW, thumbY + thumbH};
 
 	// 绘制外边框（空心矩形）
-	HPEN borderPen = CreatePen(PS_SOLID, 3, currentBorderColor);
+	HPEN borderPen = CreatePen(PS_SOLID, S(3), currentBorderColor);
 	HPEN oldPen = (HPEN)SelectObject(memDC, borderPen);
 	HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
 	HBRUSH oldBrush = (HBRUSH)SelectObject(memDC, nullBrush);
@@ -216,12 +216,12 @@ static void DrawSwitchWin8UI(HDC hdc, int x, int y, bool isOn, bool isHovered) {
 	DeleteDC(memDC);
 }
 
-// 获取开关区域(用于BTN_EXPAND_SWITCH)
-static RECT GetSwitchRect(const RECT& btnRect) {
+// 获取开关区域(用于BTN_EXPAND_SWITCH)，尺寸为 96 DPI 下的值，按 dpi 缩放
+static RECT GetSwitchRect(const RECT& btnRect, const UINT dpi = Dpi::kBaseDpi) {
 	RECT switchRect;
-	const int switchWidth = 46; // 匹配Win8风格尺寸
-	const int switchHeight = 18;
-	switchRect.right = btnRect.right - 8;
+	const int switchWidth = Dpi::Scale(46, dpi); // 匹配Win8风格尺寸
+	const int switchHeight = Dpi::Scale(18, dpi);
+	switchRect.right = btnRect.right - Dpi::Scale(8, dpi);
 	switchRect.left = switchRect.right - switchWidth;
 	switchRect.top = btnRect.top + (btnRect.bottom - btnRect.top - switchHeight) / 2;
 	switchRect.bottom = switchRect.top + switchHeight;
@@ -254,7 +254,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 
 				RECT rect;
 				GetClientRect(hWnd, &rect);
-				RECT switchRect = GetSwitchRect(rect);
+				RECT switchRect = GetSwitchRect(rect, Dpi::WindowDpi(hWnd));
 
 				bool oldSwitchHovered = btnInfo->switchHovered;
 				btnInfo->switchHovered = PtInRect(&switchRect, pt);
@@ -298,7 +298,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 				if (btnInfo->style == BTN_EXPAND_SWITCH) {
 					RECT rect;
 					GetClientRect(hWnd, &rect);
-					RECT switchRect = GetSwitchRect(rect);
+					RECT switchRect = GetSwitchRect(rect, Dpi::WindowDpi(hWnd));
 
 					if (PtInRect(&switchRect, pt)) {
 						// 点击在开关区域,切换开关状态
@@ -346,6 +346,9 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 
 			RECT rect;
 			GetClientRect(hWnd, &rect);
+			// 所有像素常量都是 96 DPI 下的值，按按钮所在窗口的 DPI 缩放
+			const UINT dpi = Dpi::WindowDpi(hWnd);
+			const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
 
 			// Use double buffering to reduce flicker
 			HDC memDC = CreateCompatibleDC(hdc);
@@ -358,7 +361,7 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			// If it's a selected normal button (tab button), draw blue left border
 			if (btnInfo && btnInfo->style == BTN_NORMAL && btnInfo->isSelected) {
 				HBRUSH hBlueBrush = CreateSolidBrush(RGB(0, 120, 215));
-				RECT blueRect = {0, 0, 4, rect.bottom}; // 3px wide blue border
+				RECT blueRect = {0, 0, S(4), rect.bottom}; // 3px wide blue border
 				FillRect(memDC, &blueRect, hBlueBrush);
 				DeleteObject(hBlueBrush);
 			}
@@ -373,8 +376,8 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			}
 
 			// Calculate icon and text positions
-			int iconSize = 16; // Standard icon size
-			int iconMargin = 8; // Margin between icon and text
+			int iconSize = S(16); // Standard icon size
+			int iconMargin = S(8); // Margin between icon and text
 			int totalContentWidth = 0;
 			int iconX = 0, textX = 0;
 
@@ -389,11 +392,11 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 				// Position based on text alignment
 				if (btnInfo->textAlign == TEXT_LEFT) {
 					// Left align: start from left margin
-					iconX = 8;
+					iconX = S(8);
 					textX = iconX + iconSize + iconMargin;
 				} else if (btnInfo->textAlign == TEXT_RIGHT) {
 					// Right align: work backwards from right
-					iconX = rect.right - totalContentWidth - 8;
+					iconX = rect.right - totalContentWidth - S(8);
 					textX = iconX + iconSize + iconMargin;
 				} else {
 					// Center align: center the total content
@@ -410,11 +413,11 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			// 特殊处理折叠按钮
 			if (btnInfo && btnInfo->style == BTN_EXPAND) {
 				// 绘制箭头
-				DrawExpandArrow(memDC, rect, btnInfo->isExpanded, btnInfo->isHovered);
+				DrawExpandArrow(memDC, rect, btnInfo->isExpanded, btnInfo->isHovered, dpi);
 
 				// 绘制文本（留出箭头空间）
 				if (!btnInfo->text.empty()) {
-					RECT textRect = {28, rect.top, rect.right - 8, rect.bottom}; // 左侧留28px给箭头
+					RECT textRect = {S(28), rect.top, rect.right - S(8), rect.bottom}; // 左侧留28px给箭头
 					DrawTextW(memDC, btnInfo->text.c_str(), -1, &textRect,
 							DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 				}
@@ -422,19 +425,19 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 			// 特殊处理折叠+开关组合按钮
 			else if (btnInfo && btnInfo->style == BTN_EXPAND_SWITCH) {
 				// 绘制箭头
-				DrawExpandArrow(memDC, rect, btnInfo->isExpanded, btnInfo->isHovered);
+				DrawExpandArrow(memDC, rect, btnInfo->isExpanded, btnInfo->isHovered, dpi);
 
 				// 绘制文本（留出箭头空间和右侧开关空间）
 				if (!btnInfo->text.empty()) {
-					RECT textRect = {28, rect.top, rect.right - 56, rect.bottom}; // 左侧留28px给箭头,右侧留56px给开关
+					RECT textRect = {S(28), rect.top, rect.right - S(56), rect.bottom}; // 左侧留28px给箭头,右侧留56px给开关
 					DrawTextW(memDC, btnInfo->text.c_str(), -1, &textRect,
 							DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 				}
 
 				// 绘制开关
-				RECT switchRect = GetSwitchRect(rect);
+				RECT switchRect = GetSwitchRect(rect, dpi);
 				DrawSwitchWin8UI(memDC, switchRect.left, switchRect.top,
-								btnInfo->switchState, btnInfo->switchHovered);
+								btnInfo->switchState, btnInfo->switchHovered, dpi);
 			} else if (btnInfo && !btnInfo->text.empty()) {
 				DWORD alignFlag = DT_CENTER; // Default center alignment
 				RECT textRect = rect;
@@ -443,16 +446,16 @@ static LRESULT CALLBACK EnhancedButtonSubclassProc(HWND hWnd, UINT uMsg, WPARAM 
 				switch (btnInfo->textAlign) {
 				case TEXT_LEFT: alignFlag = DT_LEFT;
 					if (btnInfo->hIcon) {
-						textRect = {textX, rect.top, rect.right - 8, rect.bottom};
+						textRect = {textX, rect.top, rect.right - S(8), rect.bottom};
 					} else {
-						textRect = {8, rect.top, rect.right - 8, rect.bottom}; // 8px left margin
+						textRect = {S(8), rect.top, rect.right - S(8), rect.bottom}; // 8px left margin
 					}
 					break;
 				case TEXT_RIGHT: alignFlag = DT_RIGHT;
 					if (btnInfo->hIcon) {
-						textRect = {textX, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
+						textRect = {textX, rect.top, rect.right - S(8), rect.bottom}; // 8px right margin
 					} else {
-						textRect = {rect.left, rect.top, rect.right - 8, rect.bottom}; // 8px right margin
+						textRect = {rect.left, rect.top, rect.right - S(8), rect.bottom}; // 8px right margin
 					}
 					break;
 				case TEXT_CENTER:

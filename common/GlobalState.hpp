@@ -84,6 +84,20 @@ extern int lastWindowCenterY;
 // const int COLOR_UI_BG_VALUE = 110;
 //const int COLOR_UI_BG_VALUE = 255;
 extern int LISTITEM_ICON_SIZE;
+// 列表图标在 96 DPI 下的边长；LISTITEM_ICON_SIZE 是按主窗口 DPI 换算后的实际绘制尺寸
+constexpr int LISTITEM_ICON_BASE_SIZE = 48;
+// 主窗口所在显示器的 DPI（96 = 100%）。皮肤 json 里的尺寸都是 96 DPI 下的值，加载皮肤时按它换算，
+// 见 util/DpiUtil.hpp 和 manager/SkinHelper.hpp 的 applyMainWindowDpi
+extern UINT g_mainWindowDpi;
+
+inline int MainDpiScale(const int value) {
+	return g_mainWindowDpi == 96 ? value : MulDiv(value, static_cast<int>(g_mainWindowDpi), 96);
+}
+
+inline float MainDpiScaleF(const double value) {
+	return static_cast<float>(value * static_cast<double>(g_mainWindowDpi) / 96.0);
+}
+
 extern int64_t pref_fuzzy_match_score_threshold;
 // 模糊匹配时按使用历史给常用条目加分（manager/UsageHistory.hpp）
 extern bool pref_usage_history_boost;

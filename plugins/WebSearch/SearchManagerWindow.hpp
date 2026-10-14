@@ -6,6 +6,8 @@
 #include "WebSearchPluginData.hpp"
 #include "WebSearchUtil.hpp"
 #include "util/StringUtil.hpp"
+#include "util/DpiUtil.hpp"
+#include "util/FontUtil.hpp"
 #include "view/HotkeyEditView.hpp"
 
 #define WSM_IDC_LISTVIEW  3001
@@ -25,6 +27,15 @@ static HWND wsm_nameEdit = nullptr;
 static HWND wsm_urlEdit = nullptr;
 static HWND wsm_hkEdit = nullptr;
 static std::vector<SearchEngineInfo> wsm_engines;
+// 窗口自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：当前 DPI 和按它创建的控件字体；布局常量都是 96 DPI 下的值
+static UINT wsm_dpi = Dpi::kBaseDpi;
+static HFONT wsm_font = nullptr;
+
+static void WSM_ApplyFont(HWND hwnd) {
+	if (wsm_font) DeleteObject(wsm_font);
+	wsm_font = Dpi::CreateScaledFont(-12, FW_NORMAL, ResolveFontFamily(L"Microsoft YaHei UI").c_str(), wsm_dpi);
+	Dpi::SetFontForChildren(hwnd, wsm_font);
+}
 
 // Strip the "(mod)(vk)" suffix added by HotkeyEditView for display in the listview
 static std::wstring WSM_HotkeyDisplay(const std::wstring& s) {
@@ -77,18 +88,20 @@ static void WSM_ClearForm() {
 static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE: {
-		const int LV_W = 528, WIN_H = 480, LV_H = WIN_H - 46;
-		const int FX = LV_W + 12, FW = 295;
+		wsm_dpi = Dpi::WindowDpi(hwnd);
+		const auto S = [](const int v) { return Dpi::Scale(v, wsm_dpi); };
+		const int LV_W = S(528), WIN_H = S(480), LV_H = WIN_H - S(46);
+		const int FX = LV_W + S(12), FW = S(295);
 
 		wsm_lv = CreateWindowExW(0, WC_LISTVIEWW, L"",
 			WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
-			5, 5, LV_W, LV_H, hwnd, (HMENU)WSM_IDC_LISTVIEW, GetModuleHandle(nullptr), nullptr);
+			S(5), S(5), LV_W, LV_H, hwnd, (HMENU)WSM_IDC_LISTVIEW, GetModuleHandle(nullptr), nullptr);
 		ListView_SetExtendedListViewStyle(wsm_lv, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 
 		LVCOLUMNW col = {};
 		col.mask = LVCF_TEXT | LVCF_WIDTH;
 		auto addCol = [&](const wchar_t* t, int w, int i) {
-			col.pszText = const_cast<LPWSTR>(t); col.cx = w;
+			col.pszText = const_cast<LPWSTR>(t); col.cx = S(w);
 			ListView_InsertColumn(wsm_lv, i, &col);
 		};
 		addCol(L"Key", 65, 0);
@@ -96,8 +109,8 @@ static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 		addCol(L"URL", 290, 2);
 		addCol(L"Hotkey", 65, 3);
 
-		int y = 10;
-		const int LH = 18, EH = 24;
+		int y = S(10);
+		const int LH = S(18), EH = S(24);
 
 		auto mkLabel = [&](const wchar_t* t) {
 			CreateWindowExW(0, L"STATIC", t, WS_CHILD | WS_VISIBLE,
@@ -108,7 +121,7 @@ static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 			out = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
 				WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
 				FX, y, FW, EH, hwnd, (HMENU)(UINT_PTR)id, GetModuleHandle(nullptr), nullptr);
-			y += EH + 6;
+			y += EH + S(6);
 		};
 
 		mkLabel(L"Key (e.g. gg):");
@@ -123,24 +136,36 @@ static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 		// Install hotkey capture subclass on the hotkey edit
 		InstallHotkeySubclass(wsm_hkEdit, hwnd, L"websearch_engine_hotkey");
 
-		y += 10;
+		y += S(10);
 		CreateWindowExW(0, L"BUTTON", L"Add / Update",
 			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-			FX, y, 138, 26, hwnd, (HMENU)WSM_IDC_BTN_ADD, GetModuleHandle(nullptr), nullptr);
+			FX, y, S(138), S(26), hwnd, (HMENU)WSM_IDC_BTN_ADD, GetModuleHandle(nullptr), nullptr);
 		CreateWindowExW(0, L"BUTTON", L"Clear",
 			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-			FX + 144, y, 80, 26, hwnd, (HMENU)WSM_IDC_BTN_CLEAR, GetModuleHandle(nullptr), nullptr);
-		y += 34;
+			FX + S(144), y, S(80), S(26), hwnd, (HMENU)WSM_IDC_BTN_CLEAR, GetModuleHandle(nullptr), nullptr);
+		y += S(34);
 		CreateWindowExW(0, L"BUTTON", L"Delete Selected",
 			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-			FX, y, 138, 26, hwnd, (HMENU)WSM_IDC_BTN_DEL, GetModuleHandle(nullptr), nullptr);
+			FX, y, S(138), S(26), hwnd, (HMENU)WSM_IDC_BTN_DEL, GetModuleHandle(nullptr), nullptr);
 
 		CreateWindowExW(0, L"BUTTON", L"Save Config",
 			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-			5, WIN_H - 38, LV_W, 30, hwnd, (HMENU)WSM_IDC_BTN_SAVE, GetModuleHandle(nullptr), nullptr);
+			S(5), WIN_H - S(38), LV_W, S(30), hwnd, (HMENU)WSM_IDC_BTN_SAVE, GetModuleHandle(nullptr), nullptr);
 
+		WSM_ApplyFont(hwnd);
 		wsm_engines = g_searchEngines;
 		WSM_RefreshLV();
+		return 0;
+	}
+	case WM_DPICHANGED: {
+		// 换显示器：移到建议矩形，子控件和列宽等比缩放，字体重建
+		const UINT oldDpi = wsm_dpi;
+		wsm_dpi = Dpi::DpiFromWParam(wParam);
+		Dpi::ApplySuggestedRect(hwnd, lParam);
+		if (wsm_dpi != oldDpi) {
+			Dpi::RescaleChildWindows(hwnd, oldDpi, wsm_dpi);
+			WSM_ApplyFont(hwnd);
+		}
 		return 0;
 	}
 	case WM_APP_HOTKEY_COMMIT:
@@ -201,12 +226,18 @@ static LRESULT CALLBACK WSM_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 	}
 	case WM_DESTROY:
 		wsm_hwnd = nullptr;
+		if (wsm_font) {
+			DeleteObject(wsm_font);
+			wsm_font = nullptr;
+		}
 		break;
 	}
 	return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
 static void ShowSearchManagerWindow(HWND parent) {
+	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）；主程序调用插件时处于不感知上下文，这里切回来
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	if (wsm_hwnd) {
 		ShowWindow(wsm_hwnd, SW_SHOW);
 		SetForegroundWindow(wsm_hwnd);
@@ -227,7 +258,8 @@ static void ShowSearchManagerWindow(HWND parent) {
 		registered = true;
 	}
 
-	const int WW = 878, WH = 528;
+	const UINT dpi = Dpi::PrimaryMonitorDpi();
+	const int WW = Dpi::Scale(878, dpi), WH = Dpi::Scale(528, dpi);
 	int x = (GetSystemMetrics(SM_CXSCREEN) - WW) / 2;
 	int y = (GetSystemMetrics(SM_CYSCREEN) - WH) / 2;
 

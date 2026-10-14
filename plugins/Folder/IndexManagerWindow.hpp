@@ -28,20 +28,10 @@ static void setFont(HWND hwnd) {
 	SendMessageW(hwnd, WM_SETFONT, (WPARAM)FONT_DEFAULT, TRUE);
 }
 
+// 9pt 字体（96 DPI 下 12px），按 g_indexManagerDpi 缩放；换 DPI 时先删除旧字体再调用
 static void initFont(HWND hwnd) {
-	HDC hdc = GetDC(hwnd);
-	int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-	ReleaseDC(hwnd, hdc);
-
-	int height = -MulDiv(9, dpi, 72);
-
-	FONT_DEFAULT = CreateFontW(
-		height, 0, 0, 0,
-		FW_NORMAL, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, VARIABLE_PITCH,
-		ResolveFontFamily(L"Microsoft YaHei UI").c_str()
-	);
+	(void)hwnd;
+	FONT_DEFAULT = Dpi::CreateScaledFont(-12, FW_NORMAL, ResolveFontFamily(L"Microsoft YaHei UI").c_str(), g_indexManagerDpi);
 }
 
 static void setCustomText(HWND hwnd) {
@@ -61,6 +51,8 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 	switch (msg) {
 	case WM_CREATE:
 		{
+			// 布局常量按窗口所在显示器的 DPI 换算
+			ApplyIndexManagerDpi(Dpi::WindowDpi(hwnd));
 			initFont(hwnd);
 
 			// 解析配置文件
@@ -84,7 +76,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			// 创建保存按钮（在左侧区域上方）
 			g_saveButton = CreateWindowExW(0, L"BUTTON", L"保存配置(Ctrl+S)",
 											WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-											1, 1, leftPanelWidth, 32, hwnd, (HMENU)1002, GetModuleHandle(nullptr),
+											IM(1), IM(1), leftPanelWidth, IM(32), hwnd, (HMENU)1002, GetModuleHandle(nullptr),
 											nullptr);
 			setCustomButton(g_saveButton);
 
@@ -92,14 +84,14 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_toggleIconButton = CreateWindowExW(
 				0, L"BUTTON", L"隐藏图标",
 				WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-				1, 33, leftPanelWidth, 32,
+				IM(1), IM(33), leftPanelWidth, IM(32),
 				hwnd, (HMENU)IDC_TOGGLE_FILE_ICON, GetModuleHandle(nullptr), nullptr
 			);
 			setCustomButton(g_toggleIconButton);
 			// 创建索引按钮
 			g_indexButton = CreateWindowExW(0, L"BUTTON", L"测试索引",
 											WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-											1, 65, leftPanelWidth, 32, hwnd, (HMENU)1001,
+											IM(1), IM(65), leftPanelWidth, IM(32), hwnd, (HMENU)1001,
 											GetModuleHandle(nullptr),
 											nullptr);
 			setCustomButton(g_indexButton);
@@ -107,7 +99,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			// 创建左侧文件夹列表（向下移动给保存按钮留空间）
 			g_folderListView = CreateWindowExW(0, WC_LISTVIEW, L"",
 												WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
-												1, 97, leftPanelWidth, 365, hwnd, nullptr, GetModuleHandle(nullptr),
+												IM(1), IM(97), leftPanelWidth, IM(365), hwnd, nullptr, GetModuleHandle(nullptr),
 												nullptr);
 			ListView_SetExtendedListViewStyle(g_folderListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 
@@ -115,7 +107,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			LVCOLUMNW col = {};
 			col.mask = LVCF_TEXT | LVCF_WIDTH;
 			col.pszText = const_cast<LPWSTR>(L"索引配置");
-			col.cx = 180;
+			col.cx = IM(180);
 			ListView_InsertColumn(g_folderListView, 0, &col);
 			folderItemTexts.clear();
 
@@ -132,10 +124,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			}
 
 			// 创建中间配置编辑区域
-			int editY = 1;
-			int editWidth = 300;
-			int labelWidth = 120;
-			int spacing = 35;
+			int editY = IM(1);
+			int editWidth = IM(300);
+			int labelWidth = IM(120);
+			int spacing = IM(35);
 
 
 			// Command 标签和编辑框
@@ -147,10 +139,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			editY += centerPanelLabelHeight;
 			g_nameEdit = CreateWindowExW(0, L"EDIT", L"",
 										WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-										centerPanelX, editY, editWidth - 85, centerPanelEditHeight, hwnd, nullptr,
+										centerPanelX, editY, editWidth - IM(85), centerPanelEditHeight, hwnd, nullptr,
 										GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_nameEdit);
-			editY += centerPanelEditHeight + 2;
+			editY += centerPanelEditHeight + IM(2);
 			// Type 标签和下拉框
 			HWND labelType = CreateWindowExW(0, L"STATIC", L"类型:",
 											WS_CHILD | WS_VISIBLE,
@@ -160,7 +152,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			editY += centerPanelLabelHeight;
 			g_typeComboBox = CreateWindowExW(0, L"COMBOBOX", L"",
 											WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
-											centerPanelX, editY, editWidth - 85, 100, hwnd, nullptr,
+											centerPanelX, editY, editWidth - IM(85), IM(100), hwnd, nullptr,
 											GetModuleHandle(nullptr), nullptr);
 			setCustomText(g_typeComboBox);
 
@@ -174,7 +166,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			SendMessageW(g_typeComboBox, CB_ADDSTRING, 0,
 				(LPARAM)(settingsAppName.empty() ? L"Windows Settings" : settingsAppName.c_str()));
 			SendMessageW(g_typeComboBox, CB_SETCURSEL, 0, 0);
-			editY += centerPanelEditHeight + 2;
+			editY += centerPanelEditHeight + IM(2);
 
 			// Folder 标签和编辑框
 			HWND labelPath = CreateWindowExW(0, L"STATIC", L"路径:",
@@ -187,22 +179,22 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_folderEditY = editY;
 			g_folderEdit = CreateWindowExW(0, L"EDIT", L"",
 											WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-											centerPanelX, editY, editWidth - 85 - 57, centerPanelEditHeight, hwnd, nullptr,
+											centerPanelX, editY, editWidth - IM(85) - IM(57), centerPanelEditHeight, hwnd, nullptr,
 											GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_folderEdit);
 			g_browseFolderButton = CreateWindowExW(0, L"BUTTON", L"浏览",
 													WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-													centerPanelX + editWidth - 85 - 55, editY, 55, centerPanelEditHeight,
+													centerPanelX + editWidth - IM(85) - IM(55), editY, IM(55), centerPanelEditHeight,
 													hwnd, (HMENU)IDC_BROWSE_FOLDER, GetModuleHandle(nullptr), nullptr);
 			setCustomButton(g_browseFolderButton);
-			editY += centerPanelEditHeight + 2;
+			editY += centerPanelEditHeight + IM(2);
 			// "仅索引文件" 复选框
 			g_checkboxIndexFilesOnly = CreateWindowExW(
 				0,
 				L"BUTTON",
 				L"仅索引文件",
 				WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-				centerPanelX, editY, 120, centerPanelLabelHeight,
+				centerPanelX, editY, IM(120), centerPanelLabelHeight,
 				hwnd,
 				(HMENU)IDC_CHECKBOX_INDEX_FILES_ONLY,
 				GetModuleHandle(nullptr),
@@ -217,7 +209,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				L"BUTTON",
 				L"递归索引",
 				WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-				centerPanelX + 124, editY, 120, centerPanelLabelHeight,
+				centerPanelX + IM(124), editY, IM(120), centerPanelLabelHeight,
 				hwnd,
 				(HMENU)IDC_CHECKBOX_RECURSIVE_INDEX,
 				GetModuleHandle(nullptr),
@@ -226,7 +218,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			SendMessageW(g_checkboxRecursiveIndex, BM_SETCHECK, BST_CHECKED, 0);
 			setCustomText(g_checkboxRecursiveIndex);
 
-			editY += centerPanelEditHeight + 2;
+			editY += centerPanelEditHeight + IM(2);
 
 			g_sizeChangePosY = editY;
 
@@ -245,16 +237,16 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			// Exclude Words编辑框和扩展名编辑框
 			g_excludeWordsEdit = CreateWindowExW(0, L"EDIT", L"",
 												WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | WS_VSCROLL,
-												centerPanelX, editY, editWidth - 85, 60, hwnd, nullptr,
+												centerPanelX, editY, editWidth - IM(85), IM(60), hwnd, nullptr,
 												GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_excludeWordsEdit);
 			g_extsEdit = CreateWindowExW(0, L"EDIT", L"",
 										WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | WS_VSCROLL |
 										ES_AUTOHSCROLL,
-										centerPanelX, editY, editWidth - 85, 60, hwnd, nullptr,
+										centerPanelX, editY, editWidth - IM(85), IM(60), hwnd, nullptr,
 										GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_extsEdit);
-			editY += 70;
+			editY += IM(70);
 
 			// Excludes 标签和编辑框
 			g_labelExcludes = CreateWindowExW(0, L"STATIC", L"排除名称:",
@@ -264,10 +256,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			setCustomText(g_labelExcludes);
 			g_excludesEdit = CreateWindowExW(0, L"EDIT", L"",
 											WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | WS_VSCROLL,
-											centerPanelX, editY, editWidth - 85, 60, hwnd, nullptr,
+											centerPanelX, editY, editWidth - IM(85), IM(60), hwnd, nullptr,
 											GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_excludesEdit);
-			editY += 70;
+			editY += IM(70);
 
 			// Rename Sources 标签和编辑框
 			g_labelRenameSourcesEdit = CreateWindowExW(0, L"STATIC", L"原索引名称:",
@@ -278,10 +270,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_renameSourcesEdit = CreateWindowExW(0, L"EDIT", L"",
 												WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | WS_VSCROLL |
 												ES_AUTOHSCROLL,
-												centerPanelX, editY, editWidth - 85, 60, hwnd, nullptr,
+												centerPanelX, editY, editWidth - IM(85), IM(60), hwnd, nullptr,
 												GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_renameSourcesEdit);
-			editY += 70;
+			editY += IM(70);
 
 			// Rename Targets 标签和编辑框
 			g_labelRenameTargetsEdit = CreateWindowExW(0, L"STATIC", L"重命名:",
@@ -292,18 +284,18 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_renameTargetsEdit = CreateWindowExW(0, L"EDIT", L"",
 												WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | WS_VSCROLL |
 												ES_AUTOHSCROLL,
-												centerPanelX, editY, editWidth - 85, 60, hwnd, nullptr,
+												centerPanelX, editY, editWidth - IM(85), IM(60), hwnd, nullptr,
 												GetModuleHandle(nullptr), nullptr);
 			setCustomEdit(g_renameTargetsEdit);
 
-			editY += 80;
+			editY += IM(80);
 			editSyncHelper.Attach(g_renameSourcesEdit, g_renameTargetsEdit);
 
 			// 创建右侧文件列表
 			g_fileFilterEdit = CreateWindowExW(
 				0, L"EDIT", L"",
 				WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-				530, 6, 180, 24,
+				IM(530), IM(6), IM(180), IM(24),
 				hwnd, (HMENU)IDC_FILE_FILTER_EDIT, GetModuleHandle(nullptr), nullptr
 			);
 			setCustomEdit(g_fileFilterEdit);
@@ -311,7 +303,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_fileFilterClearButton = CreateWindowExW(
 				0, L"BUTTON", L"x",
 				WS_CHILD | BS_OWNERDRAW|WS_VISIBLE,
-				714, 6, 24, 24,
+				IM(714), IM(6), IM(24), IM(24),
 				hwnd, (HMENU)IDC_FILE_FILTER_CLEAR, GetModuleHandle(nullptr), nullptr
 			);
 			setCustomButton(g_saveButton);
@@ -319,7 +311,7 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			g_fileListView = CreateWindowExW(0, WC_LISTVIEW, L"",
 											WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL |
 											LVS_OWNERDATA,
-											530, 34, 200, 400, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+											IM(530), IM(34), IM(200), IM(400), hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			ListView_SetExtendedListViewStyle(g_fileListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 
 			// 绑定系统小图标列表到右侧文件列表
@@ -337,10 +329,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			UpdateFileListIconState();
 			// 设置列表的列
 			col.pszText = const_cast<LPWSTR>(L"文件名称");
-			col.cx = 180;
+			col.cx = IM(180);
 			ListView_InsertColumn(g_fileListView, 0, &col);
 			col.pszText = const_cast<LPWSTR>(L"文件路径");
-			col.cx = 180;
+			col.cx = IM(180);
 			ListView_InsertColumn(g_fileListView, 1, &col);
 
 
@@ -752,59 +744,77 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			int height = rect.bottom - rect.top;
 			int tempY = g_sizeChangePosY;
 			// 用于窗口中间区域，动态调整三层编辑框高度
-			int threeRectHeight = (height - g_sizeChangePosY - (centerPanelLabelHeight * 3) - 4) / 3;
+			int threeRectHeight = (height - g_sizeChangePosY - (centerPanelLabelHeight * 3) - IM(4)) / 3;
 			// 窗口中间区域的宽度
-			int centerPanelWidth = static_cast<int>((width - leftPanelWidth) * 0.4) - 5;
+			int centerPanelWidth = static_cast<int>((width - leftPanelWidth) * 0.4) - IM(5);
 			// 重新调整控件大小
 			SetWindowPos(g_typeComboBox, nullptr, -1, -1, centerPanelWidth, centerPanelEditHeight,
 						SWP_NOZORDER | SWP_NOMOVE);
 			SetWindowPos(g_nameEdit, nullptr, -1, -1, centerPanelWidth, centerPanelEditHeight,
 						SWP_NOZORDER | SWP_NOMOVE);
-			SetWindowPos(g_folderEdit, nullptr, -1, -1, centerPanelWidth - 57, centerPanelEditHeight,
+			SetWindowPos(g_folderEdit, nullptr, -1, -1, centerPanelWidth - IM(57), centerPanelEditHeight,
 						SWP_NOZORDER | SWP_NOMOVE);
-			SetWindowPos(g_browseFolderButton, nullptr, centerPanelX + centerPanelWidth - 55, g_folderEditY - 1,
-						55, centerPanelEditHeight + 2, SWP_NOZORDER);
-			SetWindowPos(g_excludeWordsEdit, nullptr, -1, -1, centerPanelWidth / 2 - 1, threeRectHeight,
+			SetWindowPos(g_browseFolderButton, nullptr, centerPanelX + centerPanelWidth - IM(55), g_folderEditY - IM(1),
+						IM(55), centerPanelEditHeight + IM(2), SWP_NOZORDER);
+			SetWindowPos(g_excludeWordsEdit, nullptr, -1, -1, centerPanelWidth / 2 - IM(1), threeRectHeight,
 						SWP_NOZORDER | SWP_NOMOVE);
 			SetWindowPos(g_extsEdit, nullptr, centerPanelX + centerPanelWidth / 2, tempY + centerPanelLabelHeight, centerPanelWidth / 2,
 						threeRectHeight,
 						SWP_NOZORDER);
 
 			SetWindowPos(g_labelExts, nullptr, centerPanelX + centerPanelWidth / 2, tempY, -1, -1, SWP_NOZORDER | SWP_NOSIZE);
-			tempY += threeRectHeight + 2 + centerPanelLabelHeight;
+			tempY += threeRectHeight + IM(2) + centerPanelLabelHeight;
 			SetWindowPos(g_labelExcludes, nullptr, centerPanelX, tempY, -1, -1, SWP_NOZORDER | SWP_NOSIZE);
 			tempY += centerPanelLabelHeight;
 			SetWindowPos(g_excludesEdit, nullptr, centerPanelX, tempY, centerPanelWidth, threeRectHeight, SWP_NOZORDER);
-			tempY += threeRectHeight + 2;
+			tempY += threeRectHeight + IM(2);
 			SetWindowPos(g_labelRenameSourcesEdit, nullptr, centerPanelX, tempY, -1, -1, SWP_NOZORDER | SWP_NOSIZE);
 			SetWindowPos(g_labelRenameTargetsEdit, nullptr, centerPanelX + centerPanelWidth / 2, tempY, -1, -1,
 						SWP_NOZORDER | SWP_NOSIZE);
 			tempY += centerPanelLabelHeight;
-			SetWindowPos(g_renameSourcesEdit, nullptr, centerPanelX, tempY, centerPanelWidth / 2 - 1, threeRectHeight,
+			SetWindowPos(g_renameSourcesEdit, nullptr, centerPanelX, tempY, centerPanelWidth / 2 - IM(1), threeRectHeight,
 						SWP_NOZORDER);
 			SetWindowPos(g_renameTargetsEdit, nullptr, centerPanelX + centerPanelWidth / 2, tempY, centerPanelWidth / 2,
 						threeRectHeight, SWP_NOZORDER);
 
 			// 调整文件夹列表位置（留出保存按钮的空间）
-			SetWindowPos(g_folderListView, nullptr, -1, -1, leftPanelWidth, height - 98, SWP_NOMOVE | SWP_NOZORDER);
-			int rightPanelX = static_cast<int>((width - leftPanelWidth) * 0.4 + leftPanelWidth) + 1;
+			SetWindowPos(g_folderListView, nullptr, -1, -1, leftPanelWidth, height - IM(98), SWP_NOMOVE | SWP_NOZORDER);
+			int rightPanelX = static_cast<int>((width - leftPanelWidth) * 0.4 + leftPanelWidth) + IM(1);
 			int rightPanelWidth = static_cast<int>((width - leftPanelWidth) * 0.6);
-			int filterBarY = 6;
-			int filterBarHeight = 24;
-			int clearBtnWidth = 24;
-			int margin = 6;
-			int filterEditWidth = std::max(80, rightPanelWidth/3 );
+			int filterBarY = IM(6);
+			int filterBarHeight = IM(24);
+			int clearBtnWidth = IM(24);
+			int margin = IM(6);
+			int filterEditWidth = std::max(IM(80), rightPanelWidth/3 );
 
 			SetWindowPos(g_fileFilterEdit, nullptr, width-clearBtnWidth-margin- filterEditWidth, filterBarY,
 						filterEditWidth, filterBarHeight, SWP_NOZORDER);
-			SetWindowPos(g_fileFilterClearButton, nullptr, width-clearBtnWidth-1, filterBarY,
+			SetWindowPos(g_fileFilterClearButton, nullptr, width-clearBtnWidth-IM(1), filterBarY,
 						clearBtnWidth, filterBarHeight, SWP_NOZORDER);
 			SetWindowPos(g_fileListView, nullptr, rightPanelX,
 						filterBarY + filterBarHeight + margin,
-						rightPanelWidth, height - (filterBarY + filterBarHeight + margin) - 1,
+						rightPanelWidth, height - (filterBarY + filterBarHeight + margin) - IM(1),
 						SWP_NOZORDER);
 			// 中间编辑区域保持固定布局，不需要调整
 			break;
+		}
+
+	case WM_DPICHANGED:
+		{
+			// 拖到另一台显示器：布局常量、字体按新 DPI 重建，固定布局的控件等比缩放，再移到建议矩形（WM_SIZE 重排动态部分）
+			const UINT oldDpi = g_indexManagerDpi;
+			const UINT newDpi = Dpi::DpiFromWParam(wParam);
+			if (newDpi != oldDpi) {
+				ApplyIndexManagerDpi(newDpi);
+				g_folderEditY = Dpi::Rescale(g_folderEditY, oldDpi, newDpi);
+				g_sizeChangePosY = Dpi::Rescale(g_sizeChangePosY, oldDpi, newDpi);
+				if (FONT_DEFAULT) DeleteObject(FONT_DEFAULT);
+				initFont(hwnd);
+				Dpi::SetFontForChildren(hwnd, FONT_DEFAULT);
+				Dpi::RescaleChildWindows(hwnd, oldDpi, newDpi);
+			}
+			Dpi::ApplySuggestedRect(hwnd, lParam);
+			return 0;
 		}
 
 	case WM_CLOSE:
@@ -840,6 +850,10 @@ static LRESULT CALLBACK IndexManagerWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			}
 			if (g_excludedItemsHwnd) {
 				DestroyWindow(g_excludedItemsHwnd);
+			}
+			if (FONT_DEFAULT) {
+				DeleteObject(FONT_DEFAULT);
+				FONT_DEFAULT = nullptr;
 			}
 			g_indexManagerHwnd = nullptr;
 			g_folderListView = nullptr;
@@ -937,13 +951,16 @@ static void ShowIndexedManagerWindow(HWND parent) {
 		return;
 	}
 
+	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）；主程序调用插件时处于不感知上下文，这里切回来
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	RegisterIndexManagerClass();
 
-	// 获取屏幕尺寸并计算居中位置
+	// 获取主显示器尺寸（Per-Monitor 作用域里是物理像素）并按其 DPI 换算窗口尺寸、居中
+	const UINT dpi = Dpi::PrimaryMonitorDpi();
 	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
 	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-	int windowWidth = 1150;
-	int windowHeight = 720;
+	int windowWidth = Dpi::Scale(1150, dpi);
+	int windowHeight = Dpi::Scale(720, dpi);
 	int x = (screenWidth - windowWidth) / 2;
 	int y = (screenHeight - windowHeight) / 2;
 

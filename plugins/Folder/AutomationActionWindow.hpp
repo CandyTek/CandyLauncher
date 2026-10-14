@@ -3,6 +3,7 @@
 #include "AutomationActionModel.hpp"
 #include "FolderPluginData.hpp"
 #include "../../util/FontUtil.hpp"
+#include "../../util/DpiUtil.hpp"
 #include <shellapi.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -21,10 +22,12 @@ constexpr int ID_NAME = 101, ID_STEPS = 102, ID_TARGET = 103, ID_ARGS = 104,
 	ID_UP = 114, ID_DOWN = 115;
 
 struct State {
-	HWND name{}, list{}, target{}, args{}, workdir{}, delay{}, command{}, add{}, remove{}, save{};
+	HWND name{}, list{}, target{}, args{}, workdir{}, delay{}, command{}, add{}, remove{}, save{}, title{};
 	std::vector<AutomationStep> steps;
 	std::wstring currentPath;
 	HFONT font{}, titleFont{};
+	// 窗口自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：当前 DPI，布局常量都是 96 DPI 下的值
+	UINT dpi = Dpi::kBaseDpi;
 	HBRUSH background{}, editBackground{};
 	int editing = -1;
 	bool dirty = false;
@@ -250,27 +253,36 @@ inline void SaveAs(HWND hwnd, State* state) {
 	}
 }
 
-inline HWND Label(HWND parent, const wchar_t* text, int x, int y, int w, HFONT font) {
+// 下面三个辅助函数的坐标、宽度都是 96 DPI 下的值，按 dpi 换算后创建
+inline HWND Label(HWND parent, const wchar_t* text, int x, int y, int w, HFONT font, UINT dpi) {
 	HWND control = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE,
-		x, y, w, 22, parent, nullptr, nullptr, nullptr);
+		Dpi::Scale(x, dpi), Dpi::Scale(y, dpi), Dpi::Scale(w, dpi), Dpi::Scale(22, dpi), parent, nullptr, nullptr, nullptr);
 	SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 	return control;
 }
 
-inline HWND Edit(HWND parent, int id, int x, int y, int w, HFONT font, const wchar_t* initial = L"") {
+inline HWND Edit(HWND parent, int id, int x, int y, int w, HFONT font, UINT dpi, const wchar_t* initial = L"") {
 	HWND control = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", initial,
-		WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, x, y, w, 31,
+		WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+		Dpi::Scale(x, dpi), Dpi::Scale(y, dpi), Dpi::Scale(w, dpi), Dpi::Scale(31, dpi),
 		parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
 	SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 	DragAcceptFiles(control, TRUE);
 	return control;
 }
 
-inline HWND Button(HWND parent, int id, const wchar_t* text, int x, int y, int w, HFONT font) {
+inline HWND Button(HWND parent, int id, const wchar_t* text, int x, int y, int w, HFONT font, UINT dpi) {
 	HWND control = CreateWindowExW(0, L"BUTTON", text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-		x, y, w, 34, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
+		Dpi::Scale(x, dpi), Dpi::Scale(y, dpi), Dpi::Scale(w, dpi), Dpi::Scale(34, dpi),
+		parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
 	SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 	return control;
+}
+
+inline void CreateAutomationFonts(State* state) {
+	const std::wstring uiFont = ResolveFontFamily(L"Segoe UI");
+	state->font = Dpi::CreateScaledFont(-16, FW_NORMAL, uiFont.c_str(), state->dpi);
+	state->titleFont = Dpi::CreateScaledFont(-25, FW_SEMIBOLD, uiFont.c_str(), state->dpi);
 }
 
 inline LRESULT CALLBACK ChildDropProc(HWND child, UINT msg, WPARAM wParam, LPARAM lParam,
@@ -300,47 +312,62 @@ inline LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 	case WM_CREATE: {
 		state = new State();
 		SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
-		const std::wstring uiFont = ResolveFontFamily(L"Segoe UI");
-		state->font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, uiFont.c_str());
-		state->titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, uiFont.c_str());
+		state->dpi = Dpi::WindowDpi(hwnd);
+		const UINT dpi = state->dpi;
+		const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
+		CreateAutomationFonts(state);
 		state->background = CreateSolidBrush(RGB(247, 249, 252));
 		state->editBackground = CreateSolidBrush(RGB(255, 255, 255));
-		Label(hwnd, L"自动化动作组编辑器", 28, 20, 450, state->titleFont);
-		Label(hwnd, L"打开已有 JSON 或新建文件。拖入目标文件可批量添加步骤。", 29, 58, 740, state->font);
-		Label(hwnd, L"动作组名称", 30, 101, 160, state->font);
-		state->name = Edit(hwnd, ID_NAME, 30, 126, 430, state->font);
-		Button(hwnd, ID_NEW, L"新建", 472, 124, 88, state->font);
-		Button(hwnd, ID_OPEN, L"打开 JSON", 570, 124, 94, state->font);
-		Button(hwnd, ID_SAVE_AS, L"另存为", 674, 124, 91, state->font);
-		Label(hwnd, L"步骤列表  ·  拖入文件可批量添加", 30, 178, 500, state->font);
+		state->title = Label(hwnd, L"自动化动作组编辑器", 28, 20, 450, state->titleFont, dpi);
+		Label(hwnd, L"打开已有 JSON 或新建文件。拖入目标文件可批量添加步骤。", 29, 58, 740, state->font, dpi);
+		Label(hwnd, L"动作组名称", 30, 101, 160, state->font, dpi);
+		state->name = Edit(hwnd, ID_NAME, 30, 126, 430, state->font, dpi);
+		Button(hwnd, ID_NEW, L"新建", 472, 124, 88, state->font, dpi);
+		Button(hwnd, ID_OPEN, L"打开 JSON", 570, 124, 94, state->font, dpi);
+		Button(hwnd, ID_SAVE_AS, L"另存为", 674, 124, 91, state->font, dpi);
+		Label(hwnd, L"步骤列表  ·  拖入文件可批量添加", 30, 178, 500, state->font, dpi);
 		state->list = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL,
-			30, 205, 735, 152, hwnd, reinterpret_cast<HMENU>((INT_PTR)ID_STEPS), nullptr, nullptr);
+			S(30), S(205), S(735), S(152), hwnd, reinterpret_cast<HMENU>((INT_PTR)ID_STEPS), nullptr, nullptr);
 		SendMessageW(state->list, WM_SETFONT, reinterpret_cast<WPARAM>(state->font), TRUE);
 		ListView_SetExtendedListViewStyle(state->list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 		LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH;
-		column.pszText = const_cast<LPWSTR>(L"#"); column.cx = 45; ListView_InsertColumn(state->list, 0, &column);
-		column.pszText = const_cast<LPWSTR>(L"目标 / 执行命令"); column.cx = 565; ListView_InsertColumn(state->list, 1, &column);
-		column.pszText = const_cast<LPWSTR>(L"延时"); column.cx = 110; ListView_InsertColumn(state->list, 2, &column);
+		column.pszText = const_cast<LPWSTR>(L"#"); column.cx = S(45); ListView_InsertColumn(state->list, 0, &column);
+		column.pszText = const_cast<LPWSTR>(L"目标 / 执行命令"); column.cx = S(565); ListView_InsertColumn(state->list, 1, &column);
+		column.pszText = const_cast<LPWSTR>(L"延时"); column.cx = S(110); ListView_InsertColumn(state->list, 2, &column);
 		DragAcceptFiles(state->list, TRUE);
-		Label(hwnd, L"目标路径", 30, 378, 350, state->font);
-		Label(hwnd, L"目标参数", 407, 378, 350, state->font);
-		state->target = Edit(hwnd, ID_TARGET, 30, 402, 355, state->font);
-		state->args = Edit(hwnd, ID_ARGS, 407, 402, 358, state->font);
-		Label(hwnd, L"工作目录（可选）", 30, 447, 350, state->font);
-		state->workdir = Edit(hwnd, ID_WORKDIR, 30, 471, 735, state->font);
-		Label(hwnd, L"自定义执行命令（填写后优先使用）", 30, 515, 470, state->font);
-		Label(hwnd, L"执行前延时（毫秒）", 568, 515, 200, state->font);
-		state->command = Edit(hwnd, ID_COMMAND, 30, 539, 515, state->font);
-		state->delay = Edit(hwnd, ID_DELAY, 568, 539, 197, state->font, L"0");
-		state->add = Button(hwnd, ID_ADD, L"添加步骤", 30, 591, 160, state->font);
-		state->remove = Button(hwnd, ID_REMOVE, L"删除选中步骤", 202, 591, 155, state->font);
-		Button(hwnd, ID_UP, L"上移", 372, 591, 82, state->font);
-		Button(hwnd, ID_DOWN, L"下移", 463, 591, 82, state->font);
-		state->save = Button(hwnd, ID_SAVE, L"保存 JSON 动作组", 565, 591, 200, state->font);
+		Label(hwnd, L"目标路径", 30, 378, 350, state->font, dpi);
+		Label(hwnd, L"目标参数", 407, 378, 350, state->font, dpi);
+		state->target = Edit(hwnd, ID_TARGET, 30, 402, 355, state->font, dpi);
+		state->args = Edit(hwnd, ID_ARGS, 407, 402, 358, state->font, dpi);
+		Label(hwnd, L"工作目录（可选）", 30, 447, 350, state->font, dpi);
+		state->workdir = Edit(hwnd, ID_WORKDIR, 30, 471, 735, state->font, dpi);
+		Label(hwnd, L"自定义执行命令（填写后优先使用）", 30, 515, 470, state->font, dpi);
+		Label(hwnd, L"执行前延时（毫秒）", 568, 515, 200, state->font, dpi);
+		state->command = Edit(hwnd, ID_COMMAND, 30, 539, 515, state->font, dpi);
+		state->delay = Edit(hwnd, ID_DELAY, 568, 539, 197, state->font, dpi, L"0");
+		state->add = Button(hwnd, ID_ADD, L"添加步骤", 30, 591, 160, state->font, dpi);
+		state->remove = Button(hwnd, ID_REMOVE, L"删除选中步骤", 202, 591, 155, state->font, dpi);
+		Button(hwnd, ID_UP, L"上移", 372, 591, 82, state->font, dpi);
+		Button(hwnd, ID_DOWN, L"下移", 463, 591, 82, state->font, dpi);
+		state->save = Button(hwnd, ID_SAVE, L"保存 JSON 动作组", 565, 591, 200, state->font, dpi);
 		SetWindowLongPtrW(state->save, GWL_STYLE, GetWindowLongPtrW(state->save, GWL_STYLE) | BS_OWNERDRAW);
 		for (HWND control : {state->name, state->list, state->target, state->args, state->workdir, state->command, state->delay})
 			SetWindowSubclass(control, ChildDropProc, 1, reinterpret_cast<DWORD_PTR>(hwnd));
 		DragAcceptFiles(hwnd, TRUE);
+		return 0;
+	}
+	case WM_DPICHANGED: {
+		// 换显示器：移到建议矩形，子控件等比缩放，字体按新 DPI 重建
+		const UINT newDpi = Dpi::DpiFromWParam(wParam);
+		Dpi::ApplySuggestedRect(hwnd, lParam);
+		if (state && newDpi != state->dpi) {
+			Dpi::RescaleChildWindows(hwnd, state->dpi, newDpi);
+			state->dpi = newDpi;
+			DeleteObject(state->font); DeleteObject(state->titleFont);
+			CreateAutomationFonts(state);
+			Dpi::SetFontForChildren(hwnd, state->font);
+			SendMessageW(state->title, WM_SETFONT, reinterpret_cast<WPARAM>(state->titleFont), TRUE);
+		}
 		return 0;
 	}
 	case WM_CTLCOLORSTATIC:
@@ -498,6 +525,8 @@ inline LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 
 
 inline void ShowAutomationActionWindow(HWND parent) {
+	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）；主程序调用插件时处于不感知上下文，这里切回来
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	if (g_window && IsWindow(g_window)) {
 		ShowWindow(g_window, SW_RESTORE);
 		SetForegroundWindow(g_window);
@@ -513,7 +542,9 @@ inline void ShowAutomationActionWindow(HWND parent) {
 		if (!RegisterFolderWindowClass(cls)) return;
 		g_automationClassRegistered = true;
 	}
-	int width = 810, height = 700;
+	// 主显示器尺寸此时是物理像素，窗口尺寸按其 DPI 换算
+	const UINT dpi = Dpi::PrimaryMonitorDpi();
+	int width = Dpi::Scale(810, dpi), height = Dpi::Scale(700, dpi);
 	g_window = CreateWindowExW(WS_EX_ACCEPTFILES, kClassName, L"自动化动作组编辑器 — 新建",
 		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		(GetSystemMetrics(SM_CXSCREEN) - width) / 2, (GetSystemMetrics(SM_CYSCREEN) - height) / 2,

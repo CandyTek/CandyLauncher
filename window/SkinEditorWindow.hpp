@@ -25,6 +25,7 @@
 #include "../util/LogUtil.hpp"
 #include "../util/StringUtil.hpp"
 #include "../util/BaseTools.hpp"
+#include "../util/DpiUtil.hpp"
 #include "../util/MathUtil.hpp"
 #include "../util/json.hpp"
 
@@ -248,6 +249,26 @@ public:
 		RECT rc;
 		GetClientRect(m_hwnd, &rc);
 		m_inPlaceObject->SetObjectRects(&rc, &rc);
+	}
+
+	bool IsDocumentComplete() const {
+		READYSTATE state = READYSTATE_UNINITIALIZED;
+		return m_browser && SUCCEEDED(m_browser->get_ReadyState(&state)) && state == READYSTATE_COMPLETE;
+	}
+
+	// 宿主声明了 DOCHOSTUIFLAG_DPI_AWARE 后 MSHTML 不再自己缩放页面，这里按窗口 DPI 设置光学缩放（100 = 96 DPI）。
+	// 页面加载完成后才有效，所以由窗口定时器在 ReadyState 为 COMPLETE 后调用；换显示器时再调用一次
+	void ApplyZoom(const UINT dpi) const {
+		if (!m_browser) return;
+		IOleCommandTarget* target = nullptr;
+		if (FAILED(m_browser->QueryInterface(IID_IOleCommandTarget, reinterpret_cast<void**>(&target))) || !target) return;
+		VARIANT zoom;
+		VariantInit(&zoom);
+		zoom.vt = VT_I4;
+		zoom.lVal = static_cast<LONG>(MulDiv(100, static_cast<int>(dpi), static_cast<int>(Dpi::kBaseDpi)));
+		const HRESULT hr = target->Exec(nullptr, OLECMDID_OPTICAL_ZOOM, OLECMDEXECOPT_DONTPROMPTUSER, &zoom, nullptr);
+		if (FAILED(hr)) Loge(L"SkinEditor", L"设置页面缩放失败 hr=", hr, L" zoom=", zoom.lVal);
+		target->Release();
 	}
 
 	// 调用页面中的全局 JS 函数，result 可为空
@@ -619,6 +640,8 @@ private:
 };
 
 inline SkinEditorHost* g_skinEditorHost = nullptr;
+// 等页面加载完成后按窗口 DPI 设置光学缩放的定时器
+constexpr UINT_PTR SKIN_EDITOR_ZOOM_TIMER = 1;
 
 // WebBrowser 控件默认使用软件渲染，窗口最大化且高倍缩放时平移画布每帧要重绘 50ms 以上；
 // 为本进程开启 IE 的 GPU 渲染（按 exe 文件名生效，须在首次创建控件前写入）
@@ -684,10 +707,26 @@ static LRESULT CALLBACK SkinEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 			const std::wstring url = GetSkinEditorPageUrl();
 			if (url.empty()) return -1;
 			g_skinEditorHost->Navigate(url);
+			// 96 DPI 不需要缩放；其他 DPI 等页面加载完成后再设置
+			if (Dpi::WindowDpi(hwnd) != Dpi::kBaseDpi) SetTimer(hwnd, SKIN_EDITOR_ZOOM_TIMER, 100, nullptr);
 			return 0;
 		}
+	case WM_TIMER:
+		if (wParam == SKIN_EDITOR_ZOOM_TIMER && g_skinEditorHost && g_skinEditorHost->IsDocumentComplete()) {
+			KillTimer(hwnd, SKIN_EDITOR_ZOOM_TIMER);
+			g_skinEditorHost->ApplyZoom(Dpi::WindowDpi(hwnd));
+		}
+		return 0;
 	case WM_SIZE:
 		if (g_skinEditorHost) g_skinEditorHost->Resize();
+		return 0;
+	case WM_DPICHANGED:
+		// 窗口以 Per-Monitor V2 创建：移到系统建议的矩形（随后 WM_SIZE 调整控件），页面光学缩放改成新 DPI
+		Dpi::ApplySuggestedRect(hwnd, lParam);
+		if (g_skinEditorHost) {
+			if (g_skinEditorHost->IsDocumentComplete()) g_skinEditorHost->ApplyZoom(Dpi::DpiFromWParam(wParam));
+			else SetTimer(hwnd, SKIN_EDITOR_ZOOM_TIMER, 100, nullptr);
+		}
 		return 0;
 	case WM_APP + 1:
 		if (g_skinEditorHost) g_skinEditorHost->DeliverPendingDrop();
@@ -723,6 +762,9 @@ static LRESULT CALLBACK SkinEditorWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 }
 
 static void ShowSkinEditorWindow() {
+	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：窗口初始尺寸按主显示器 DPI 换算，
+	// 页面内容由 WebBrowser 控件按窗口 DPI 做光学缩放（SkinEditorHost::ApplyZoom），不再被系统拉伸
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	if (g_skinEditorHwnd) {
 		RestoreWindowIfMinimized(g_skinEditorHwnd);
 		SetForegroundWindow(g_skinEditorHwnd);
@@ -744,10 +786,12 @@ static void ShowSkinEditorWindow() {
 		registered = RegisterClassExW(&wc) != 0;
 	}
 
+	// Per-Monitor 作用域里工作区是物理像素，尺寸按主显示器 DPI 换算
+	const UINT dpi = Dpi::PrimaryMonitorDpi();
 	RECT workArea{};
 	SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0);
-	const int width = MyMin(SKIN_EDITOR_WIDTH, static_cast<int>(workArea.right - workArea.left));
-	const int height = MyMin(SKIN_EDITOR_HEIGHT, static_cast<int>(workArea.bottom - workArea.top));
+	const int width = MyMin(Dpi::Scale(SKIN_EDITOR_WIDTH, dpi), static_cast<int>(workArea.right - workArea.left));
+	const int height = MyMin(Dpi::Scale(SKIN_EDITOR_HEIGHT, dpi), static_cast<int>(workArea.bottom - workArea.top));
 	const int x = workArea.left + (workArea.right - workArea.left - width) / 2;
 	const int y = workArea.top + (workArea.bottom - workArea.top - height) / 2;
 

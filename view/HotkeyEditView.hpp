@@ -3,6 +3,7 @@
 #include <commctrl.h>
 #include <vector>
 #include "util/HotkeyUtils.hpp"
+#include "util/DpiUtil.hpp"
 
 // 窗口属性键名常量
 static const wchar_t* HOTKEY_CTX_OWNER = L"HotkeyCtxOwner";
@@ -64,13 +65,14 @@ static LRESULT CALLBACK HotkeyEditSubclassProc(HWND hWnd, UINT uMsg, WPARAM wPar
 			bool hasFocus = (GetFocus() == hWnd);
 			COLORREF borderColor = hasFocus ? RGB(0, 120, 215)   // 蓝色（Win10 风格）
 											: RGB(180, 180, 180); // 默认灰色
-			// 再覆盖画 2px 灰色边框
+			// 再覆盖画 2px 灰色边框（按窗口 DPI 缩放）
 			HBRUSH hBrush = CreateSolidBrush(borderColor);
+			const int bw = Dpi::Scale(2, Dpi::WindowDpi(hWnd));
 
-			RECT rTop = {rc.left, rc.top, rc.right, rc.top + 2};
-			RECT rBottom = {rc.left, rc.bottom - 2, rc.right, rc.bottom};
-			RECT rLeft = {rc.left, rc.top + 2, rc.left + 2, rc.bottom - 2};
-			RECT rRight = {rc.right - 2, rc.top + 2, rc.right, rc.bottom - 2};
+			RECT rTop = {rc.left, rc.top, rc.right, rc.top + bw};
+			RECT rBottom = {rc.left, rc.bottom - bw, rc.right, rc.bottom};
+			RECT rLeft = {rc.left, rc.top + bw, rc.left + bw, rc.bottom - bw};
+			RECT rRight = {rc.right - bw, rc.top + bw, rc.right, rc.bottom - bw};
 
 			FillRect(hdc, &rTop, hBrush);
 			FillRect(hdc, &rBottom, hBrush);

@@ -82,16 +82,20 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 			int curPos = si.nPos;
 			int newPos = curPos;
+			// 滚动步长按窗口 DPI 缩放
+			const UINT dpi = Dpi::WindowDpi(hwnd);
+			const int lineStep = Dpi::Scale(30, dpi);
+			const int pageStep = Dpi::Scale(100, dpi);
 
 			// 2. 根据滚动条事件计算新位置
 			switch (LOWORD(wParam)) {
-			case SB_LINEUP: newPos -= 30; // 滚动步长
+			case SB_LINEUP: newPos -= lineStep; // 滚动步长
 				break;
-			case SB_LINEDOWN: newPos += 30;
+			case SB_LINEDOWN: newPos += lineStep;
 				break;
-			case SB_PAGEUP: newPos -= 100; // 翻页步长
+			case SB_PAGEUP: newPos -= pageStep; // 翻页步长
 				break;
-			case SB_PAGEDOWN: newPos += 100;
+			case SB_PAGEDOWN: newPos += pageStep;
 				break;
 			case SB_THUMBTRACK:
 			case SB_THUMBPOSITION: // 处理拖动结束

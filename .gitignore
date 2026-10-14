@@ -96,3 +96,4 @@ plugins/ExampleRust/Cargo.lock
 
 # Release packaging output (scripts/release/run_package.cmd)
 /dist
+/skins/editbox_backgrounds

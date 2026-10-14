@@ -197,22 +197,33 @@ static void CollectExcludedFileItemsFromConfig(const TraverseOptions& config, st
 	}
 }
 
+// 已排除项窗口自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：列表字体按窗口 DPI 创建
+static HFONT g_excludedItemsFont = nullptr;
+
+static void ApplyExcludedItemsFont(HWND hwnd, const UINT dpi) {
+	if (g_excludedItemsFont) DeleteObject(g_excludedItemsFont);
+	g_excludedItemsFont = Dpi::CreateScaledFont(-12, FW_NORMAL, ResolveFontFamily(L"Microsoft YaHei UI").c_str(), dpi);
+	Dpi::SetFontForChildren(hwnd, g_excludedItemsFont);
+}
+
 static LRESULT CALLBACK ExcludedItemsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
 		{
+			const UINT dpi = Dpi::WindowDpi(hwnd);
 			g_excludedItemsListView = CreateWindowExW(0, WC_LISTVIEW, L"",
 													WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
-													0, 0, 700, 420, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+													0, 0, Dpi::Scale(700, dpi), Dpi::Scale(420, dpi), hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			ListView_SetExtendedListViewStyle(g_excludedItemsListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+			ApplyExcludedItemsFont(hwnd, dpi);
 
 			LVCOLUMNW col = {};
 			col.mask = LVCF_TEXT | LVCF_WIDTH;
 			col.pszText = const_cast<LPWSTR>(L"文件名称");
-			col.cx = 220;
+			col.cx = Dpi::Scale(220, dpi);
 			ListView_InsertColumn(g_excludedItemsListView, 0, &col);
 			col.pszText = const_cast<LPWSTR>(L"文件路径");
-			col.cx = 460;
+			col.cx = Dpi::Scale(460, dpi);
 			ListView_InsertColumn(g_excludedItemsListView, 1, &col);
 
 			for (int i = 0; i < static_cast<int>(excludedFileItems.size()); ++i) {
@@ -239,6 +250,17 @@ static LRESULT CALLBACK ExcludedItemsWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 							rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER);
 			}
 			break;
+		}
+	case WM_DPICHANGED:
+		{
+			// 换显示器：移到建议矩形（WM_SIZE 会让列表填满客户区），字体重建，列宽按表头重新自适应
+			ApplyExcludedItemsFont(hwnd, Dpi::DpiFromWParam(wParam));
+			Dpi::ApplySuggestedRect(hwnd, lParam);
+			if (g_excludedItemsListView) {
+				ListView_SetColumnWidth(g_excludedItemsListView, 0, LVSCW_AUTOSIZE_USEHEADER);
+				ListView_SetColumnWidth(g_excludedItemsListView, 1, LVSCW_AUTOSIZE_USEHEADER);
+			}
+			return 0;
 		}
 	case WM_CONTEXTMENU:
 		{
@@ -268,6 +290,10 @@ static LRESULT CALLBACK ExcludedItemsWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 		g_excludedItemsHwnd = nullptr;
 		g_excludedItemsListView = nullptr;
 		excludedFileItems.clear();
+		if (g_excludedItemsFont) {
+			DeleteObject(g_excludedItemsFont);
+			g_excludedItemsFont = nullptr;
+		}
 		break;
 	default:
 		return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -304,12 +330,15 @@ static void ShowExcludedItemsWindow(HWND parent, const TraverseOptions& config) 
 		DestroyWindow(g_excludedItemsHwnd);
 	}
 
+	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp），尺寸按父窗口所在显示器的 DPI 换算
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	RegisterExcludedItemsWindowClass();
 
+	const UINT dpi = Dpi::MonitorDpiForWindow(parent);
 	RECT parentRect = {};
 	GetWindowRect(parent, &parentRect);
-	int windowWidth = 760;
-	int windowHeight = 460;
+	int windowWidth = Dpi::Scale(760, dpi);
+	int windowHeight = Dpi::Scale(460, dpi);
 	int x = parentRect.left + ((parentRect.right - parentRect.left) - windowWidth) / 2;
 	int y = parentRect.top + ((parentRect.bottom - parentRect.top) - windowHeight) / 2;
 

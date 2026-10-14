@@ -31,6 +31,10 @@
 static int tabBtnWidth = 120;
 static HWND blankBelowTabBelow = nullptr;
 inline HFONT pref_edit_hfont = nullptr;
+inline UINT pref_edit_hfont_dpi = 0;
+// 设置窗口当前的 DPI。窗口按“次级窗口的简单 DPI 方案”自行适配（见 util/DpiUtil.hpp）：
+// 本文件里所有布局常量都是 96 DPI 下的值，使用时经 SS() 换算；换 DPI 时整体重建控件
+inline UINT g_settingsDpi = Dpi::kBaseDpi;
 inline bool isSettingsWindowClosingWithoutSave = false;
 // 快捷键页“主面板显示、隐藏快捷键”下方的占用提示文本，随tab重建
 inline HWND g_toggleHotkeyOccupiedLabel = nullptr;
@@ -60,18 +64,27 @@ static std::map<std::wstring, UINT> tabIconMap = {
 	{L"about", IDI_SETTINGS_TAB_ABOUT}
 };
 
-static void InitializeSettingWindowResources() {
-	if (!pref_edit_hfont) {
-		pref_edit_hfont = CreateFontW(
-			-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, ResolveFontFamily(L"Microsoft YaHei UI").c_str());
+// 96 DPI 下的布局值换算到设置窗口当前 DPI
+static int SS(const int value) {
+	return Dpi::Scale(value, g_settingsDpi);
+}
+
+// 按 dpi 创建输入框字体和自定义按钮、下拉框的字体；DPI 变化时再调用一次即可重建
+static void InitializeSettingWindowResources(const UINT dpi) {
+	if (!pref_edit_hfont || pref_edit_hfont_dpi != dpi) {
+		if (pref_edit_hfont) DeleteObject(pref_edit_hfont);
+		pref_edit_hfont = Dpi::CreateScaledFont(-15, FW_NORMAL, ResolveFontFamily(L"Microsoft YaHei UI").c_str(), dpi);
+		pref_edit_hfont_dpi = dpi;
 	}
+	InitializeCustomButtonResources(dpi);
 	InitializeCustomComboBoxResources();
 }
 
 
 static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = true) {
+	// 设置窗口以 Per-Monitor V2 创建并自行适配 DPI：初始尺寸按主显示器 DPI 换算，
+	// WM_CREATE 里按窗口 DPI 创建控件，WM_DPICHANGED 时整体重建（见 util/DpiUtil.hpp）
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	if (g_settingsHwnd != nullptr) {
 		RestoreWindowIfMinimized(g_settingsHwnd);
 		SetForegroundWindow(g_settingsHwnd);
@@ -88,16 +101,16 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = 
 	tabCtrlsCreated.clear();
 	currentSubPageIndex = 0;
 
-	// 初始化绘图资源
-	InitializeSettingWindowResources();
-
-	// 获取屏幕宽度和高度
+	// 主显示器的尺寸（Per-Monitor 作用域里是物理像素）和 DPI，窗口按它换算初始尺寸并居中
+	const UINT dpi = Dpi::PrimaryMonitorDpi();
 	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
 	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+	const int windowWidth = Dpi::Scale(SETTINGS_WINDOW_WIDTH, dpi);
+	const int windowHeight = Dpi::Scale(SETTINGS_WINDOW_HEIGHT, dpi);
 
 	// 计算居中位置
-	int x = (screenWidth - SETTINGS_WINDOW_WIDTH) / 2;
-	int y = (screenHeight - SETTINGS_WINDOW_HEIGHT) / 2;
+	int x = (screenWidth - windowWidth) / 2;
+	int y = (screenHeight - windowHeight) / 2;
 
 	unsigned long dw_style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 	if (isShow) dw_style |= WS_VISIBLE;
@@ -108,7 +121,7 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = 
 		LoadI18nString(IDS_I18N_SETTINGS_WINDOW_TITLE, L"Settings").c_str(), // 窗口标题
 		dw_style, // 窗口样式
 		x, y, // 初始位置
-		SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT, // 宽度和高度
+		windowWidth, windowHeight, // 宽度和高度
 		hParent, // 父窗口
 		nullptr, // 菜单
 		hInstance, // 实例句柄
@@ -125,6 +138,7 @@ static void CleanupSettingWindowResources() {
 	if (pref_edit_hfont) {
 		DeleteObject(pref_edit_hfont);
 		pref_edit_hfont = nullptr;
+		pref_edit_hfont_dpi = 0;
 	}
 }
 
@@ -139,7 +153,7 @@ static void setCustomEdit(HWND hEdit, bool isNumber=false) {
 	
 	SendMessageW(hEdit, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
 	// 文本区域左右内缩
-	SendMessageW(hEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+	SendMessageW(hEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(SS(3), SS(3)));
 }
 
 // 在父窗口坐标系内上下移动控件
@@ -215,8 +229,9 @@ static void RestoreSavedToggleMainPanelHotkey() {
  * 控件ID分配逻辑，从3000开始，每条SettingItem都会消耗一个ID
  */
 static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
-	int y = 10;
-	int contorlX = 254;
+	int y = SS(10);
+	const int contorlX = SS(254);
+	const int rowHeight = SS(35);
 	std::vector<HWND> ctrls;
 	HWND hParent = tabContainers[tabIdx];
 	size_t currentCtrlSubId = 2999;
@@ -236,13 +251,13 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 			}
 
 			std::wstring text = utf8_to_wide(item.title);
-			int indentX = 10 + indentLevel * 20; // 缩进
+			const int indentX = SS(10 + indentLevel * 20); // 缩进
 
 			HWND hLabel;
 			int labelHeight = 0;
 			if (item.type == "text") {
 				// 静态文本设置项
-				int labelWidth = 420 - indentLevel * 20;
+				const int labelWidth = SS(420 - indentLevel * 20);
 				labelHeight = GetLabelHeight(hwnd, text, labelWidth, hFontDefault);
 				hLabel = CreateWindowW(L"STATIC", utf8_to_wide(item.title).c_str(),
 										WS_CHILD | WS_VISIBLE,
@@ -255,22 +270,22 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 			} else if (item.type == "expand") {
 				// 折叠按钮设置项
 				// 为expand类型创建可点击的标题
-				int labelWidth = 444 - indentLevel * 20;
-				labelHeight = MyMax(35, GetLabelHeight(hwnd, text, labelWidth, hFontDefault));
+				const int labelWidth = SS(444 - indentLevel * 20);
+				labelHeight = MyMax(rowHeight, GetLabelHeight(hwnd, text, labelWidth, hFontDefault));
 				hLabel = CreateEnhancedButton(hParent, currentCtrlSubId, text,
 											indentX, currentY, labelWidth, labelHeight, (HMENU)currentCtrlSubId,
 											BTN_EXPAND);
 				// 设置折叠状态
 				SetExpandButtonState(hLabel, item.isExpanded);
 				ctrls.push_back(hLabel);
-				currentY += labelHeight + 6;
+				currentY += labelHeight + SS(6);
 				// 递归创建子控件
 				createSettingControls(item.children, indentLevel + 1, currentY, item.isExpanded);
 				continue;
 			} else if (item.type == "expandswitch") {
 				// 折叠+开关组合按钮设置项
-				int labelWidth = 444 - indentLevel * 20;
-				labelHeight = MyMax(35, GetLabelHeight(hwnd, text, labelWidth, hFontDefault));
+				const int labelWidth = SS(444 - indentLevel * 20);
+				labelHeight = MyMax(rowHeight, GetLabelHeight(hwnd, text, labelWidth, hFontDefault));
 				hLabel = CreateEnhancedButton(hParent, currentCtrlSubId, text,
 											indentX, currentY, labelWidth, labelHeight, (HMENU)currentCtrlSubId,
 											BTN_EXPAND_SWITCH);
@@ -278,14 +293,14 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				SetExpandButtonState(hLabel, item.isExpanded);
 				SetExpandSwitchState(hLabel, item.boolValue);
 				ctrls.push_back(hLabel);
-				currentY += labelHeight + 6;
+				currentY += labelHeight + SS(6);
 				// 递归创建子控件
 				createSettingControls(item.children, indentLevel + 1, currentY, item.isExpanded);
 				continue;
 			}
 
 			// 设置项的标题 label
-			int labelWidth = 220 - indentLevel * 20;
+			const int labelWidth = SS(220 - indentLevel * 20);
 			labelHeight = GetLabelHeight(hwnd, text, labelWidth, hFontDefault);
 			hLabel = CreateWindowW(L"STATIC", utf8_to_wide(item.title).c_str(),
 									WS_CHILD | WS_VISIBLE,
@@ -297,13 +312,13 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 
 			HWND hCtrl = nullptr;
 			if (item.type == "bool") {
-				hCtrl = CreateSwitchControl(hParent, currentCtrlSubId, contorlX, currentY, 50, 25,
+				hCtrl = CreateSwitchControl(hParent, currentCtrlSubId, contorlX, currentY, SS(50), SS(25),
 											(HMENU)currentCtrlSubId, item.boolValue);
 			} else if (item.type == "string") {
 				hCtrl = CreateWindowW(L"EDIT",
 									utf8_to_wide(item.stringValue).c_str(),
 									WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_LEFT |WS_BORDER,
-									contorlX, currentY, 200, 25, hParent, (HMENU)currentCtrlSubId, nullptr,
+									contorlX, currentY, SS(200), SS(25), hParent, (HMENU)currentCtrlSubId, nullptr,
 									nullptr);
 				setCustomEdit(hCtrl);
 			} else if (item.type == "stringArr") {
@@ -312,12 +327,12 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				hCtrl = CreateWindowW(L"EDIT",
 									defVal.c_str(),
 									WS_CHILD | WS_VISIBLE | ES_LEFT | ES_MULTILINE | WS_VSCROLL| ES_AUTOHSCROLL|ES_AUTOVSCROLL|WS_BORDER,
-									contorlX, currentY, 200, 72, hParent, (HMENU)currentCtrlSubId, nullptr,
+									contorlX, currentY, SS(200), SS(72), hParent, (HMENU)currentCtrlSubId, nullptr,
 									nullptr);
 				setCustomEdit(hCtrl);
-				currentY += 40;
+				currentY += SS(40);
 			} else if (item.type == "list") {
-				hCtrl = CreateEnhancedComboBox(hParent, currentCtrlSubId, contorlX, currentY, 200, 300, (HMENU)currentCtrlSubId);
+				hCtrl = CreateEnhancedComboBox(hParent, currentCtrlSubId, contorlX, currentY, SS(200), SS(300), (HMENU)currentCtrlSubId);
 				// 1. 獲取 ComboBox 的詳細資訊，主要是為了得到下拉列表的句柄 (hwndList)
 				COMBOBOXINFO cbi = {sizeof(COMBOBOXINFO)};
 				GetComboBoxInfo(hCtrl, &cbi);
@@ -343,33 +358,33 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				hCtrl = CreateWindowW(L"EDIT",
 									std::to_wstring(item.intValue).c_str(),
 									WS_CHILD | WS_VISIBLE | ES_LEFT | ES_NUMBER | ES_AUTOHSCROLL|WS_BORDER,
-									contorlX, currentY, 200, 25, hParent, (HMENU)currentCtrlSubId,
+									contorlX, currentY, SS(200), SS(25), hParent, (HMENU)currentCtrlSubId,
 									nullptr, nullptr);
 				setCustomEdit(hCtrl);
 			} else if (item.type == "hotkeystring") {
 				hCtrl = CreateWindowW(L"EDIT",
 									utf8_to_wide(item.stringValue).c_str(),
 									WS_CHILD | WS_VISIBLE | ES_LEFT| ES_AUTOHSCROLL|WS_BORDER,
-									contorlX, currentY, 200, 25, hParent, (HMENU)currentCtrlSubId,
+									contorlX, currentY, SS(200), SS(25), hParent, (HMENU)currentCtrlSubId,
 									nullptr, nullptr);
 				SendMessageW(hCtrl, WM_SETFONT, (WPARAM)pref_edit_hfont, TRUE);
 				InstallHotkeySubclass(hCtrl, hwnd, utf8_to_wide(item.key));
-				SendMessageW(hCtrl, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+				SendMessageW(hCtrl, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(SS(3), SS(3)));
 				if (item.key == "pref_hotkey_toggle_main_panel") {
 					// 输入框下方放一行红色提示，快捷键被其他程序占用时显示，默认隐藏
 					const std::wstring warnText = LoadI18nString(IDS_I18N_HOTKEY_OCCUPIED_TEXT,
 						L"This hotkey is already in use by another app");
-					const int warnWidth = 444 - indentLevel * 20;
+					const int warnWidth = SS(444 - indentLevel * 20);
 					const int warnHeight = GetLabelHeight(hwnd, warnText, warnWidth, hFontDefault);
-					const int warnY = 27; // 输入框高 25 + 间距
+					const int warnY = SS(27); // 输入框高 25 + 间距
 					g_toggleHotkeyOccupiedLabel = CreateWindowW(L"STATIC", warnText.c_str(),
 						WS_CHILD,
 						indentX, currentY + warnY, warnWidth, warnHeight, hParent, nullptr, nullptr, nullptr);
 					SendMessageW(g_toggleHotkeyOccupiedLabel, WM_SETFONT, (WPARAM)hFontDefault, TRUE);
 					SetPropW(g_toggleHotkeyOccupiedLabel, SETTINGS_WARN_TEXT_PROP, reinterpret_cast<HANDLE>(1));
 					// 仅在提示显示时增加行高；隐藏时不占空间，之后切换由 UpdateToggleHotkeyOccupiedLabel 移动下方控件
-					const int rowHeightBase = MyMax(35, labelHeight);
-					const int rowHeightWarn = MyMax(rowHeightBase, warnY + warnHeight + 4);
+					const int rowHeightBase = MyMax(rowHeight, labelHeight);
+					const int rowHeightWarn = MyMax(rowHeightBase, warnY + warnHeight + SS(4));
 					g_toggleHotkeyOccupiedTabIdx = tabIdx;
 					g_toggleHotkeyOccupiedExtraHeight = rowHeightWarn - rowHeightBase;
 					g_toggleHotkeyOccupiedShown = g_toggleMainPanelHotkeyOccupied;
@@ -387,17 +402,17 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 				}
 				// 按钮最小宽度150，文本过长时按文本宽度自适应增加
 				std::wstring btnText = utf8_to_wide(item.title);
-				int btnWidth = 150;
+				int btnWidth = SS(150);
 				if (HDC hdc = GetDC(hwnd)) {
 					HFONT hOldFont = (HFONT)SelectObject(hdc, hFontButton);
 					SIZE textSize = {};
 					GetTextExtentPoint32W(hdc, btnText.c_str(), static_cast<int>(btnText.length()), &textSize);
 					SelectObject(hdc, hOldFont);
 					ReleaseDC(hwnd, hdc);
-					btnWidth = MyMax(btnWidth, static_cast<int>(textSize.cx) + 24); // 左右各留12px
+					btnWidth = MyMax(btnWidth, static_cast<int>(textSize.cx) + SS(24)); // 左右各留12px
 				}
 				hCtrl = CreateEnhancedButton(hParent, currentCtrlSubId, btnText,
-											contorlX, currentY, btnWidth, 30, (HMENU)currentCtrlSubId, btnStyle);
+											contorlX, currentY, btnWidth, SS(30), (HMENU)currentCtrlSubId, btnStyle);
 			}
 
 			if (hCtrl) {
@@ -407,12 +422,12 @@ static void CreateSettingControlsForTab(size_t tabIdx, HWND hwnd) {
 			if (item.type == "hotkeystring" && item.key == "pref_hotkey_toggle_main_panel" && g_toggleHotkeyOccupiedLabel) {
 				ctrls.push_back(g_toggleHotkeyOccupiedLabel);
 			}
-			currentY += MyMax(35, labelHeight);
+			currentY += MyMax(rowHeight, labelHeight);
 		}
 	};
 	createSettingControls(g_settings_ui, 0, y, true);
 
-	int contentHeight = y + 20; // y 是最后一个控件的底部+边距
+	int contentHeight = y + SS(20); // y 是最后一个控件的底部+边距
 	UpdateScrollRange(hParent, contentHeight); // 调用正确的辅助函数
 	if (tabIdx < tabContentHeights.size()) tabContentHeights[tabIdx] = contentHeight;
 
@@ -447,12 +462,97 @@ static void RefreshSettingsUI(HWND hwnd, HWND tabHwnd) {
 }
 
 
+// 创建设置窗口的全部子控件（tab 按钮、各 tab 的滚动容器、保存/取消按钮），布局按 g_settingsDpi 换算。
+// WM_CREATE 和 WM_DPICHANGED（销毁旧控件后）都走这里
+static void CreateSettingsWindowChildren(HWND hwnd, const size_t initialTab) {
+	const int tabWidth = SS(tabBtnWidth);
+	const int tabHeight = SS(48);
+	const int iconSize = SS(16);
+
+	// 创建Tab按钮（左侧）
+	int tabY = 0;
+	for (size_t i = 0; i < subPageTabs.size(); ++i) {
+		std::wstring key = utf8_to_wide(subPageTabs[i]);
+		std::wstring label;
+		if (auto it = tabNameMap.find(subPageTabs[i]); it != tabNameMap.end()) {
+			label = LoadI18nString(it->second, label);
+		}
+		// 用 key 查图标资源ID
+		const UINT iconId = tabIconMap[key];
+		const HICON hIcon = (HICON)LoadImage(g_hInst,MAKEINTRESOURCE(iconId),IMAGE_ICON, iconSize, iconSize,LR_DEFAULTCOLOR);
+		HWND hTabBtn = CreateEnhancedButton(hwnd, (2000 + i), label, 0, tabY, tabWidth, tabHeight,
+											(HMENU)(2000 + i), BTN_NORMAL, hIcon, TEXT_LEFT);
+		hTabButtons.push_back(hTabBtn);
+		tabY += tabHeight;
+	}
+	blankBelowTabBelow = CreateWindowW(L"STATIC", L"",
+										WS_CHILD | WS_VISIBLE,
+										0, tabY, tabWidth, SS(SETTINGS_WINDOW_HEIGHT), hwnd, nullptr, nullptr,
+										nullptr);
+	// 给控件设置浅灰背景
+	SetWindowSubclass(blankBelowTabBelow, CustomBgcolorControlClassProc, 1, (DWORD_PTR)RGB(230, 230, 230));
+
+	// 创建每个Tab容器
+	tabContainers.resize(subPageTabs.size());
+	for (size_t tabIdx = 0; tabIdx < subPageTabs.size(); ++tabIdx) {
+		HWND hContainer = CreateWindowExW(
+			WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
+			L"SCROLLVIEW", nullptr,
+			WS_CHILD | WS_VSCROLL | (tabIdx == initialTab ? WS_VISIBLE : 0),
+			tabWidth + SS(4), 0, SS(SETTINGS_WINDOW_WIDTH - tabBtnWidth - 16 - 4), SS(SETTINGS_WINDOW_HEIGHT - 88), hwnd, nullptr,
+			GetModuleHandle(nullptr), nullptr);
+		tabContainers[tabIdx] = hContainer;
+	}
+
+	// 只为当前tab生成控件，其他tab在首次切换时生成
+	hCtrlsByTab.clear();
+	hCtrlsByTab.resize(subPageTabs.size());
+	tabContentHeights.assign(subPageTabs.size(), 0);
+	tabCtrlsCreated.assign(subPageTabs.size(), false);
+	currentSubPageIndex = static_cast<int>(initialTab);
+	EnsureTabControlsCreated(initialTab, hwnd);
+
+	// 设置当前tab为选中状态
+	UpdateTabButtonSelection(hTabButtons, static_cast<int>(initialTab));
+
+	// 保存按钮
+	CreateEnhancedButton(hwnd, 1, LoadI18nString(IDS_I18N_BTN_SAVE, L"Save"),
+						SS(SETTINGS_WINDOW_WIDTH - 200), SS(SETTINGS_WINDOW_HEIGHT - 80), SS(80), SS(35),
+						(HMENU)9999, BTN_PRIMARY);
+
+	// 取消按钮
+	CreateEnhancedButton(hwnd, 1, LoadI18nString(IDS_I18N_BTN_CANCEL, L"Cancel"),
+						SS(SETTINGS_WINDOW_WIDTH - 110), SS(SETTINGS_WINDOW_HEIGHT - 80), SS(80), SS(35),
+						(HMENU)9995, BTN_NORMAL);
+}
+
+// 销毁设置窗口的全部子控件并清空记录它们的静态变量（换 DPI 重建前调用）
+static void DestroySettingsWindowChildren(HWND hwnd) {
+	for (HWND hChild = GetWindow(hwnd, GW_CHILD); hChild != nullptr;) {
+		HWND hNext = GetWindow(hChild, GW_HWNDNEXT);
+		DestroyWindow(hChild);
+		hChild = hNext;
+	}
+	hTabButtons.clear();
+	tabContainers.clear();
+	hCtrlsByTab.clear();
+	tabCtrlsCreated.clear();
+	tabContentHeights.clear();
+	blankBelowTabBelow = nullptr;
+	g_toggleHotkeyOccupiedLabel = nullptr;
+	g_toggleHotkeyOccupiedShown = false;
+}
+
+
 static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
 		{
 			isSettingsWindowClosingWithoutSave = false;
-			SendMessage(g_settingsHwnd, WM_SETREDRAW, FALSE, 0);
+			// 按窗口所在显示器的 DPI 创建字体和控件
+			g_settingsDpi = Dpi::WindowDpi(hwnd);
+			InitializeSettingWindowResources(g_settingsDpi);
+			SendMessage(hwnd, WM_SETREDRAW, FALSE, 0);
 			RefreshSkinFile();
 			AddAppStartupTime();
 			originalSkinPath = g_currectSkinFilePath;
@@ -460,68 +560,28 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 			g_settings_ui = g_settings_ui_last_save;
 			// 收集所有subPage名已在ParseConfig时完成，无需再次收集
 			// subPageTabs已经在ParseConfig中填充好了
-
-			// 创建Tab按钮（左侧）
-			int tabY = 0;
-			for (size_t i = 0; i < subPageTabs.size(); ++i) {
-				std::wstring key = utf8_to_wide(subPageTabs[i]);
-				std::wstring label;
-				if (auto it = tabNameMap.find(subPageTabs[i]); it != tabNameMap.end()) {
-					label = LoadI18nString(it->second, label);
-				}
-				// 用 key 查图标资源ID
-				const UINT iconId = tabIconMap[key];
-				const HICON hIcon = (HICON)LoadImage(g_hInst,MAKEINTRESOURCE(iconId),IMAGE_ICON, 16, 16,LR_DEFAULTCOLOR);
-				HWND hTabBtn = CreateEnhancedButton(hwnd, (2000 + i), label, 0, tabY, tabBtnWidth, 48,
-													(HMENU)(2000 + i), BTN_NORMAL, hIcon, TEXT_LEFT);
-				hTabButtons.push_back(hTabBtn);
-				tabY += 48;
-			}
-			blankBelowTabBelow = CreateWindowW(L"STATIC", L"",
-												WS_CHILD | WS_VISIBLE,
-												0, tabY, tabBtnWidth, SETTINGS_WINDOW_HEIGHT, hwnd, nullptr, nullptr,
-												nullptr);
-			// 给控件设置浅灰背景
-			SetWindowSubclass(blankBelowTabBelow, CustomBgcolorControlClassProc, 1, (DWORD_PTR)RGB(230, 230, 230));
-
-			// 创建每个Tab容器
-			tabContainers.resize(subPageTabs.size());
-			for (size_t tabIdx = 0; tabIdx < subPageTabs.size(); ++tabIdx) {
-				HWND hContainer = CreateWindowExW(
-					WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
-					L"SCROLLVIEW", nullptr,
-					WS_CHILD | WS_VSCROLL | (tabIdx == 0 ? WS_VISIBLE : 0),
-					tabBtnWidth + 4, 0, (SETTINGS_WINDOW_WIDTH - tabBtnWidth - 16 - 4), SETTINGS_WINDOW_HEIGHT-88, hwnd, nullptr,
-					GetModuleHandle(nullptr), nullptr);
-				tabContainers[tabIdx] = hContainer;
-			}
-
-			// 只为当前tab生成控件，其他tab在首次切换时生成
-			hCtrlsByTab.clear();
-			hCtrlsByTab.resize(subPageTabs.size());
-			tabContentHeights.assign(subPageTabs.size(), 0);
-			tabCtrlsCreated.assign(subPageTabs.size(), false);
-			EnsureTabControlsCreated(0, hwnd);
-
-			// 设置第一个tab为选中状态
-			UpdateTabButtonSelection(hTabButtons, 0);
-
-			// 保存按钮
-			CreateEnhancedButton(hwnd, 1, LoadI18nString(IDS_I18N_BTN_SAVE, L"Save"),
-								SETTINGS_WINDOW_WIDTH - 200, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
-								(HMENU)9999, BTN_PRIMARY);
-
-			// 取消按钮
-			CreateEnhancedButton(hwnd, 1, LoadI18nString(IDS_I18N_BTN_CANCEL, L"Cancel"),
-								SETTINGS_WINDOW_WIDTH - 110, SETTINGS_WINDOW_HEIGHT - 80, 80, 35,
-								(HMENU)9995, BTN_NORMAL);
-
-			//			CreateWindowW(...); // Reset button - removed
-			// 应用按钮
-			//			CreateWindowW(...); // Apply button - removed
-			SendMessage(g_settingsHwnd, WM_SETREDRAW, TRUE, 0);
-			InvalidateRect(g_settingsHwnd, nullptr, TRUE);
+			CreateSettingsWindowChildren(hwnd, 0);
+			SendMessage(hwnd, WM_SETREDRAW, TRUE, 0);
+			InvalidateRect(hwnd, nullptr, TRUE);
 			break;
+		}
+	case WM_DPICHANGED:
+		{
+			// 拖到另一台显示器或系统缩放改变：移到建议位置，控件里未保存的值写回 g_settings_ui 后按新 DPI 整体重建
+			const UINT newDpi = Dpi::DpiFromWParam(wParam);
+			Dpi::ApplySuggestedRect(hwnd, lParam);
+			if (newDpi == g_settingsDpi) return 0;
+			nlohmann::json unused;
+			saveSettingControlValues(unused, false);
+			const size_t activeTab = static_cast<size_t>(MyMax(0, currentSubPageIndex));
+			g_settingsDpi = newDpi;
+			SendMessage(hwnd, WM_SETREDRAW, FALSE, 0);
+			DestroySettingsWindowChildren(hwnd);
+			InitializeSettingWindowResources(newDpi);
+			CreateSettingsWindowChildren(hwnd, activeTab);
+			SendMessage(hwnd, WM_SETREDRAW, TRUE, 0);
+			RedrawWindow(hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
+			return 0;
 		}
 	case WM_MOUSEWHEEL:
 		SendMessage(tabContainers[currentSubPageIndex], WM_MOUSEWHEEL, wParam, lParam);

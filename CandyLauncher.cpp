@@ -33,6 +33,7 @@
 #include "manager/ProcessManager.hpp"
 #include "util/UpdateManager.hpp"
 #include "util/CrashHandler.hpp"
+#include "util/DpiUtil.hpp"
 #include "view/CustomComboBox.hpp"
 #include "window/Shell32IconViewer.hpp"
 
@@ -364,8 +365,20 @@ void MainWindowInitInstance(HINSTANCE hInstance, const int nCmdShow) {
 
 	LoadSettingList();
 
-	CreateMainWindow(hInstance, nCmdShow);
-	InitMainWindowControls(hInstance, g_mainHwnd);
+	{
+		// 主窗口及其子控件以 Per-Monitor V2 创建（Win10 1703+），之后自己按所在显示器的 DPI 缩放皮肤；
+		// 系统不支持时作用域不生效，主窗口和以前一样由系统拉伸。其余窗口保持不感知，见 util/DpiUtil.hpp
+		Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
+		CreateMainWindow(hInstance, nCmdShow);
+		g_mainWindowDpi = Dpi::WindowDpi(g_mainHwnd);
+		Logi(L"WinMain", L"Main window DPI awareness: ", perMonitor.applied() ? L"per-monitor v2" : L"unaware",
+			L", dpi=", g_mainWindowDpi);
+		InitMainWindowControls(hInstance, g_mainHwnd);
+	}
+	// 主窗口弹出到某台显示器前，先按该显示器的 DPI 重新加载皮肤（util/MainTools.hpp 的定位函数会调用）
+	g_prepareMainWindowForMonitor = [](const HMONITOR monitor) {
+		applyMainWindowDpi(Dpi::MonitorDpi(monitor));
+	};
 	g_pluginManager->SetBeforePluginUnloadCallback([]() {
 		clearVisibleActionReferences();
 	});
@@ -476,6 +489,23 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 		}
 		break;
 
+	case WM_DPICHANGED:
+		{
+			// 窗口被拖到另一台显示器，或系统缩放设置改变。弹出前已按目标显示器 DPI 加载过皮肤的情况下
+			// 这里的 DPI 和当前一致，直接忽略系统建议的矩形（位置已经算好）；否则按新 DPI 重新加载皮肤并移到建议位置
+			static bool s_handlingDpiChange = false;
+			const UINT newDpi = HIWORD(wParam);
+			if (!s_handlingDpiChange && newDpi != 0 && newDpi != g_mainWindowDpi) {
+				s_handlingDpiChange = true;
+				applyMainWindowDpi(newDpi);
+				if (const RECT* suggested = reinterpret_cast<const RECT*>(lParam)) {
+					SetWindowPos(hWnd, nullptr, suggested->left, suggested->top, 0, 0,
+								SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+				}
+				s_handlingDpiChange = false;
+			}
+			return 0;
+		}
 	case WM_DRAWITEM:
 		{
 			const tagDRAWITEMSTRUCT* lpDrawItem = reinterpret_cast<LPDRAWITEMSTRUCT>(lParam);
@@ -609,15 +639,13 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 				case NM_RCLICK:
 					{
 						LPNMITEMACTIVATE pia = reinterpret_cast<LPNMITEMACTIVATE>(lParam);
-						POINT pt;
-						// 获取鼠标坐标（相对 ListView 客户区）
-						GetCursorPos(&pt);
 
-						// 获取当前点击项
+						// 获取当前点击项（命中测试在主窗口自己的坐标空间里做）
 						int index = pia ? pia->iItem : -1;
 						if (index == -1) {
 							LVHITTESTINFO lvhti = {};
-							POINT ptClient = pt;
+							POINT ptClient;
+							GetCursorPos(&ptClient);
 							ScreenToClient(g_listViewHwnd, &ptClient);
 							lvhti.pt = ptClient;
 							index = ListView_HitTest(g_listViewHwnd, &lvhti);
@@ -635,6 +663,10 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 							std::shared_ptr<BaseAction>& it = filteredActions[index];
 							const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 							bool handled = false;
+							// 插件会在不感知上下文里弹菜单（见 PluginManager），鼠标位置也要在该坐标空间里取
+							Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
+							POINT pt;
+							GetCursorPos(&pt);
 							if (shiftDown ^ pref_switch_list_right_click_with_shift_right_click) {
 								if (g_pluginManager) handled = g_pluginManager->DispatchItemShiftRightClick(it, hWnd, pt);
 							} else {
@@ -662,8 +694,9 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 							return 0;
 						}
 
-						POINT screenPt = nmlv->ptAction;
-						ClientToScreen(nmlv->hdr.hwndFrom, &screenPt);
+						// 插件在不感知上下文里处理拖拽（见 PluginManager），起点坐标换算到该坐标空间
+						Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
+						const POINT screenPt = Dpi::ChildClientPointToThreadScreen(nmlv->hdr.hwndFrom, nmlv->ptAction);
 
 						const auto& action = filteredActions[itemIndex];
 

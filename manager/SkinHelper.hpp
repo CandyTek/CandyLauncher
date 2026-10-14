@@ -14,6 +14,7 @@
 #include "BackgroundLayerPainter.hpp"
 #include "../util/StringUtil.hpp"
 #include "../util/FontUtil.hpp"
+#include "../util/DpiUtil.hpp"
 #include "common/GuaranteedSkinJson.hpp"
 
 // 监听皮肤文件改动
@@ -119,7 +120,8 @@ static void getSkinPictureFile(Gdiplus::Image*& image, const std::string& skinKe
 	}
 	if (!picturePath.empty()) {
 		if (EndsWith(picturePath, L".9.png")) {
-			image = RenderNinePatchToSize(picturePath.c_str(), width, height);
+			// 目标尺寸已按 DPI 换算；固定段（圆角、边框）也按同样比例放大，否则高 DPI 下边框会显得很细
+			image = RenderNinePatchToSize(picturePath.c_str(), width, height, nullptr, Dpi::Factor(g_mainWindowDpi));
 			//image =CreateNinePatchBitmap(utf8_to_wide(picturePath).c_str(),MAIN_WINDOW_WIDTH,MAIN_WINDOW_HEIGHT);
 		} else {
 			image = new Gdiplus::Image(picturePath.c_str());
@@ -230,8 +232,12 @@ static void UpdateListViewScrollbarStyle()
 }
 
 
-// 返回 false 表示皮肤文件读取或解析失败，此时保留原有皮肤
+// 返回 false 表示皮肤文件读取或解析失败，此时保留原有皮肤。
+// 皮肤 json 里的所有尺寸、字体大小都是 96 DPI 下的值，这里按 g_mainWindowDpi 换算后再烘焙各背景图层，
+// 所以 DPI 变化时只需要重新调用一次本函数（见 applyMainWindowDpi），每帧绘制不做任何缩放
 static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, const bool needFocusWindow = true) {
+	// 可能从 wWinMain、设置窗口等不感知上下文调用：进入主窗口的坐标空间，SetWindowPos 的尺寸才是物理像素
+	Dpi::ThreadContextScope dpiScope(Dpi::ContextOfWindow(g_mainHwnd));
 	skinPath = getCurrectSkinPath(skinPath);
 	// 黑夜模式功能
 	std::string mode = g_settings_map["pref_night_mode"].stringValue;
@@ -282,8 +288,8 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 		}
 	}
 	// --- 1. 更新主窗口 ---
-	MAIN_WINDOW_WIDTH = g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH);
-	MAIN_WINDOW_HEIGHT = g_skinJson.value("window_height", DEFAULT_MAIN_WINDOW_HEIGHT);
+	MAIN_WINDOW_WIDTH = MainDpiScale(g_skinJson.value("window_width", DEFAULT_MAIN_WINDOW_WIDTH));
+	MAIN_WINDOW_HEIGHT = MainDpiScale(g_skinJson.value("window_height", DEFAULT_MAIN_WINDOW_HEIGHT));
 	int u_flags = SWP_NOMOVE | SWP_NOZORDER;
 	if (!needFocusWindow)
 		u_flags |= SWP_NOACTIVATE;
@@ -297,10 +303,10 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	if (g_settings_map["pref_search_box_placeholder_use_theme"].boolValue) {
 		EDIT_HINT_TEXT = utf8_to_wide(g_skinJson.value("editbox_hint_text", g_settings_map["pref_search_box_placeholder"].stringValue));
 	}
-	int editX = g_skinJson.value("editbox_x", 10);
-	int editY = g_skinJson.value("editbox_y", 10);
-	int editWidth = g_skinJson.value("editbox_width", 580);
-	int editHeight = g_skinJson.value("editbox_height", 35);
+	const int editX = MainDpiScale(g_skinJson.value("editbox_x", 10));
+	const int editY = MainDpiScale(g_skinJson.value("editbox_y", 10));
+	const int editWidth = MainDpiScale(g_skinJson.value("editbox_width", 580));
+	const int editHeight = MainDpiScale(g_skinJson.value("editbox_height", 35));
 	g_listItemWidth = g_skinJson.value("item_width", 580);
 	g_listItemHeight = g_skinJson.value("item_height", 35);
 	if (g_listItemWidth <= 0) {
@@ -309,24 +315,24 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	if (g_listItemHeight <= 0) {
 		g_listItemHeight = 60;
 	}
+	g_listItemWidth = MainDpiScale(g_listItemWidth);
+	g_listItemHeight = MainDpiScale(g_listItemHeight);
 
-	// 更新编辑框字体
+	// 更新编辑框字体：字号（磅）直接按主窗口 DPI 换算成像素，不用 DC 的 LOGPIXELSY（混合模式下它只反映系统 DPI）
 	std::wstring editFontFamily = ResolveFontFamily(utf8_to_wide(g_skinJson.value("editbox_font_family", "宋体")));
 	double editFontSize = g_skinJson.value("editbox_font_size", 12.0);
-	HDC hdc = GetDC(g_editHwnd);
 	HFONT hEditFont = CreateFontW(
-		-MulDiv(static_cast<int>(editFontSize), GetDeviceCaps(hdc, LOGPIXELSY), 72),
+		-MulDiv(static_cast<int>(editFontSize), static_cast<int>(g_mainWindowDpi), 72),
 		0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
 		DEFAULT_PITCH | FF_DONTCARE, editFontFamily.c_str()
 	);
-	ReleaseDC(g_editHwnd, hdc);
 
 	// --- 3. 更新列表视图 (ListView) ---
-	int listX = g_skinJson.value("listview_x", 10);
-	int listY = g_skinJson.value("listview_y", 45);
-	g_listViewWidth = g_skinJson.value("listview_width", 580);
-	g_listViewHeight = g_skinJson.value("listview_height", 380);
+	const int listX = MainDpiScale(g_skinJson.value("listview_x", 10));
+	const int listY = MainDpiScale(g_skinJson.value("listview_y", 45));
+	g_listViewWidth = MainDpiScale(g_skinJson.value("listview_width", 580));
+	g_listViewHeight = MainDpiScale(g_skinJson.value("listview_height", 380));
 
 	// CachedBitmap is tied to its target graphics device, so discard all old
 	// caches before replacing the source images or changing control sizes.
@@ -358,10 +364,10 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	// 未配置的一侧恢复为按字体计算的默认值（避免沿用上一个皮肤的设置）
 	// editbox_padding_top 由 EditControlPainter 绘制时处理
 	SendMessage(g_editHwnd, EM_SETMARGINS, EC_USEFONTINFO, 0);
-	const int paddingLeft = (std::max)(0, g_skinJson.value("editbox_padding_left", 4));
+	const int paddingLeft = MainDpiScale((std::max)(0, g_skinJson.value("editbox_padding_left", 4)));
 	SendMessage(g_editHwnd, EM_SETMARGINS, EC_LEFTMARGIN, MAKELPARAM(paddingLeft, 0));
 
-	const int paddingRight = (std::max)(0, g_skinJson.value("editbox_padding_right", 4));
+	const int paddingRight = MainDpiScale((std::max)(0, g_skinJson.value("editbox_padding_right", 4)));
 	SendMessage(g_editHwnd, EM_SETMARGINS, EC_RIGHTMARGIN, MAKELPARAM(0, paddingRight));
 
 	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER|SWP_NOACTIVATE);
@@ -391,9 +397,13 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 
 	g_listViewHideScrollbar = g_skinJson.value("listview_hide_scrollbar", false);
-	// 这里是调节列表item宽度重要的地方，调好了横向滚动条就不存在
-	int thumbWidth = GetWindowVScrollBarThumbWidth(g_listViewHwnd, true);
+	// 这里是调节列表item宽度重要的地方，调好了横向滚动条就不存在。
+	// 滚动条宽度按主窗口 DPI 取系统指标（150% 下为 26），不在控件上现场测量：弹出前按目标显示器 DPI 重载皮肤时
+	// 窗口还在旧显示器上，子控件的滚动条尚未缩放，GetScrollBarInfo 量到的是旧值，列宽会差几像素而多出横向滚动条
+	const int thumbWidth = Dpi::SystemMetricForDpi(SM_CXVSCROLL, g_mainWindowDpi);
 	ListView_SetColumnWidth(g_listViewHwnd, 0, g_listViewWidth - thumbWidth - 0);
+	Logi(L"SkinHelper", L"Skin loaded at dpi=", g_mainWindowDpi, L", window ", MAIN_WINDOW_WIDTH, L"x", MAIN_WINDOW_HEIGHT,
+		L", list ", g_listViewWidth, L"x", g_listViewHeight, L", vscroll=", thumbWidth);
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
 	UpdateListViewScrollbarStyle();
 	// InvalidateRect(g_listViewHwnd, nullptr, TRUE);
@@ -408,6 +418,18 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 			ShowWindow(g_mainHwnd, SW_SHOWNOACTIVATE);
 		}
 	}
+	return true;
+}
+
+// 主窗口 DPI 变化（弹出到另一台显示器、被拖到另一台显示器、系统缩放设置改变）时按新比例重新加载皮肤：
+// 尺寸、字体、背景图层、列表图标尺寸都在这里一次性重新烘焙，之后每帧绘制仍只是 BitBlt。
+// 返回 true 表示 DPI 确实变了。皮肤尚未加载时只记录 DPI，首次 refreshSkin 会按它加载
+static bool applyMainWindowDpi(const UINT dpi) {
+	if (dpi == 0 || dpi == g_mainWindowDpi) return false;
+	Logi(L"SkinHelper", L"Main window DPI ", g_mainWindowDpi, L" -> ", dpi);
+	g_mainWindowDpi = dpi;
+	if (g_skinJson == nullptr || !g_mainHwnd) return true;
+	refreshSkin(g_currectSkinFilePath, false, false);
 	return true;
 }
 

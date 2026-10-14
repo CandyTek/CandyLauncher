@@ -59,6 +59,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - **window/SettingsManager.hpp**: Manage app settings (load, merge, save, UI binding, backup/restore)
 - **view/ScrollViewHelper.hpp**: List scrolling functionality in the configuration interface, it is also the first parent class for each setting control
 - **view/GlassHelper.hpp**: Handles Aero glass effects and window transparency
+- **util/DpiUtil.hpp**: High-DPI support. The process stays DPI-unaware; the main window is Per-Monitor V2 and scales the skin at bake time (`g_mainWindowDpi`, `MainDpiScale`, `applyMainWindowDpi`); secondary windows (settings, skin editor, rename dialog, plugin windows) are Per-Monitor V2 too and use the simple per-window scheme (`Dpi::Scale`, `CreateScaledFont`, `RescaleChildWindows`, `ApplySuggestedRect`). Coordinate-space rules and verification: [DOC_DPI.md](docs/DOC_DPI.md)
 - **view/CustomButtonHelper.hpp**: beautiful custom buttons and radiobutton features
 - **view/SwitchView.hpp**: a switch control that imitates windows8ui
 

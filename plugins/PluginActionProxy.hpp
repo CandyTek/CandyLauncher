@@ -13,18 +13,42 @@
 #include "BaseAction.hpp"
 #include "sdk/CandyPluginApi.h"
 #include "../util/BitmapUtil.hpp"
+#include "../util/IconScaleUtil.hpp"
 
 // One GDI bitmap shared by every proxy that carries the same icon_key (2.2), freed with the last proxy.
 struct SharedIconBitmap {
 	HBITMAP bitmap = nullptr;
+	int width = 0;
+	int height = 0;
+	// 主窗口 DPI 不是 96 时按需生成的缩放副本（util/IconScaleUtil.hpp），只在 UI 线程绘制时访问，尺寸变化时重建
+	HBITMAP scaled = nullptr;
+	int scaledSize = 0;
 
 	explicit SharedIconBitmap(const HBITMAP bitmap) : bitmap(bitmap) {
+		BITMAP bm{};
+		if (bitmap && GetObject(bitmap, sizeof(bm), &bm)) {
+			width = bm.bmWidth;
+			height = bm.bmHeight;
+		}
 	}
 
 	SharedIconBitmap(const SharedIconBitmap&) = delete;
 	SharedIconBitmap& operator=(const SharedIconBitmap&) = delete;
 
+	// 原图正好是 size x size 时直接返回原图，否则返回（并缓存）缩放副本
+	HBITMAP ScaledFor(const int size) {
+		if (!bitmap || size <= 0) return nullptr;
+		if (width == size && height == size) return bitmap;
+		if (scaledSize != size) {
+			if (scaled) DeleteObject(scaled);
+			scaled = ScaleBitmapToPargbDib(bitmap, size);
+			scaledSize = scaled ? size : 0;
+		}
+		return scaled;
+	}
+
 	~SharedIconBitmap() {
+		if (scaled) DeleteObject(scaled);
 		if (bitmap) DeleteObject(bitmap);
 	}
 };
@@ -64,6 +88,10 @@ public:
 
 	HBITMAP getIconBitmap() override {
 		return iconBitmap ? iconBitmap->bitmap : nullptr;
+	}
+
+	HBITMAP getIconBitmapScaled(const int size) override {
+		return iconBitmap ? iconBitmap->ScaledFor(size) : nullptr;
 	}
 };
 

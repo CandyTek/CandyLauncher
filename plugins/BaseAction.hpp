@@ -29,5 +29,9 @@ public:
 
 	virtual HBITMAP getIconBitmap() =0;
 
+	// 按主窗口 DPI 缩放到 size x size 的图标位图（预乘 alpha），由实现类缓存；
+	// 返回 nullptr 表示没有缓存，列表直接拉伸绘制 getIconBitmap()
+	virtual HBITMAP getIconBitmapScaled(int /*size*/) { return nullptr; }
+
 	virtual ~BaseAction() = default;
 };

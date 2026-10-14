@@ -23,6 +23,7 @@
 #include "stb_image_write.h"
 #include "plugins/PluginHotkeyManager.hpp"
 #include "util/BitmapUtil.hpp"
+#include "util/DpiUtil.hpp"
 #include "util/MyJsonUtil.hpp"
 #include "util/ParallelUtil.hpp"
 #include "util/UrlUtil.hpp"
@@ -40,6 +41,9 @@ namespace
 
     // 截图 / 识别在独立线程上运行。线程全部登记在这里，Shutdown 时关掉它们的窗口并等待结束，
     // 否则插件实例销毁、DLL 卸载后线程还会继续执行已释放的代码
+    // 进程本身 DPI 不感知，新线程默认也不感知：GetSystemMetrics 的虚拟屏幕、GetCursorPos、选区窗口位置和
+    // 屏幕 DC 的 BitBlt 都会按主显示器缩放比例虚拟化，多块不同 DPI 的显示器上选区与实际截图错位。
+    // 工作线程进入 Per-Monitor V2 作用域后全部以物理像素工作；Win7 等不支持的系统上作用域不生效，行为同以前
     std::atomic<bool> g_stopping{false};
     std::mutex g_workersMutex;
 
@@ -67,7 +71,10 @@ namespace
         auto finished = std::make_shared<std::atomic<bool>>(false);
         std::thread thread([fn = std::move(fn), finished]
         {
-            fn();
+            {
+                Dpi::ThreadContextScope dpiScope(Dpi::PerMonitorV2Context());
+                fn();
+            }
             *finished = true;
         });
         g_workers.push_back({std::move(thread), std::move(finished)});

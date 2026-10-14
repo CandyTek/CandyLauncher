@@ -24,6 +24,7 @@
 #include "util/ColorUtil.hpp"
 #include "util/FontUtil.hpp"
 #include "util/PaintProfiler.hpp"
+#include "util/IconScaleUtil.hpp"
 #include "BackgroundLayerPainter.hpp"
 
 #pragma comment(lib, "Shell32.lib")
@@ -122,6 +123,8 @@ static void RepairBlankExtraLargeSystemIcon(IImageList2* extraLarge, const int i
 
 // Shell image lists resolve some entries lazily. Resolving them from WM_DRAWITEM
 // makes the first result paint much slower, so warm them on a background thread.
+// 主窗口 DPI 不是 96 时，系统图标还要放大到 LISTITEM_ICON_SIZE：也在这里的工作线程上生成缩放位图并缓存
+//（util/IconScaleUtil.hpp），绘制线程只做一次 AlphaBlend。
 class ListViewSystemIconWarmer {
 public:
 	ListViewSystemIconWarmer() {
@@ -141,6 +144,20 @@ public:
 		for (auto& worker : workers) {
 			if (worker.joinable()) worker.join();
 		}
+		clearScaledIconsLocked();
+	}
+
+	// 列表图标的绘制尺寸变化（DPI 变化）时调用：丢掉旧尺寸的缩放缓存，并让可见项重新排队生成
+	void setIconSize(const int size) {
+		std::lock_guard<std::mutex> lock(mutex);
+		if (size == iconSize) return;
+		iconSize = size;
+		clearScaledIconsLocked();
+		++requestedGeneration;
+		tasks.clear();
+		requestedActions.clear();
+		readyIndices.clear();
+		pendingVisibleCount = 0;
 	}
 
 	void reset(HWND listView, const std::vector<std::shared_ptr<BaseAction>>& actions) {
@@ -201,11 +218,18 @@ public:
 		waitCondition.notify_all();
 	}
 
-	bool tryGet(const std::shared_ptr<BaseAction>& action, int& index) const {
+	// index：系统图标索引（-1 = 未知文件图标）；scaled：按当前 LISTITEM_ICON_SIZE 缩放好的位图，
+	// 只在需要缩放且已生成时非空，由本对象持有，仅在 UI 线程绘制期间使用
+	bool tryGet(const std::shared_ptr<BaseAction>& action, int& index, HBITMAP& scaled) const {
 		std::lock_guard<std::mutex> lock(mutex);
 		const auto found = readyIndices.find(action);
 		if (found == readyIndices.end()) return false;
 		index = found->second;
+		scaled = nullptr;
+		if (!scaledIcons.empty()) {
+			const auto bitmap = scaledIcons.find(index >= 0 ? index : unknown_file_icon_index);
+			if (bitmap != scaledIcons.end()) scaled = bitmap->second;
+		}
 		return true;
 	}
 
@@ -223,13 +247,57 @@ private:
 		bool isVisibleItem = false;
 	};
 
+	void clearScaledIconsLocked() {
+		for (auto& entry : scaledIcons) {
+			if (entry.second) DeleteObject(entry.second);
+		}
+		scaledIcons.clear();
+	}
+
+	// 系统图标需要缩放且尚未缓存时生成缩放位图（在工作线程上），并放入缓存
+	void ensureScaledIcon(IImageList2* extraLarge, IImageList* jumbo, const int entrySize, const int index) {
+		if (!extraLarge || index < 0 || entrySize <= 0) return;
+		int wantSize = 0;
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			wantSize = iconSize;
+			if (wantSize == entrySize || scaledIcons.count(index) != 0) return;
+		}
+		HBITMAP scaled = CreateScaledSystemIconBitmap(jumbo, extraLarge, index, wantSize);
+		if (!scaled) {
+			Logw(L"ListView", L"scaled system icon failed, index=", index, L", size=", wantSize);
+			return;
+		}
+		std::lock_guard<std::mutex> lock(mutex);
+		if (wantSize != iconSize || scaledIcons.count(index) != 0) {
+			DeleteObject(scaled);
+			return;
+		}
+		// 缓存无上限会随搜索过的条目不断增长，超过阈值时整体清空（可见项会在下次绘制时重新排队）
+		if (scaledIcons.size() >= kMaxScaledIcons) clearScaledIconsLocked();
+		scaledIcons.emplace(index, scaled);
+	}
+
 	void run(const size_t workerIndex) {
 		// Shell 快捷方式的图标解析依赖 STA；MTA 下 SHGetFileInfoW 可能只返回空白文件图标。
 		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+		// 工作线程在静态初始化阶段就启动了，此时 SHGetImageList 可能失败（实测两个线程里有一个拿不到列表），
+		// 所以列表在处理任务时按需获取，失败则下次再试
 		IImageList2* imageList = nullptr;
-		SHGetImageList(SHIL_EXTRALARGE, IID_IImageList2, reinterpret_cast<void**>(&imageList));
-		if (workerIndex == 0 && imageList && unknown_file_icon_index >= 0)
-			imageList->ForceImagePresent(unknown_file_icon_index, ILFIP_ALWAYS);
+		// 缩放用：48px 列表的实际项尺寸，以及 256px 的 jumbo 列表（缩小比放大清晰）
+		int entryWidth = 0, entryHeight = 0;
+		IImageList* jumboList = nullptr;
+		bool unknownIconForced = false;
+		const auto acquireImageLists = [&]() {
+			if (!imageList) SHGetImageList(SHIL_EXTRALARGE, IID_IImageList2, reinterpret_cast<void**>(&imageList));
+			if (imageList && entryWidth <= 0) imageList->GetIconSize(&entryWidth, &entryHeight);
+			if (!jumboList) SHGetImageList(SHIL_JUMBO, IID_IImageList, reinterpret_cast<void**>(&jumboList));
+			if (workerIndex == 0 && imageList && !unknownIconForced && unknown_file_icon_index >= 0) {
+				imageList->ForceImagePresent(unknown_file_icon_index, ILFIP_ALWAYS);
+				unknownIconForced = true;
+			}
+		};
+		acquireImageLists();
 
 		for (;;) {
 			Task task{};
@@ -241,11 +309,13 @@ private:
 				tasks.pop_front();
 			}
 
+			acquireImageLists();
 			const int index = task.action->getIconFilePathIndex();
 			if (imageList && index >= 0) {
 				imageList->ForceImagePresent(index, ILFIP_ALWAYS);
 				RepairBlankExtraLargeSystemIcon(imageList, index);
 			}
+			ensureScaledIcon(imageList, jumboList, entryWidth, index >= 0 ? index : unknown_file_icon_index);
 
 			bool notifyWait = false;
 			{
@@ -269,9 +339,12 @@ private:
 				PostMessageW(task.listView, WM_LISTVIEW_SYSTEM_ICONS_READY, task.generation,
 							 static_cast<LPARAM>(task.itemIndex));
 		}
+		if (jumboList) jumboList->Release();
 		if (imageList) imageList->Release();
 		if (SUCCEEDED(comResult)) CoUninitialize();
 	}
+
+	static constexpr size_t kMaxScaledIcons = 2048;
 
 	mutable std::mutex mutex;
 	std::condition_variable condition;
@@ -284,6 +357,9 @@ private:
 	HWND listViewWindow = nullptr;
 	std::unordered_set<std::shared_ptr<BaseAction>> requestedActions;
 	std::unordered_map<std::shared_ptr<BaseAction>, int> readyIndices;
+	// 当前列表图标绘制尺寸；与系统图像列表项尺寸不同时，scaledIcons 按系统图标索引缓存缩放后的预乘 DIB
+	int iconSize = LISTITEM_ICON_BASE_SIZE;
+	std::unordered_map<int, HBITMAP> scaledIcons;
 };
 
 inline ListViewSystemIconWarmer g_listViewSystemIconWarmer;
@@ -411,23 +487,28 @@ static void listViewInitializeGraphicsResources() {
 	int itemFontStyleSelected2 = Gdiplus::FontStyleBold;
 
 
+	// 列表图标尺寸随主窗口 DPI 放大；图标缩放缓存与之同步（尺寸没变时是空操作）
+	LISTITEM_ICON_SIZE = MainDpiScale(LISTITEM_ICON_BASE_SIZE);
+	g_listViewSystemIconWarmer.setIconSize(LISTITEM_ICON_SIZE);
+
 	if (g_skinJson != nullptr) {
 		g_listViewBackgroundColor = ApplySkinWindowOpacity(HexToGdiplusColor(
 			validateHexColor(g_skinJson.value("listview_bg_color", ""), "#FFFFFF")));
-		g_itemIconSelectedX = g_skinJson.value("item_icon_selected_x", 4);
-		g_itemIconSelectedY = g_skinJson.value("item_icon_selected_y", 4);
-		g_itemIconX = g_skinJson.value("item_icon_x", 4);
-		g_itemIconY = g_skinJson.value("item_icon_y", 4);
-		g_itemTextPosX1 = g_skinJson.value("item_text_x_1", 60);
-		g_itemTextPosY1 = g_skinJson.value("item_text_y_1", 4);
-		g_itemTextPosX2 = g_skinJson.value("item_text_x_2", 60);
-		g_itemTextPosY2 = g_skinJson.value("item_text_y_2", 22);
+		// 皮肤里的位置都是 96 DPI 下的值，按主窗口 DPI 换算
+		g_itemIconSelectedX = MainDpiScale(g_skinJson.value("item_icon_selected_x", 4));
+		g_itemIconSelectedY = MainDpiScale(g_skinJson.value("item_icon_selected_y", 4));
+		g_itemIconX = MainDpiScale(g_skinJson.value("item_icon_x", 4));
+		g_itemIconY = MainDpiScale(g_skinJson.value("item_icon_y", 4));
+		g_itemTextPosX1 = MainDpiScale(g_skinJson.value("item_text_x_1", 60));
+		g_itemTextPosY1 = MainDpiScale(g_skinJson.value("item_text_y_1", 4));
+		g_itemTextPosX2 = MainDpiScale(g_skinJson.value("item_text_x_2", 60));
+		g_itemTextPosY2 = MainDpiScale(g_skinJson.value("item_text_y_2", 22));
 		g_windowBgColor = g_skinJson.value("window_bg_color", "#FFFFFF");
 
-		g_itemTextPosSelectedX1 = g_skinJson.value("item_text_selected_x_1", 60);
-		g_itemTextPosSelectedY1 = g_skinJson.value("item_text_selected_y_1", 4);
-		g_itemTextPosSelectedX2 = g_skinJson.value("item_text_selected_x_2", 60);
-		g_itemTextPosSelectedY2 = g_skinJson.value("item_text_selected_y_2", 22);
+		g_itemTextPosSelectedX1 = MainDpiScale(g_skinJson.value("item_text_selected_x_1", 60));
+		g_itemTextPosSelectedY1 = MainDpiScale(g_skinJson.value("item_text_selected_y_1", 4));
+		g_itemTextPosSelectedX2 = MainDpiScale(g_skinJson.value("item_text_selected_x_2", 60));
+		g_itemTextPosSelectedY2 = MainDpiScale(g_skinJson.value("item_text_selected_y_2", 22));
 
 		itemBgColor = g_skinJson.value("item_bg_color", "#FFFFFF");
 		itemBgColorSelected = g_skinJson.value("item_bg_color_selected", "#DDDDDD");
@@ -477,14 +558,14 @@ static void listViewInitializeGraphicsResources() {
 	g_listItemTextColorBrushSelected2 = std::make_unique<Gdiplus::SolidBrush>(itemFontGdiplusColorSelected2);
 
 	// 皮肤字体在当前系统不存在时（如 Windows 7 没有 Microsoft YaHei UI）强制退回到一定存在的字体，
-	// GDI+ 不会自己替换缺失字体
-	g_listItemFont1 = CreateGdiplusFont(itemFontFamily1, static_cast<float>(g_item_font_size_1),
+	// GDI+ 不会自己替换缺失字体。字号是 96 DPI 下的像素值，按主窗口 DPI 放大
+	g_listItemFont1 = CreateGdiplusFont(itemFontFamily1, MainDpiScaleF(g_item_font_size_1),
 										itemFontStyle1, Gdiplus::UnitPixel);
-	g_listItemFont2 = CreateGdiplusFont(itemFontFamily2, static_cast<float>(g_item_font_size_2),
+	g_listItemFont2 = CreateGdiplusFont(itemFontFamily2, MainDpiScaleF(g_item_font_size_2),
 										itemFontStyle2, Gdiplus::UnitPixel);
-	g_listItemFontSelected1 = CreateGdiplusFont(itemFontFamilySelected1, static_cast<float>(g_item_font_size_selected_1),
+	g_listItemFontSelected1 = CreateGdiplusFont(itemFontFamilySelected1, MainDpiScaleF(g_item_font_size_selected_1),
 												itemFontStyleSelected1, Gdiplus::UnitPixel);
-	g_listItemFontSelected2 = CreateGdiplusFont(itemFontFamilySelected2, static_cast<float>(g_item_font_size_selected_2),
+	g_listItemFontSelected2 = CreateGdiplusFont(itemFontFamilySelected2, MainDpiScaleF(g_item_font_size_selected_2),
 												itemFontStyleSelected2, Gdiplus::UnitPixel);
 
 	// 行高与屏幕 DPI 相关，用屏幕 DC 测一次即可（列表窗口与屏幕 DPI 一致）
@@ -519,7 +600,8 @@ static void refreshAppLaunchAction() {
 	baseAppLaunchActions.clear();
 	auto base_launch_action1 = std::make_shared<BaseLaunchAction>(L"刷新列表", L"刷新索引列表", L"",
 																appLaunchActionCallBacks["refreshList"]);
-	base_launch_action1->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, 48, 48);
+	// 直接按当前列表图标尺寸加载资源图标，高 DPI 下不需要再拉伸
+	base_launch_action1->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE);
 	g_matchTextCache.FillAll(*base_launch_action1, base_launch_action1->getTitle());
 	base_launch_action1->usageKey = ComputeUsageKey(L"host", L"", base_launch_action1->getTitle(),
 													base_launch_action1->getSubTitle());
@@ -532,6 +614,17 @@ static void refreshAppLaunchAction() {
 	// baseAppLaunchActions.push_back(base_launch_action2);
 	// 主程序自己的条目变了，合并列表需要重建
 	PluginManager::BumpActionsVersion();
+}
+
+// 列表图标尺寸变化（DPI 变化）后，把主程序自己条目的资源图标按新尺寸重新加载；条目对象本身不变，列表无需重建
+static void reloadHostActionIcons() {
+	if (!g_pluginManager) return;
+	for (const auto& action : baseAppLaunchActions) {
+		const auto launchAction = std::dynamic_pointer_cast<BaseLaunchAction>(action);
+		if (!launchAction || !launchAction->iconBitmap) continue;
+		DeleteObject(launchAction->iconBitmap);
+		launchAction->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE);
+	}
 }
 
 static void listViewCleanupGraphicsResources() {
@@ -640,9 +733,13 @@ static LRESULT CALLBACK ListViewSubclassProc(HWND hWnd, const UINT message, cons
 	case WM_MBUTTONUP: TimerIDSetFocusEdit = SetTimer(GetParent(hWnd), TIMER_SETFOCUS_EDIT, 10, nullptr); // 10 毫秒延迟
 		break;
 	case WM_LISTVIEW_REFRESH_RESOURCE:
-		listViewCleanupGraphicsResources();
-		listViewInitializeGraphicsResources(); // 确保字体和画刷已初始化
-		RebuildListViewBackgroundLayer(hWnd);
+		{
+			const int oldIconSize = LISTITEM_ICON_SIZE;
+			listViewCleanupGraphicsResources();
+			listViewInitializeGraphicsResources(); // 确保字体和画刷已初始化
+			if (oldIconSize != LISTITEM_ICON_SIZE) reloadHostActionIcons();
+			RebuildListViewBackgroundLayer(hWnd);
+		}
 		break;
 	case WM_LISTVIEW_SYSTEM_ICONS_READY:
 		if (g_listViewSystemIconWarmer.isCurrent(static_cast<UINT>(wParam))) {
@@ -863,7 +960,8 @@ static void listViewCustomDataOnGetDispInfo(NMLVDISPINFOW* pdi) {
 	// ListView 会请求图像索引
 	if (pdi->item.mask & LVIF_IMAGE) {
 		int iconIndex = -1;
-		pdi->item.iImage = g_listViewSystemIconWarmer.tryGet(action, iconIndex) && iconIndex >= 0
+		HBITMAP scaledIcon = nullptr;
+		pdi->item.iImage = g_listViewSystemIconWarmer.tryGet(action, iconIndex, scaledIcon) && iconIndex >= 0
 			? iconIndex
 			: I_IMAGECALLBACK;
 	}
@@ -1046,24 +1144,34 @@ static void listViewDrawItem(const DRAWITEMSTRUCT* lpDrawItem) {
 	// 3. 图标
 	const int iconX = originX + (isSelected ? g_itemIconSelectedX : g_itemIconX);
 	const int iconY = originY + (isSelected ? g_itemIconSelectedY : g_itemIconY);
-	if (action->getIconBitmap()) {
-		// 32-bpp 带 alpha 的 HBITMAP，用 AlphaBlend 按像素混合
+	// 32-bpp 带 alpha 的 HBITMAP（插件图标或已缩放的系统图标），用 AlphaBlend 按像素混合；
+	// 源尺寸取位图实际大小，与 LISTITEM_ICON_SIZE 不一致时由 AlphaBlend 拉伸（缩放缓存就绪后两者相等）
+	const auto drawIconBitmap = [&](const HBITMAP bitmap) {
+		BITMAP bm{};
+		if (!bitmap || !GetObject(bitmap, sizeof(bm), &bm) || bm.bmWidth <= 0 || bm.bmHeight <= 0) return;
 		HDC hMemDC = CreateCompatibleDC(drawDc);
-		HGDIOBJ oldBmp = SelectObject(hMemDC, action->getIconBitmap());
+		HGDIOBJ oldBmp = SelectObject(hMemDC, bitmap);
 		BLENDFUNCTION blendFunc{};
 		blendFunc.BlendOp = AC_SRC_OVER;
 		blendFunc.SourceConstantAlpha = 255; // 使用源位图自身的 alpha 通道
 		blendFunc.AlphaFormat = AC_SRC_ALPHA;
 		AlphaBlend(drawDc, iconX, iconY, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE,
-					hMemDC, 0, 0, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE, blendFunc);
+					hMemDC, 0, 0, bm.bmWidth, bm.bmHeight, blendFunc);
 		SelectObject(hMemDC, oldBmp);
 		DeleteDC(hMemDC);
+	};
+	if (const HBITMAP iconBitmap = action->getIconBitmap()) {
+		const HBITMAP scaledBitmap = action->getIconBitmapScaled(LISTITEM_ICON_SIZE);
+		drawIconBitmap(scaledBitmap ? scaledBitmap : iconBitmap);
 	} else {
 		int iconIndex = -1;
-		if (!g_listViewSystemIconWarmer.tryGet(action, iconIndex)) {
+		HBITMAP scaledIcon = nullptr;
+		if (!g_listViewSystemIconWarmer.tryGet(action, iconIndex, scaledIcon)) {
 			return;
 		}
-		if (g_listFileImageList && iconIndex >= 0) {
+		if (scaledIcon) {
+			drawIconBitmap(scaledIcon);
+		} else if (g_listFileImageList && iconIndex >= 0) {
 			ImageList_Draw(g_listFileImageList, iconIndex, drawDc, iconX, iconY, ILD_TRANSPARENT);
 		} else {
 			ImageList_Draw(g_listFileImageList, unknown_file_icon_index, drawDc, iconX, iconY, ILD_TRANSPARENT);

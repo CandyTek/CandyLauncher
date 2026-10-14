@@ -4,6 +4,7 @@
 #include <commctrl.h> // For ListView controls
 #include <gdiplus.h> // For anti-aliased drawing
 #include "SwitchState.hpp"
+#include "../util/DpiUtil.hpp"
 
 #pragma comment(lib, "gdiplus.lib")
 
@@ -34,14 +35,17 @@ static void UpdateSwitchAnimation(SwitchState* switchInfo) {
 static void SwitchPaintWin8(HWND hWnd, HDC hdc, SwitchState* switchInfo) {
 	RECT rect;
 	GetClientRect(hWnd, &rect);
+	// 尺寸都是 96 DPI 下的值，按控件所在窗口的 DPI 缩放
+	const UINT dpi = Dpi::WindowDpi(hWnd);
+	const auto S = [dpi](const int v) { return Dpi::Scale(v, dpi); };
 
 	// Win8.1 风格尺寸（扁平、矩形）
-	const int switchWidth = 46;
-	const int switchHeight = 18;
+	const int switchWidth = S(46);
+	const int switchHeight = S(18);
 
 	// 轨道与滑块的内边距（thumb 在 track 内留白）
-	const int thumbW = 12;
-	const int thumbH = 20;
+	const int thumbW = S(12);
+	const int thumbH = S(20);
 
 	// 居中
 	const int switchX = (rect.right - switchWidth) / 2;
@@ -82,29 +86,29 @@ static void SwitchPaintWin8(HWND hWnd, HDC hdc, SwitchState* switchInfo) {
 		// 计算几何矩形
 		RECT outerRect = {switchX, switchY, switchX + switchWidth, switchY + switchHeight}; // 外边框
 		RECT trackRect = outerRect;
-		InflateRect(&trackRect, -1, -1); // track 填充区（边框内缩 1px）
+		InflateRect(&trackRect, -S(1), -S(1)); // track 填充区（边框内缩 1px）
 		RECT realTrackRect = outerRect;
-		InflateRect(&realTrackRect, -2, -2); // track 填充区（边框内缩 1px）
+		InflateRect(&realTrackRect, -S(2), -S(2)); // track 填充区（边框内缩 1px）
 
 		// thumb 位置（在 track 内左右平移）
-		const int travel = (trackRect.right - trackRect.left + 2) - thumbW; // 可移动距离
-		int thumbX = trackRect.left - 1 + (int)(progress * travel);
+		const int travel = (trackRect.right - trackRect.left + S(2)) - thumbW; // 可移动距离
+		int thumbX = trackRect.left - S(1) + (int)(progress * travel);
 		int thumbY = trackRect.top + ((trackRect.bottom - trackRect.top) - thumbH) / 2;
 
 		// 按下时的视觉位移（扁平风格轻微按压）
 		if (isPressed) {
-			thumbX += 1;
-			thumbY += 1;
+			thumbX += S(1);
+			thumbY += S(1);
 		}
 
 		RECT thumbRect = {thumbX, thumbY, thumbX + thumbW, thumbY + thumbH};
 
 		// ---- 绘制外边框（空心矩形）----
-		HPEN borderPen = CreatePen(PS_SOLID, 2, currentBorderColor);
+		HPEN borderPen = CreatePen(PS_SOLID, S(2), currentBorderColor);
 		HPEN oldPen = (HPEN)SelectObject(hdc, borderPen);
 		HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
 		HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, nullBrush);
-		Rectangle(hdc, outerRect.left, outerRect.top, outerRect.right + 1, outerRect.bottom + 1);
+		Rectangle(hdc, outerRect.left, outerRect.top, outerRect.right + S(1), outerRect.bottom + S(1));
 
 		// ---- 填充 track（纯色长矩形）----
 		HBRUSH trackBrush = CreateSolidBrush(currentTrackColor);

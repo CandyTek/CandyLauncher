@@ -20,6 +20,22 @@ static HWND g_shortcutFixHwnd = nullptr;
 static HWND g_invalidListView = nullptr;
 static HWND g_candidateListView = nullptr;
 static HWND g_refreshButton = nullptr;
+// 窗口自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：当前 DPI、按它创建的字体；像素常量经 SF() 换算
+static UINT g_shortcutFixDpi = 96;
+static HFONT g_shortcutFixFont = nullptr;
+
+static int SF(const int value96) {
+	return MulDiv(value96, static_cast<int>(g_shortcutFixDpi), 96);
+}
+
+static void ApplyShortcutFixFont(HWND hwnd) {
+	if (g_shortcutFixFont) DeleteObject(g_shortcutFixFont);
+	g_shortcutFixFont = CreateFontW(SF(-12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+									OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
+	for (HWND child = GetWindow(hwnd, GW_CHILD); child != nullptr; child = GetWindow(child, GW_HWNDNEXT)) {
+		SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(g_shortcutFixFont), TRUE);
+	}
+}
 static std::vector<FileInfo> g_invalidShortcuts;
 static std::vector<FileInfo> g_sourceShortcuts;
 static std::vector<std::wstring> g_candidatePaths;
@@ -124,39 +140,41 @@ static void RefreshInvalidListView() {
 static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_CREATE: {
+			g_shortcutFixDpi = Dpi::WindowDpi(hwnd);
 			// 创建刷新按钮
 			g_refreshButton = CreateWindowExW(0, L"BUTTON", L"刷新",
 									WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-									10, 10, 80, 30, hwnd, (HMENU)1001, GetModuleHandle(nullptr), nullptr);
+									SF(10), SF(10), SF(80), SF(30), hwnd, (HMENU)1001, GetModuleHandle(nullptr), nullptr);
 
 			// 创建左侧无效快捷方式列表
 			g_invalidListView = CreateWindowExW(0, WC_LISTVIEW, L"",
 												WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
-												10, 45, 300, 365, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+												SF(10), SF(45), SF(300), SF(365), hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			ListView_SetExtendedListViewStyle(g_invalidListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 
 			// 设置左侧列表的列
 			LVCOLUMNW col = {};
 			col.mask = LVCF_TEXT | LVCF_WIDTH;
 			col.pszText = const_cast<LPWSTR>(L"无效快捷方式");
-			col.cx = 150;
+			col.cx = SF(150);
 			ListView_InsertColumn(g_invalidListView, 0, &col);
-			
+
 			// 添加第二列显示完整路径
 			col.pszText = const_cast<LPWSTR>(L"完整路径");
-			col.cx = 130;
+			col.cx = SF(130);
 			ListView_InsertColumn(g_invalidListView, 1, &col);
 
 			// 创建右侧候选路径列表
 			g_candidateListView = CreateWindowExW(0, WC_LISTVIEW, L"",
 												  WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
-												  320, 10, 350, 400, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+												  SF(320), SF(10), SF(350), SF(400), hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			ListView_SetExtendedListViewStyle(g_candidateListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 
 			// 设置右侧列表的列
 			col.pszText = const_cast<LPWSTR>(L"可能的修复路径");
-			col.cx = 330;
+			col.cx = SF(330);
 			ListView_InsertColumn(g_candidateListView, 0, &col);
+			ApplyShortcutFixFont(hwnd);
 			RefreshInvalidListView();
 			break;
 		}
@@ -312,10 +330,22 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 			int height = rect.bottom - rect.top;
 
 			// 调整控件大小
-			SetWindowPos(g_refreshButton, nullptr, 10, 10, 80, 30, SWP_NOZORDER);
-			SetWindowPos(g_invalidListView, nullptr, 10, 45, width / 2 - 15, height - 55, SWP_NOZORDER);
-			SetWindowPos(g_candidateListView, nullptr, width / 2 + 5, 10, width / 2 - 15, height - 20, SWP_NOZORDER);
+			SetWindowPos(g_refreshButton, nullptr, SF(10), SF(10), SF(80), SF(30), SWP_NOZORDER);
+			SetWindowPos(g_invalidListView, nullptr, SF(10), SF(45), width / 2 - SF(15), height - SF(55), SWP_NOZORDER);
+			SetWindowPos(g_candidateListView, nullptr, width / 2 + SF(5), SF(10), width / 2 - SF(15), height - SF(20), SWP_NOZORDER);
 			break;
+		}
+
+		case WM_DPICHANGED: {
+			// 换显示器：字体重建、列宽等比缩放，再移到建议矩形（WM_SIZE 重排控件）
+			const UINT oldDpi = g_shortcutFixDpi;
+			g_shortcutFixDpi = Dpi::DpiFromWParam(wParam);
+			if (g_shortcutFixDpi != oldDpi) {
+				ApplyShortcutFixFont(hwnd);
+				Dpi::RescaleChildWindows(hwnd, oldDpi, g_shortcutFixDpi);
+			}
+			Dpi::ApplySuggestedRect(hwnd, lParam);
+			return 0;
 		}
 
 		case WM_CLOSE: {
@@ -324,6 +354,10 @@ static LRESULT CALLBACK ShortcutFixWndProc(HWND hwnd, UINT msg, WPARAM wParam, L
 		}
 
 		case WM_DESTROY: {
+			if (g_shortcutFixFont) {
+				DeleteObject(g_shortcutFixFont);
+				g_shortcutFixFont = nullptr;
+			}
 			g_shortcutFixHwnd = nullptr;
 			g_invalidListView = nullptr;
 			g_candidateListView = nullptr;
@@ -374,13 +408,16 @@ static void ShowShortcutFixWindow(HWND hwnd,std::vector<FileInfo>& list) {
 
 	g_sourceShortcuts = list;
 
+	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）
+	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	RegisterShortcutFixClass();
 
-	// 获取屏幕尺寸并计算居中位置
+	// 获取主显示器尺寸（物理像素）并按其 DPI 换算窗口尺寸、居中
+	const UINT dpi = Dpi::PrimaryMonitorDpi();
 	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
 	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-	int windowWidth = 1150;
-	int windowHeight = 720;
+	int windowWidth = Dpi::Scale(1150, dpi);
+	int windowHeight = Dpi::Scale(720, dpi);
 	int x = (screenWidth - windowWidth) / 2;
 	int y = (screenHeight - windowHeight) / 2;
 

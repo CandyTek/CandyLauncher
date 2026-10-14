@@ -509,12 +509,16 @@ public:
 		}
 	}
 
+	// 下面几个回调里插件可能弹菜单、创建自己的窗口。主窗口是 Per-Monitor 窗口，从它的消息里调用插件时线程处于
+	// 主窗口的 DPI 上下文；插件窗口尚未自行适配 DPI，所以切回不感知上下文让系统照旧整体拉伸它们。
+	// 带屏幕坐标的回调由调用方在不感知上下文里取坐标（见 CandyLauncher.cpp / EditManager.hpp）
 	int DispatchSendHotKey(std::shared_ptr<BaseAction>& action, const UINT vk, const UINT uint, const WPARAM wparam) {
 		uint64_t userData = 0;
 		PluginInfo* info = ResolveActionOwner(action.get(), userData);
 		if (!info || !CL_PLUGIN_HAS(*info, on_hotkey)) {
 			return 0;
 		}
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
 		return info->api->on_hotkey(info->self, userData, vk, uint, wparam);
 	}
 
@@ -529,6 +533,7 @@ public:
 		if (!CL_PLUGIN_HAS(*info, on_item_right_click)) {
 			return false;
 		}
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
 		return info->api->on_item_right_click(info->self, userData, parentHwnd, screenPt) != 0;
 	}
 
@@ -543,6 +548,7 @@ public:
 		if (!CL_PLUGIN_HAS(*info, on_item_shift_right_click)) {
 			return false;
 		}
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
 		return info->api->on_item_shift_right_click(info->self, userData, parentHwnd, screenPt) != 0;
 	}
 
@@ -552,6 +558,7 @@ public:
 		if (!info || !CL_PLUGIN_HAS(*info, on_item_begin_drag)) {
 			return false;
 		}
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
 		return info->api->on_item_begin_drag(info->self, userData, sourceHwnd, screenPt) != 0;
 	}
 
@@ -570,6 +577,8 @@ public:
 
 	static bool DispatchActionExecute(std::shared_ptr<BaseAction>& action, std::wstring& arg) {
 		if (!action) return false;
+		// 执行动作时插件常会打开自己的窗口（索引管理器等），它们还没有自行适配 DPI，见 DispatchSendHotKey 的说明
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
 		if (!dynamic_cast<PluginActionProxy*>(action.get())) {
 			const auto action1 = std::dynamic_pointer_cast<BaseLaunchAction>(action);
 			if (!action1) return false;
@@ -598,6 +607,7 @@ public:
 		if (it == m_plugins.end() || !it->second.loaded || !CL_PLUGIN_HAS(it->second, on_setting_item_execute)) {
 			return;
 		}
+		Dpi::ThreadContextScope unaware(Dpi::UnawareContext());
 		it->second.api->on_setting_item_execute(it->second.self, utf8_to_wide(key).c_str(), parentHwnd);
 	}
 
