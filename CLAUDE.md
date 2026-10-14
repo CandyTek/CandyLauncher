@@ -67,22 +67,35 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - **plugins/sdk/CandyPluginSdk.hpp**: Header-only C++ layer compiled into plugins (`candy::Plugin`, `candy::Host`, `candy::ActionSet<T>`, `CANDY_PLUGIN_EXPORT`)
 - **plugins/PluginManager.hpp**: Plugin core, loads plugins and dispatches events; `PluginHostApi.hpp` implements `CL_HostApi`, `PluginActionProxy.hpp` holds host-owned copies of plugin list items
 - **plugins/BaseAction.hpp**: Element base class of program main list (host only, never crosses the DLL boundary)
-- **plugins/PluginI18n.hpp**: Plugin string tables (`plugins/lang/<dll>/<lang>.json`) behind `CL_HostApi::get_string`; plugins call `Tr(key, fallback)`. Design and migration rules: [DOC_PLUGIN_I18N.md](docs/DOC_PLUGIN_I18N.md)
+- **plugins/PluginI18n.hpp**: Plugin string tables behind `CL_HostApi::get_string`; plugins call `Tr(key, fallback)`. Strings live in the `"strings"` object of each `<dll>.plugin.json` (all current plugins) or optionally in `plugins/lang/<dll>/<lang>.json`. Design and migration rules: [DOC_PLUGIN_I18N.md](docs/DOC_PLUGIN_I18N.md)
 
 #### Plugin module
-- **[Bookmark](plugins/Bookmark/BookmarkPlugin.cpp**: Indexes bookmarks of browsers such as Edge Chrome
-- **[Calc](plugins/CalcExprtk/CalcPlugin.cpp**: Scientific calculator
-- **[CherryTree](plugins/CherryTree/CherryTreePlugin.cpp**: Indexes all notes of cherrytree software
-- **[ExamplePlugin](plugins/Example/ExamplePlugin.cpp**: A simple plugin dll specification use case
-- **[FeatureLaunch](plugins/FeatureLaunch/FeatureLaunchPlugin.cpp**: Navigate some settings and functions of the main program
-- **[Folder](plugins/Folder/FolderPlugin.cpp)**: Read `config_folder_plugin.json` configuration file and scan the files in the specified directory,and environment variable %PATH% path, and read the UWP app list. IndexedManager.hpp is all index management and viewers for the Folder plugin
-- **[JetbrainsWorkspaces](plugins/JetbrainsWorkspaces/Main.cpp)**: Index all ide software history open projects of jetbrains
-- **[RegistryPlugin.cpp](plugins/Registry/RegistryPlugin.cpp)**: Navigation system registry items
+- **[AirPods](plugins/AirPods/AirPodsPlugin.cpp)**: Shows the battery level of connected Apple headphones
+- **[Bookmark](plugins/Bookmark/BookmarkPlugin.cpp)**: Indexes bookmarks of browsers such as Edge Chrome
+- **[BrowserHistory](plugins/BrowserHistory/BrowserHistoryPlugin.cpp)**: Indexes browser history (shares `sqlite3.dll` with CherryTree/EverNote)
+- **[Calc](plugins/CalcExprtk/CalcPlugin.cpp)**: Scientific calculator
+- **[CherryTree](plugins/CherryTree/CherryTreePlugin.cpp)**: Indexes all notes of cherrytree software
+- **[EverNote](plugins/EverNote/EverNotePlugin.cpp)**: Indexes the local Evernote database
+- **[ExamplePlugin](plugins/Example/ExamplePlugin.cpp)**: A simple plugin dll specification use case; `plugins/ExampleC` and `plugins/ExampleRust` are standalone C/Rust ABI examples
+- **[FeatureLaunch](plugins/FeatureLaunch/FeatureLaunchPlugin.cpp)**: Navigate some settings and functions of the main program
+- **[Folder](plugins/Folder/FolderPlugin.cpp)**: Read `config_folder_plugin.json` configuration file and scan the files in the specified directory,and environment variable %PATH% path, and read the UWP app list. IndexManagerWindow.hpp / IndexManagerLogic.hpp are the index management and viewers for the Folder plugin
+- **[JetbrainsWorkspaces](plugins/JetbrainsWorkspaces/JbPlugin.cpp)**: Index all ide software history open projects of jetbrains
+- **[NodeJsPlugin](plugins/NodeJsPlugin/NodeJsPlugin.cpp)**: Runs Wox / Flow Launcher style JavaScript plugins through Node.js (`node-host.js` bridge, scripts under `plugins/NodeJsPlugin/scripts`). Docs: [DOC_NODEJSPLUGIN.md](plugins/NodeJsPlugin/DOC_NODEJSPLUGIN.md)
+- **[OneNote](plugins/OneNote/OneNotePlugin.cpp)**: Indexes local OneNote notebooks (built only when the OneNote type library is available)
+- **[PluginBrowser](plugins/PluginBrowser/PluginBrowserPlugin.cpp)**: Lists installed plugins and toggles them with Enter
+- **[Registry](plugins/Registry/RegistryPlugin.cpp)**: Navigation system registry items
 - **[RunningApp](plugins/RunningApp/RunningAppPlugin.cpp)**: Index all windows running in the system
+- **[ScreenTools](plugins/ScreenTools/ScreenToolsPlugin.cpp)**: Scrolling screenshots and QR code recognition (zxing-cpp)
 - **[Service](plugins/Service/ServicePlugin.cpp)**: Index system service item
+- **[SmallToolBox](plugins/SmallToolBox/ToolBoxPlugin.cpp)**: A collection of small utilities (QR code generation etc.)
+- **[TextFile](plugins/TextFile/TextFilePlugin.cpp)**: Indexes text files in configured folders
 - **[UnitConverter](plugins/UnitConverter/UnitConverterPlugin.cpp)**: Provides the function of inputting relevant data and converting it to other units
-- **[ValueGenerator](plugins/ValueGenerator/Main.cpp)**: Generate uuid and string hash calc and string encode/decode
-- **[VSCodeWorkspaces](plugins/VSCodeWorkspaces/Main.cpp)**: Index VSCode history open projects
+- **[ValueGenerator](plugins/ValueGenerator/ValueGeneratorPlugin.cpp)**: Generate uuid and string hash calc and string encode/decode
+- **[VisualStudio](plugins/VisualStudio/VisualStudioPlugin.cpp)**: Index recently opened Visual Studio projects and solutions
+- **[VSCodeWorkspaces](plugins/VSCodeWorkspaces/VscPlugin.cpp)**: Index VSCode history open projects
+- **[WebSearch](plugins/WebSearch/WebSearchPlugin.cpp)**: Search the web with keyword shortcuts (`config_websearch_plugin.json`)
+- **[WindowsSearch](plugins/WindowsSearch/WindowsSearchPlugin.cpp)**: Search files and folders through the Windows indexing service
+- **[PluginTest](plugins/PluginTest)**: Host-side plugin ABI test harness (ctest), not a shipped plugin
 
 ### Keyboard Shortcuts
 - **Alt+K**: Show or hide the launcher window

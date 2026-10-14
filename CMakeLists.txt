@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.10)
 # 应用版本号唯一来源：改这里即可，会同步到 AppVersion.h / VERSIONINFO 资源 / 关于页 / 更新检查
 # GitHub Release 的 tag 使用 v<MAJOR>.<MINOR>.<PATCH>（例如 v1.2.0）
-project(CandyLauncher VERSION 1.2.0)
+project(CandyLauncher VERSION 1.0.0)
 #project(CandyLauncher C CXX)
 
 # 用到17的许多特性，filesystem快速搜索文件的功能，方便的内联变量

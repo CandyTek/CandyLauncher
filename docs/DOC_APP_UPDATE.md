@@ -47,7 +47,7 @@ This repository is now integrated with GitHub Release update capabilities, with 
 
 - The app version is defined once: `project(CandyLauncher VERSION x.y.z)` in `CMakeLists.txt`
 - CMake `configure_file`s `common/AppVersion.h.in` into `<build>/generated/common/AppVersion.h`, which provides:
-    - `APP_VERSION_STRING` (`"1.2.0"`), `APP_VERSION_RC` (`1,2,0,0`), `APP_VERSION_MAJOR/MINOR/PATCH`, `APP_ARCH_STRING`
+    - `APP_VERSION_STRING` (`"1.0.0"`), `APP_VERSION_RC` (`1,0,0,0`), `APP_VERSION_MAJOR/MINOR/PATCH`, `APP_ARCH_STRING`
 - Consumers of that header (never hard-code a version anywhere else):
     - `CandyLauncher.rc` and `skin_editor/SkinEditor.rc` `VERSIONINFO` blocks (file properties in Explorer)
     - `util/UpdateManager.hpp` `ExtractCurrentVersionString()` passed to the GitHub updater
@@ -58,7 +58,7 @@ This repository is now integrated with GitHub Release update capabilities, with 
     3. Create the GitHub release with tag `vx.y.z` (SemVer, `v` prefix); the updater strips the `v` before comparing
 - Release comparison uses natural version comparison, so mixed styles can block update prompts
     - Example that broke before: local `1.0.20260414` vs tag `1.1` => local treated as newer
-    - Legacy tags (`0.0.1`, `0.1`, `1.1`, ...) are all below `1.2.0`; keep every new tag above the previous one
+    - Legacy tags (`0.0.1`, `0.1`, `1.1`, ...) predate the `v` scheme; the first SemVer release is `v1.0.0`. Because `1.1` sorts above `1.0.0`, delete or mark the old `1.1` release as a pre-release before publishing, otherwise a 1.0.0 build will offer the legacy package as an update
 
 
 ### For portable zip updates, the current approach is:

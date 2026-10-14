@@ -11,7 +11,7 @@ call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -no_logo -arch=amd64 -host_arch=amd6
 cd /d "%~dp0..\.."
 
 @REM ScreenToolsQrTest
-cmake --build cmake-build-release-ninja-vs --target PluginTest SplitWordsTest AutomationActionModelTest ScreenToolsZxingQrTest UrlUtilTest CalcEngineTest --config Release
+cmake --build cmake-build-release-ninja-vs --target PluginTest SplitWordsTest AutomationActionModelTest ScreenToolsZxingQrTest UrlUtilTest CalcEngineTest UnitConverterTest FuzzyScorerTest --config Release
 if errorlevel 1 exit /b %errorlevel%
 ctest -C Release --test-dir cmake-build-release-ninja-vs --output-on-failure
 exit /b %errorlevel%

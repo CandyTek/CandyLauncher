@@ -93,3 +93,6 @@ window/todo.md
 plugins/ExampleC/build/
 plugins/ExampleRust/target/
 plugins/ExampleRust/Cargo.lock
+
+# Release packaging output (scripts/release/run_package.cmd)
+/dist

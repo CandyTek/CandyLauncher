@@ -1,4 +1,4 @@
-# CandyLauncher
+﻿# CandyLauncher
 
 CandyLauncher is a lightweight Windows shortcut launcher written in C++, imitating Wox, and quickly launches the actions in each plug-in through search
 
@@ -19,6 +19,17 @@ CandyLauncher is a lightweight Windows shortcut launcher written in C++, imitati
 - Support reading `config_folder_plugin.json` and scanning directories
 - Theme skin and window effects can be adjusted through configuration files
 - Support loading various custom plugins
+
+## Download and run
+
+CandyLauncher ships as a portable zip, no installer. Download `CandyLauncher-vX.Y.Z-x64.zip` from [Releases](https://github.com/CandyTek/CandyLauncher/releases), extract it anywhere and run `CandyLauncher.exe`.
+
+### Runtime requirements
+
+- Windows 10 or later (64-bit)
+- [Microsoft Visual C++ 2015-2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe). If `CandyLauncher.exe` reports that `MSVCP140.dll` or `VCRUNTIME140.dll` is missing, install this package.
+- Optional: [Everything](https://www.voidtools.com/) for instant file search in the Folder plugin
+- Optional: [Node.js](https://nodejs.org/) for the Node.js plugin bridge (Wox / Flow Launcher JavaScript plugins)
 
 ## Build method
 
@@ -90,3 +101,11 @@ cmake -S . -B build -G "MinGW Makefiles"
 cmake --build build --config Debug
 ctest -C Debug --test-dir build
 ```
+
+## Release packaging
+
+```commandline
+scriptseleaseun_package.cmd
+```
+
+Builds the Release configuration, runs the tests and writes `dist\CandyLauncher-v<version>-<arch>.zip` containing only runtime files. Use `--no-build` to package an existing Release build. See [docs/DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md) for the release and update flow.

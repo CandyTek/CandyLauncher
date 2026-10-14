@@ -1,4 +1,4 @@
-# CandyLauncher
+﻿# CandyLauncher
 
 CandyLauncher 是一个用 C++ 编写的轻量级 Windows 快捷启动器，仿 wox，通过搜索快速启动各插件里的行为
 
@@ -19,6 +19,17 @@ CandyLauncher 是一个用 C++ 编写的轻量级 Windows 快捷启动器，仿 
 - 支持读取 `config_folder_plugin.json` 扫描目录
 - 主题皮肤及窗口特效可通过配置文件调整
 - 支持加载各种自定义插件
+
+## 下载与运行
+
+CandyLauncher 以便携版 zip 发布，无需安装。在 [Releases](https://github.com/CandyTek/CandyLauncher/releases) 下载 `CandyLauncher-vX.Y.Z-x64.zip`，解压到任意目录后运行 `CandyLauncher.exe`。
+
+### 运行依赖
+
+- Windows 10 及以上（64 位）
+- [Microsoft Visual C++ 2015-2022 运行库 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)。如果启动时提示缺少 `MSVCP140.dll` 或 `VCRUNTIME140.dll`，请安装此运行库。
+- 可选：[Everything](https://www.voidtools.com/)，为 Folder 插件提供即时文件搜索
+- 可选：[Node.js](https://nodejs.org/)，用于 Node.js 插件桥接（运行 Wox / Flow Launcher 的 JavaScript 插件）
 
 ## 构建方式
 
@@ -90,3 +101,11 @@ cmake -S . -B build -G "MinGW Makefiles"
 cmake --build build --config Debug
 ctest -C Debug --test-dir build
 ```
+
+## 发布打包
+
+```commandline
+scriptseleaseun_package.cmd
+```
+
+构建 Release 配置、运行测试，并生成只包含运行时文件的 `dist\CandyLauncher-v<版本>-<架构>.zip`。加 `--no-build` 参数可直接打包已有的 Release 构建。发布与更新流程见 [docs/DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)。

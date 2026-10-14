@@ -6,7 +6,7 @@
 #define APP_VERSION_MINOR @PROJECT_VERSION_MINOR@
 #define APP_VERSION_PATCH @PROJECT_VERSION_PATCH@
 
-// "1.2.0" - compared against GitHub release tags (tag "v1.2.0" is trimmed to "1.2.0" by the updater)
+// "1.0.0" - compared against GitHub release tags (tag "v1.0.0" is trimmed to "1.0.0" by the updater)
 #define APP_VERSION_STRING "@PROJECT_VERSION@"
 
 // 1,2,0,0 - numeric form for VERSIONINFO FILEVERSION / PRODUCTVERSION
