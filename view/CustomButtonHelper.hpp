@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <commctrl.h>
+#include "../util/FontUtil.hpp"
 
 // Button styles enumeration
 enum ButtonStyle {
@@ -66,14 +67,14 @@ static void InitializeCustomButtonResources() {
 		hFontDefault = CreateFontW(
 			20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
+			CLEARTYPE_QUALITY, VARIABLE_PITCH, ResolveFontFamily(L"Microsoft YaHei UI").c_str());
 	}
 
 	if (!hFontButton) {
 		hFontButton = CreateFontW(
 			20, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
+			CLEARTYPE_QUALITY, VARIABLE_PITCH, ResolveFontFamily(L"Microsoft YaHei UI").c_str());
 	}
 
 	// Initialize brushes

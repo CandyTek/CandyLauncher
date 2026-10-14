@@ -78,6 +78,10 @@ struct PluginCatalogInfo {
 	std::wstring defaultSettingJson;
 	// Informational, from the manifest; the live keywords come from set_trigger_keywords.
 	std::vector<std::wstring> keywords;
+	// Manifest "min_windows_version" ("7" / "8" / "8.1" / "10" / "11" or a kernel version like "6.1"); empty = Windows 7+.
+	std::wstring minWindowsVersion;
+	// Non-empty when the manifest says this plugin cannot run here (host api / Windows version); never loaded then.
+	std::wstring unsupportedReason;
 	bool enabled = true;
 	bool fromManifest = false;
 	std::filesystem::file_time_type fileTime{};
@@ -1313,7 +1317,41 @@ private:
 		return path.replace_extension().wstring() + PLUGIN_MANIFEST_SUFFIX;
 	}
 
+	// Manifest "min_windows_version": "7" / "8" / "8.1" / "10" / "11", or a kernel version "6.1" / "10.0.19041".
+	static bool ParseWindowsVersionRequirement(std::string text, DWORD& major, DWORD& minor, DWORD& build) {
+		text.erase(std::remove_if(text.begin(), text.end(),
+			[](unsigned char c) { return std::isspace(c) || c == '"'; }), text.end());
+		major = minor = build = 0;
+		if (text == "7") { major = 6; minor = 1; return true; }
+		if (text == "8") { major = 6; minor = 2; return true; }
+		if (text == "8.1") { major = 6; minor = 3; return true; }
+		if (text == "10") { major = 10; return true; }
+		if (text == "11") { major = 10; build = 22000; return true; }
+		unsigned long parts[3] = {0, 0, 0};
+		if (text.empty() || !std::isdigit(static_cast<unsigned char>(text[0]))) return false;
+		if (sscanf_s(text.c_str(), "%lu.%lu.%lu", &parts[0], &parts[1], &parts[2]) < 1) return false;
+		major = parts[0];
+		minor = parts[1];
+		build = parts[2];
+		return true;
+	}
+
+	// True when the running Windows satisfies the manifest requirement; unparsable values are ignored with a warning.
+	static bool IsWindowsVersionSatisfied(const std::string& requirement, const std::wstring& dllPath) {
+		DWORD needMajor = 0, needMinor = 0, needBuild = 0;
+		if (!ParseWindowsVersionRequirement(requirement, needMajor, needMinor, needBuild)) {
+			Logw(TAG, L"Unrecognized min_windows_version \"", utf8_to_wide(requirement), L"\", ignored: ", dllPath);
+			return true;
+		}
+		DWORD major = 0, minor = 0, build = 0;
+		if (!GetWindowsVersionNumbers(major, minor, build)) return true;
+		if (major != needMajor) return major > needMajor;
+		if (minor != needMinor) return minor > needMinor;
+		return build >= needBuild;
+	}
+
 	// "<stem>.plugin.json" next to the DLL describes the plugin without running its code.
+	// Requirements the host cannot meet are recorded in unsupportedReason instead of failing (so the DLL is never probed).
 	static bool ReadPluginManifest(const std::wstring& dllPath, PluginCatalogInfo& catalogInfo) {
 		const std::wstring manifestPath = ManifestPathFor(dllPath);
 		std::error_code ec;
@@ -1340,8 +1378,15 @@ private:
 			if (manifest.contains("min_host_api_minor")) {
 				const auto minor = manifest.at("min_host_api_minor").get<uint32_t>();
 				if (minor > CL_API_VERSION_MINOR) {
-					Logw(TAG, L"Plugin needs host api 2.", minor, L", skipped: ", dllPath);
-					return false;
+					catalogInfo.unsupportedReason = L"needs host api 2." + std::to_wstring(minor);
+				}
+			}
+			if (manifest.contains("min_windows_version")) {
+				const nlohmann::json& value = manifest.at("min_windows_version");
+				const std::string text = value.is_string() ? value.get<std::string>() : value.dump();
+				catalogInfo.minWindowsVersion = utf8_to_wide(text);
+				if (catalogInfo.unsupportedReason.empty() && !IsWindowsVersionSatisfied(text, dllPath)) {
+					catalogInfo.unsupportedReason = L"needs Windows " + catalogInfo.minWindowsVersion + L" or later";
 				}
 			}
 			catalogInfo.fromManifest = true;
@@ -1425,6 +1470,11 @@ private:
 				return;
 			}
 		}
+		if (!catalogInfo.unsupportedReason.empty()) {
+			// 当前系统 / 主程序不满足清单要求：不加入目录也不加载（例如 AirPods 插件需要 Windows 10 的 WinRT 蓝牙）
+			Logw(TAG, L"Plugin skipped (", catalogInfo.unsupportedReason, L"): ", dllPath);
+			return;
+		}
 		catalogInfo.strings = PluginI18n::Load(dllPath, ManifestPathFor(dllPath));
 		if (IsPackageInCatalog(catalogInfo.pkgName)) {
 			Logw(TAG, L"Duplicate package_name ", catalogInfo.pkgName, L", skipped: ", dllPath);
@@ -1477,7 +1527,22 @@ private:
 		for (const auto& entry : fs::directory_iterator(ShadowDir(), ec)) {
 			fs::remove(entry.path(), ec);
 		}
-		AddDllDirectory(m_pluginDir.c_str());
+		if (const auto addDllDirectory = GetAddDllDirectory()) {
+			addDllDirectory(m_pluginDir.c_str());
+		} else {
+			// Windows 7 without KB2533623: no per-process search list, fall back to the legacy global one.
+			SetDllDirectoryW(m_pluginDir.c_str());
+		}
+	}
+
+	// AddDllDirectory / LOAD_LIBRARY_SEARCH_* exist on Windows 8+ (Windows 7 only with KB2533623).
+	// Resolved at runtime so the exe has no static import of them; otherwise Windows 7 refuses to start it
+	// with "entry point AddDllDirectory not found in kernel32.dll".
+	using AddDllDirectoryFn = PVOID(WINAPI*)(PCWSTR);
+	static AddDllDirectoryFn GetAddDllDirectory() {
+		static const AddDllDirectoryFn fn = reinterpret_cast<AddDllDirectoryFn>(
+			GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "AddDllDirectory"));
+		return fn;
 	}
 
 	HMODULE LoadPluginLibrary(const std::wstring& dllPath, std::wstring& loadedPath) const {
@@ -1496,8 +1561,12 @@ private:
 		}
 		loadedPath = shadow;
 		// Dependencies next to the original DLL still resolve through AddDllDirectory(m_pluginDir).
-		return LoadLibraryExW(shadow.c_str(), nullptr,
-							LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS);
+		if (GetAddDllDirectory()) {
+			return LoadLibraryExW(shadow.c_str(), nullptr,
+								LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS);
+		}
+		// The LOAD_LIBRARY_SEARCH_* flags are rejected on the same systems; SetDllDirectoryW above covers m_pluginDir.
+		return LoadLibraryW(shadow.c_str());
 	}
 
 	bool LoadSinglePlugin(const std::wstring& dllPath, PluginInfo& info) {

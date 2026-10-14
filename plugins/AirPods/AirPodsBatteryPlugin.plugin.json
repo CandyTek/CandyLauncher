@@ -4,6 +4,7 @@
 	"description": "Type airpods to show the battery level of connected Apple headphones",
 	"version": "1.1.0",
 	"min_host_api_minor": 3,
+	"min_windows_version": "10",
 	"strings": {
 		"en-US": {
 			"plugin": {

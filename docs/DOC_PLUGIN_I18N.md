@@ -37,6 +37,7 @@ DLL 名），`plugins/PluginCommon.cmake` 在构建后自动复制到 DLL 旁边
 	"version": "1.1.0",
 	"keywords": ["service "],
 	"min_host_api_minor": 3,
+	"min_windows_version": "7",
 	"default_setting_json": { "version": 1, "prefList": [ ... ] },
 	"strings": {
 		"zh-CN": {
@@ -60,6 +61,7 @@ DLL 名），`plugins/PluginCommon.cmake` 在构建后自动复制到 DLL 旁边
 | `version` | 和 DLL 表里的版本不一致时记录警告 |
 | `keywords` | 信息性，真正的触发关键字仍由 `set_trigger_keywords` 决定 |
 | `min_host_api_minor` | 主程序 API 小版本低于它时跳过该插件 |
+| `min_windows_version` | 支持的最低 Windows 版本，`"7"` / `"8"` / `"8.1"` / `"10"` / `"11"`（也接受 `"6.1"`、`"10.0.19041"` 这类内核版本号）。省略时为 `"7"`；系统低于它时该插件不列入目录也不加载（如 AirPods 插件需要 `"10"`） |
 | `default_setting_json` | 设置页的默认设置项，可以是对象或字符串。放在清单里后 `CANDY_PLUGIN_EXPORT` 传 `nullptr`；两处都有时以清单为准 |
 | `strings` | `{ "<语言代码>": { ... } }`，见下文 |
 

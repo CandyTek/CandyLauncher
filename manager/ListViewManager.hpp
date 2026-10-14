@@ -22,6 +22,7 @@
 #include "plugins/BaseLaunchAction.hpp"
 #include "plugins/PluginManager.hpp"
 #include "util/ColorUtil.hpp"
+#include "util/FontUtil.hpp"
 #include "util/PaintProfiler.hpp"
 #include "BackgroundLayerPainter.hpp"
 
@@ -475,20 +476,16 @@ static void listViewInitializeGraphicsResources() {
 	g_listItemTextColorBrushSelected1 = std::make_unique<Gdiplus::SolidBrush>(itemFontGdiplusColorSelected1);
 	g_listItemTextColorBrushSelected2 = std::make_unique<Gdiplus::SolidBrush>(itemFontGdiplusColorSelected2);
 
-	Gdiplus::FontFamily fontFamily1(itemFontFamily1.c_str());
-	Gdiplus::FontFamily fontFamily2(itemFontFamily2.c_str());
-	Gdiplus::FontFamily fontFamilySelected1(itemFontFamilySelected1.c_str());
-	Gdiplus::FontFamily fontFamilySelected2(itemFontFamilySelected2.c_str());
-	g_listItemFont1 = std::make_unique<Gdiplus::Font>(&fontFamily1, static_cast<float>(g_item_font_size_1),
-													itemFontStyle1, Gdiplus::UnitPixel);
-	g_listItemFont2 = std::make_unique<Gdiplus::Font>(&fontFamily2, static_cast<float>(g_item_font_size_2),
-													itemFontStyle2, Gdiplus::UnitPixel);
-	g_listItemFontSelected1 = std::make_unique<Gdiplus::Font>(&fontFamilySelected1,
-															static_cast<float>(g_item_font_size_selected_1),
-															itemFontStyleSelected1, Gdiplus::UnitPixel);
-	g_listItemFontSelected2 = std::make_unique<Gdiplus::Font>(&fontFamilySelected2,
-															static_cast<float>(g_item_font_size_selected_2),
-															itemFontStyleSelected2, Gdiplus::UnitPixel);
+	// 皮肤字体在当前系统不存在时（如 Windows 7 没有 Microsoft YaHei UI）强制退回到一定存在的字体，
+	// GDI+ 不会自己替换缺失字体
+	g_listItemFont1 = CreateGdiplusFont(itemFontFamily1, static_cast<float>(g_item_font_size_1),
+										itemFontStyle1, Gdiplus::UnitPixel);
+	g_listItemFont2 = CreateGdiplusFont(itemFontFamily2, static_cast<float>(g_item_font_size_2),
+										itemFontStyle2, Gdiplus::UnitPixel);
+	g_listItemFontSelected1 = CreateGdiplusFont(itemFontFamilySelected1, static_cast<float>(g_item_font_size_selected_1),
+												itemFontStyleSelected1, Gdiplus::UnitPixel);
+	g_listItemFontSelected2 = CreateGdiplusFont(itemFontFamilySelected2, static_cast<float>(g_item_font_size_selected_2),
+												itemFontStyleSelected2, Gdiplus::UnitPixel);
 
 	// 行高与屏幕 DPI 相关，用屏幕 DC 测一次即可（列表窗口与屏幕 DPI 一致）
 	if (const HDC screenDc = GetDC(nullptr)) {

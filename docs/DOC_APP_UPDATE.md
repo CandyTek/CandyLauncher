@@ -54,7 +54,7 @@ This repository is now integrated with GitHub Release update capabilities, with 
     - `common/settings.json` about-page item `pref_version_name` uses `{version}` / `{arch}` placeholders, expanded in `util/MyJsonUtil.hpp`
 - To release a new version:
     1. Bump `project(CandyLauncher VERSION x.y.z)` and re-run CMake generate
-    2. Build, package `CandyLauncher.zip`
+    2. Build, package `CandyLauncher.zip` (`scripts\release\run_package.cmd`; only the skins listed in `scripts\release\package_skins.txt` are shipped)
     3. Create the GitHub release with tag `vx.y.z` (SemVer, `v` prefix); the updater strips the `v` before comparing
 - Release comparison uses natural version comparison, so mixed styles can block update prompts
     - Example that broke before: local `1.0.20260414` vs tag `1.1` => local treated as newer

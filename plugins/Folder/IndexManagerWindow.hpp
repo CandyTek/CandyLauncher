@@ -2,6 +2,7 @@
 
 #include <thread>
 #include "IndexManagerLogic.hpp"
+#include "../../util/FontUtil.hpp"
 
 static HHOOK g_indexMgrKeyHook = nullptr;
 
@@ -39,7 +40,7 @@ static void initFont(HWND hwnd) {
 		FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, VARIABLE_PITCH,
-		L"Microsoft YaHei UI"
+		ResolveFontFamily(L"Microsoft YaHei UI").c_str()
 	);
 }
 

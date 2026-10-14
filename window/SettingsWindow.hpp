@@ -15,6 +15,7 @@
 #include "../common/I18nResource.h"
 #include "../common/Resource.h"
 #include "../util/BaseTools.hpp"
+#include "../util/FontUtil.hpp"
 #include "../util/MainTools.hpp"
 #include "../view/ScrollViewController.hpp"
 #include "SettingsManager.hpp"
@@ -64,7 +65,7 @@ static void InitializeSettingWindowResources() {
 		pref_edit_hfont = CreateFontW(
 			-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 			DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-			CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Microsoft YaHei UI");
+			CLEARTYPE_QUALITY, VARIABLE_PITCH, ResolveFontFamily(L"Microsoft YaHei UI").c_str());
 	}
 	InitializeCustomComboBoxResources();
 }

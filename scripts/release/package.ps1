@@ -18,12 +18,16 @@
 .PARAMETER OutDir
     Output directory for the staging folder and the zip. Default: dist
 
+.PARAMETER SkinList
+    Text file listing the skins to ship, one name per line ("#" comments). Default: scriptselease\package_skins.txt
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\package.ps1
 #>
 param(
 	[string]$BuildDir = "cmake-build-release-ninja-vs",
-	[string]$OutDir = "dist"
+	[string]$OutDir = "dist",
+	[string]$SkinList = (Join-Path $PSScriptRoot "package_skins.txt")
 )
 
 $ErrorActionPreference = "Stop"
@@ -125,8 +129,54 @@ Copy-Required (Join-Path $buildPath "sqlite3.dll") $stage
 # Pinyin dictionaries (util/PinyinHelper.hpp loads <exe>\dict)
 Copy-Tree (Join-Path $buildPath "dict") (Join-Path $stage "dict") @("*")
 
-# Skins; test skins stay out of the release
-Copy-Tree (Join-Path $buildPath "skins") (Join-Path $stage "skins") @("*") @("skin_test_*.json")
+# Skins: only the ones listed in $SkinList (scripts\release\package_skins.txt by default) are shipped.
+# "default" and "night" are hard-wired in the app (DEFAULT_SKIN_PATH / NIGHT_SKIN_PATH) and always go in.
+# For each name: skins\skin_<name>.json, the folder skins\<name>\ when it exists, and every file the json
+# references with a skin-relative "\dir\file" path (e.g. the shared \skin_default\*.9.png).
+# skins\README.md, THEME_GENERATION.md and the skin_test_*.json files are not shipped.
+$skinsSrc = Join-Path $buildPath "skins"
+$skinsDst = Join-Path $stage "skins"
+if (-not (Test-Path -LiteralPath $SkinList)) { Fail "skin list not found: $SkinList" }
+$skinNames = @("default", "night")
+foreach ($line in Get-Content -LiteralPath $SkinList -Encoding UTF8) {
+	$n = ($line -replace '#.*$', '').Trim()
+	if ($n -and $skinNames -notcontains $n) { $skinNames += $n }
+}
+# Collect every string in a parsed skin json that is a skin-relative path ("\x\y", not UNC "\\x").
+function Get-SkinRelativePaths($node) {
+	$found = @()
+	if ($null -eq $node) { return $found }
+	if ($node -is [string]) {
+		if ($node.StartsWith('\') -and -not $node.StartsWith('\\')) { $found += $node }
+	} elseif ($node -is [array]) {
+		foreach ($item in $node) { $found += Get-SkinRelativePaths $item }
+	} elseif ($node -is [Management.Automation.PSCustomObject]) {
+		foreach ($prop in $node.PSObject.Properties) { $found += Get-SkinRelativePaths $prop.Value }
+	}
+	return $found
+}
+foreach ($name in $skinNames) {
+	$skinJson = Join-Path $skinsSrc "skin_$name.json"
+	Copy-Required $skinJson $skinsDst
+	$skinFolder = Join-Path $skinsSrc $name
+	if (Test-Path -LiteralPath $skinFolder -PathType Container) {
+		Copy-Tree $skinFolder (Join-Path $skinsDst $name) @("*")
+	}
+	try {
+		$parsed = Get-Content -LiteralPath $skinJson -Raw -Encoding UTF8 | ConvertFrom-Json
+	} catch { Fail "skin json is not valid JSON: $skinJson ($($_.Exception.Message))" }
+	foreach ($rel in Get-SkinRelativePaths $parsed) {
+		$relTrim = $rel.TrimStart('\')
+		$src = Join-Path $skinsSrc $relTrim
+		if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
+			Write-Host "[package] skin '$name' references a missing file: $rel" -ForegroundColor DarkYellow
+			continue
+		}
+		$dst = Join-Path $skinsDst $relTrim
+		New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+		Copy-Item -LiteralPath $src -Destination $dst -Force
+	}
+}
 
 # UI language resource DLLs (common/I18n.hpp loads <exe>\lang\<code>.dll)
 Copy-Tree (Join-Path $buildPath "lang") (Join-Path $stage "lang") @("*.dll")
@@ -212,5 +262,6 @@ Write-Host "[package] staged : $stage ($($files.Count) files, $([math]::Round($s
 Write-Host "[package] zip    : $zipPath ($([math]::Round($zipBytes / 1MB, 1)) MB)"
 Write-Host "[package] sha256 : $sha256"
 Write-Host "[package] plugins: $($pluginDlls.Count)"
+Write-Host "[package] skins  : $($skinNames.Count) ($SkinList)"
 Write-Host ""
 Write-Host "Next: create GitHub release with tag v$version and upload $zipName (upload through GitHub so the asset digest exists for the updater)."

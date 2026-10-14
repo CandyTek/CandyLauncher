@@ -5,6 +5,9 @@
 #include <string>
 #include <unordered_set>
 
+// 托盘图标 ID（TrayMenuManager 注册，MyToastUtil 的气球提示退回路径也要用）
+constexpr UINT TRAY_ICON_ID = 1001;
+
 #define WM_EDIT_CONTROL_HOTKEY (WM_USER + 100)
 #define WM_EDIT_OPEN_PATH (WM_USER + 101)
 #define WM_EDIT_OPEN_TARGET_PATH (WM_USER + 102)

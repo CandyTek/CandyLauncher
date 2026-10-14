@@ -145,6 +145,21 @@ inline void showCurrectWindowSimple(HWND hwnd) {
 	SetForegroundWindow(hwnd);
 }
 
+// 真实内核版本（RtlGetVersion 不受清单 / 兼容模式影响）：Win7 = 6.1，Win8 = 6.2，Win8.1 = 6.3，Win10/11 = 10.0
+inline bool GetWindowsVersionNumbers(DWORD& major, DWORD& minor, DWORD& build) {
+	using RtlGetVersionFn = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
+	const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	const auto rtlGetVersion = ntdll ? reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion")) : nullptr;
+	if (!rtlGetVersion) return false;
+	RTL_OSVERSIONINFOW info{};
+	info.dwOSVersionInfoSize = sizeof(info);
+	if (rtlGetVersion(&info) != 0) return false;
+	major = info.dwMajorVersion;
+	minor = info.dwMinorVersion;
+	build = info.dwBuildNumber;
+	return true;
+}
+
 inline bool IsWindows8OrGreater() {
 	OSVERSIONINFOEXW osvi = {sizeof(osvi)};
 	osvi.dwMajorVersion = 6;

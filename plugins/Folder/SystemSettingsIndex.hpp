@@ -9,6 +9,7 @@
 #include <string>
 
 #include "model/TraverseOptions.hpp"
+#include "util/BaseTools.hpp"
 
 struct SystemSettingsItem {
 	std::wstring name;
@@ -160,6 +161,8 @@ inline std::vector<SystemSettingsItem> EnumerateControlPanelItems() {
 }
 
 inline std::vector<SystemSettingsItem> EnumerateWindowsSettingsItems() {
+	// Windows 7 没有 "设置" 应用，也不识别 ms-settings: 协议，直接跳过该索引源
+	if (!IsWindows8OrGreater()) return {};
 	struct Page { const wchar_t* uri; const wchar_t* resource; };
 	static constexpr Page pages[] = {
 		{L"display", L"SettingsPagePCSystemDisplay"},

@@ -129,11 +129,14 @@ SDK：`TransientSet::PostResults(host, queryId, items, isFinal, restart, replace
 	"default_setting_json": { "...": "也可以是字符串" },
 	"keywords": ["ex "],
 	"min_host_api_minor": 3,
+	"min_windows_version": "7",
 	"strings": { "zh-CN": { "plugin": { "name": "示例插件", "description": "简单示例插件" } }, "en-US": { "...": "" } }
 }
 ```
 
-`package_name` 必填；DLL 加载后以 DLL 表为准，包名 / 版本不一致时记录警告。内置插件的默认设置项都在清单里
+`package_name` 必填；DLL 加载后以 DLL 表为准，包名 / 版本不一致时记录警告。
+`min_windows_version` 是插件支持的最低 Windows 版本（`"7"` / `"8"` / `"8.1"` / `"10"` / `"11"`），省略时为 `"7"`；
+系统版本不满足时主程序直接跳过该插件（不加载 DLL，不出现在插件列表中），需要 WinRT 等 Windows 10 API 的插件应声明 `"10"`。内置插件的默认设置项都在清单里
 （`CANDY_PLUGIN_EXPORT` 传 `nullptr`）。没有清单时记录警告并退回探测 DLL。
 `strings` 的格式和用法见 [DOC_PLUGIN_I18N.md](DOC_PLUGIN_I18N.md)。
 

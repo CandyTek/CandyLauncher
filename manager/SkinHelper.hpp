@@ -6,12 +6,14 @@
 #include <sstream>
 #include "../common/GlobalState.hpp"
 #include <gdiplus.h>
+#include <dwmapi.h>
 #include <atomic>
 #include <cstring>
 
 #include "SkinFileUtil.hpp"
 #include "BackgroundLayerPainter.hpp"
 #include "../util/StringUtil.hpp"
+#include "../util/FontUtil.hpp"
 #include "common/GuaranteedSkinJson.hpp"
 
 // 监听皮肤文件改动
@@ -163,7 +165,15 @@ static void updateSkinWindowRegion() {
 	const int width = MAIN_WINDOW_WIDTH;
 	const int height = MAIN_WINDOW_HEIGHT;
 	if (width <= 0 || height <= 0) return;
-	const int threshold = std::clamp(g_skinJson.value("window_shape_alpha_threshold", 6), 0, 255);
+	int threshold = std::clamp(g_skinJson.value("window_shape_alpha_threshold", 6), 0, 255);
+	// DWM 关闭（Win7 基本主题/远程桌面）时窗口不会做 alpha 合成，低 alpha 像素会显成黑边，
+	// 这里强制门限至少为 64，让半透明边缘直接裁掉
+	if (BOOL dwmEnabled = FALSE; FAILED(DwmIsCompositionEnabled(&dwmEnabled)) || !dwmEnabled) {
+		if (threshold < 64) {
+			Logi(L"SkinHelper", L"DWM composition disabled, window_shape_alpha_threshold ", threshold, L" -> 64");
+			threshold = 64;
+		}
+	}
 	Gdiplus::BitmapData bitmapData{};
 	Gdiplus::Rect bounds(0, 0, width, height);
 	// 背景图已经按窗口大小缩放，直接读取其 alpha，避免再创建和绘制一张遮罩。
@@ -301,7 +311,7 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	}
 
 	// 更新编辑框字体
-	std::wstring editFontFamily = utf8_to_wide(g_skinJson.value("editbox_font_family", "宋体"));
+	std::wstring editFontFamily = ResolveFontFamily(utf8_to_wide(g_skinJson.value("editbox_font_family", "宋体")));
 	double editFontSize = g_skinJson.value("editbox_font_size", 12.0);
 	HDC hdc = GetDC(g_editHwnd);
 	HFONT hEditFont = CreateFontW(

@@ -11,11 +11,9 @@
 #include "util/BitmapUtil.hpp"
 #include "util/MainTools.hpp"
 #include "common/Resource.h"
+#include "common/Constants.hpp"
 
 #define WM_TRAYICON (WM_USER + 1)
-
-// Tray icon constants
-constexpr UINT TRAY_ICON_ID = 1001;
 
 // Tray menu item IDs
 constexpr int TRAY_MENU_ID_BASE = 10000;

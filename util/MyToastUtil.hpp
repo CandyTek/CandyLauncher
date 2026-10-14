@@ -1,8 +1,30 @@
 ﻿#pragma once
 #if !defined(__MINGW32__)
 #include <wintoastlib.h>
+#include <shellapi.h>
 
 #include "LogUtil.hpp"
+#include "../common/Constants.hpp"
+
+extern HWND g_mainHwnd;
+
+// Windows 7 没有 Toast（WinToast 不兼容）时退回托盘气球提示；托盘图标隐藏时返回 false
+inline bool ShowTrayBalloon(const std::wstring& title, const std::wstring& message) {
+	if (!g_mainHwnd) return false;
+	NOTIFYICONDATAW nid{};
+	nid.cbSize = sizeof(nid);
+	nid.hWnd = g_mainHwnd;
+	nid.uID = TRAY_ICON_ID;
+	nid.uFlags = NIF_INFO;
+	nid.dwInfoFlags = NIIF_INFO;
+	lstrcpynW(nid.szInfoTitle, title.c_str(), ARRAYSIZE(nid.szInfoTitle));
+	lstrcpynW(nid.szInfo, message.c_str(), ARRAYSIZE(nid.szInfo));
+	if (!Shell_NotifyIconW(NIM_MODIFY, &nid)) {
+		Logw(L"WinToast", L"Tray balloon fallback failed (tray icon hidden?): ", title);
+		return false;
+	}
+	return true;
+}
 
 static const wchar_t* APP_ID = L"com.candytek.candylauncher.ToastSample";
 
@@ -70,14 +92,10 @@ inline bool InitializeWinToast() {
 // message: 通知内容（第二行）
 // 返回通知ID，失败返回 -1
 static INT64 MyShowSimpleToast(const std::wstring& title, const std::wstring& message) {
-	if (!isToastAvailable) {
-		return -1;
-	}
 	using namespace WinToastLib;
-
-	if (!WinToast::instance()->isInitialized()) {
-		Logi(L"WinToast", L"WinToast 未初始化，无法显示通知");
-		return -1;
+	if (!isToastAvailable || !WinToast::instance()->isInitialized()) {
+		// 系统不支持 Toast 或初始化失败：退回托盘气球提示
+		return ShowTrayBalloon(title, message) ? 0 : -1;
 	}
 
 	CandyToastHandler* handler = new CandyToastHandler();

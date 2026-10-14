@@ -2,6 +2,7 @@
 
 #include "AutomationActionModel.hpp"
 #include "FolderPluginData.hpp"
+#include "../../util/FontUtil.hpp"
 #include <shellapi.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -299,8 +300,9 @@ inline LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 	case WM_CREATE: {
 		state = new State();
 		SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
-		state->font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-		state->titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+		const std::wstring uiFont = ResolveFontFamily(L"Segoe UI");
+		state->font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, uiFont.c_str());
+		state->titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, uiFont.c_str());
 		state->background = CreateSolidBrush(RGB(247, 249, 252));
 		state->editBackground = CreateSolidBrush(RGB(255, 255, 255));
 		Label(hwnd, L"自动化动作组编辑器", 28, 20, 450, state->titleFont);
