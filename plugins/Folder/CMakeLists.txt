@@ -17,6 +17,9 @@ set(PLUGIN_SOURCES
 		IndexManagerLogic.hpp
 		IndexManagerWindow.hpp
 		UWPAppsTraverserWrapper.hpp
+		../../util/SystemSettingsEnumerator.hpp
+		../../util/UwpHelperClient.hpp
+		../../util/UwpHelperProtocol.hpp
 		../../util/MainTools.hpp
 		../../util/BitmapUtil.hpp
 		../../util/FileSystemTraverser.hpp

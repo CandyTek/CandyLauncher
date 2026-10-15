@@ -12,13 +12,13 @@
 
 
 extern const std::unordered_map<std::string, std::wstring> QuanPinArr;
-extern const std::unordered_map<std::string, std::wstring> XiaoHePinyinArr;
-extern const std::unordered_map<std::string, std::wstring> GuoBiaoPyArr;
-extern const std::unordered_map<std::string, std::wstring> ZiGuangPyArr;
-extern const std::unordered_map<std::string, std::wstring> PlusPlusPyArr;
-extern const std::unordered_map<std::string, std::wstring> AbcPyArr;
-extern const std::unordered_map<std::string, std::wstring> SougouPyArr;
-extern const std::unordered_map<std::string, std::wstring> ZiRanMaPyArr;
+const std::unordered_map<std::string, std::wstring>& XiaoHePinyinArr();
+const std::unordered_map<std::string, std::wstring>& GuoBiaoPyArr();
+const std::unordered_map<std::string, std::wstring>& ZiGuangPyArr();
+const std::unordered_map<std::string, std::wstring>& PlusPlusPyArr();
+const std::unordered_map<std::string, std::wstring>& AbcPyArr();
+const std::unordered_map<std::string, std::wstring>& SougouPyArr();
+const std::unordered_map<std::string, std::wstring>& ZiRanMaPyArr();
 
 extern const std::unordered_map<std::string, std::wstring>* pCurrPinyin;
 // 初始化与方案切换应在索引前完成；初始化后的拼音转换可由多个索引线程并发调用。
@@ -30,21 +30,21 @@ public:
 		if (type == "normal") {
 			pCurrPinyin = nullptr;
 		} else if (type == "xiaohe") {
-			pCurrPinyin = &XiaoHePinyinArr;
+			pCurrPinyin = &XiaoHePinyinArr();
 		} else if (type == "guobiao") {
-			pCurrPinyin = &GuoBiaoPyArr;
+			pCurrPinyin = &GuoBiaoPyArr();
 		} else if (type == "ziguang") {
-			pCurrPinyin = &ZiGuangPyArr;
+			pCurrPinyin = &ZiGuangPyArr();
 		} else if (type == "plusplus") {
-			pCurrPinyin = &PlusPlusPyArr;
+			pCurrPinyin = &PlusPlusPyArr();
 		} else if (type == "abc") {
-			pCurrPinyin = &AbcPyArr;
+			pCurrPinyin = &AbcPyArr();
 		} else if (type == "sougou") {
-			pCurrPinyin = &SougouPyArr;
+			pCurrPinyin = &SougouPyArr();
 		} else if (type == "weiruan") {
-			pCurrPinyin = &SougouPyArr;
+			pCurrPinyin = &SougouPyArr();
 		} else if (type == "ziranma") {
-			pCurrPinyin = &ZiRanMaPyArr;
+			pCurrPinyin = &ZiRanMaPyArr();
 		}
 	}
 

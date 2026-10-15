@@ -171,6 +171,19 @@ static std::wstring NormalizeActionTitleForDedup(const std::wstring& title) {
 	return normalized;
 }
 
+// 控制面板 / Windows 设置项：图标来自助手进程传回的位图（iconKey 相同的项在主程序里共用一份）、
+// 延迟解析的路径（ms-settings 项共用 SystemSettings.exe 图标）或进程内回退得到的系统图像列表索引
+static std::shared_ptr<FileAction> MakeSystemSettingsAction(SystemSettingsItem& item) {
+	auto action = std::make_shared<FileAction>(item.name, item.target);
+	action->iconIndex = item.iconIndex;
+	if (!item.iconPath.empty()) action->iconPath = item.iconPath;
+	action->iconKey = std::move(item.iconKey);
+	// 位图所有权转移给条目，随条目析构释放
+	action->iconBitmap = item.iconBitmap;
+	item.iconBitmap = nullptr;
+	return action;
+}
+
 class FolderPlugin : public candy::Plugin {
 private:
 	// 0 号集合：全部索引项（文件、UWP、%PATH%、系统设置）；1 号集合：自动化动作组编辑器入口。都参与全局搜索
@@ -334,10 +347,8 @@ public:
 				for (const auto& fileAction : uwpActions) pushAction(allPluginActions, fileAction);
 				isUwpAdded = true;
 			} else if (traverseOptions1.type == L"control_panel" || traverseOptions1.type == L"windows_settings") {
-				for (const auto& item : GetSystemSettingsItems(traverseOptions1)) {
-					auto action = std::make_shared<FileAction>(item.name, item.target);
-					action->iconIndex = item.iconIndex;
-					pushAction(tempActions, action);
+				for (auto& item : GetSystemSettingsItems(traverseOptions1)) {
+					pushAction(tempActions, MakeSystemSettingsAction(item));
 				}
 			}
 		}
@@ -714,10 +725,8 @@ public:
 					settingsFutures.emplace_back(i, std::async(std::launch::async, [options]() {
 						const ULONGLONG start = GetTickCount64();
 						std::vector<std::shared_ptr<FileAction>> actions;
-						for (const auto& item : GetSystemSettingsItems(options)) {
-							auto action = std::make_shared<FileAction>(item.name, item.target);
-							action->iconIndex = item.iconIndex;
-							actions.push_back(std::move(action));
+						for (auto& item : GetSystemSettingsItems(options)) {
+							actions.push_back(MakeSystemSettingsAction(item));
 						}
 						Logi(L"FolderPlugin", L"index source=", options.type, L" ms=", GetTickCount64() - start,
 							L" count=", actions.size());

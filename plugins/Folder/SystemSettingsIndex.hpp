@@ -1,20 +1,28 @@
 ﻿#pragma once
 
-#include <ShlObj.h>
-#include <propkey.h>
-#include <shellapi.h>
-#include <shlwapi.h>
-#include <wrl/client.h>
+#include <windows.h>
+#include <objbase.h>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
 #include "model/TraverseOptions.hpp"
 #include "util/BaseTools.hpp"
+#include "util/LogUtil.hpp"
+#include "util/SystemSettingsEnumerator.hpp"
+#include "util/UwpHelperClient.hpp"
 
+// 控制面板 / Windows 设置索引项。图标三选一：
+//   iconBitmap + iconKey：助手进程传回的 48px 位图，iconKey 相同的项共用一份（只有第一项带位图），调用方拥有位图
+//   iconPath：由主程序按路径延迟解析（所有 ms-settings 项共用 SystemSettings.exe 的图标）
+//   iconIndex：进程内枚举得到的系统图像列表索引（回退路径，以及索引管理器需要 iImage 时）
 struct SystemSettingsItem {
 	std::wstring name;
 	std::wstring target;
 	int iconIndex = -1;
+	std::wstring iconPath;
+	std::wstring iconKey;
+	HBITMAP iconBitmap = nullptr;
 };
 
 struct SystemSettingsComScope {
@@ -23,216 +31,98 @@ struct SystemSettingsComScope {
 	bool available() const { return SUCCEEDED(result) || result == RPC_E_CHANGED_MODE; }
 };
 
-inline int GetSystemSettingsAppIconIndex() {
-	wchar_t windowsPath[MAX_PATH]{};
-	if (!GetWindowsDirectoryW(windowsPath, MAX_PATH)) return -1;
-	const std::wstring exe = std::wstring(windowsPath) + L"\\ImmersiveControlPanel\\SystemSettings.exe";
-	SHFILEINFOW info{};
-	return SHGetFileInfoW(exe.c_str(), 0, &info, sizeof(info), SHGFI_SYSICONINDEX) ? info.iIcon : -1;
-}
-
-inline int GetControlPanelIconIndex() {
-	wchar_t windowsPath[MAX_PATH]{};
-	if (!GetWindowsDirectoryW(windowsPath, MAX_PATH)) return -1;
-	const std::wstring exe = std::wstring(windowsPath) + L"\\System32\\control.exe";
-	SHFILEINFOW info{};
-	return SHGetFileInfoW(exe.c_str(), 0, &info, sizeof(info), SHGFI_SYSICONINDEX) ? info.iIcon : -1;
-}
-
-inline std::wstring LoadSettingsMuiString(const std::wstring& resourceKey) {
-	const std::wstring indirect = L"@{windows?ms-resource://Windows.UI.SettingsAppThreshold/SearchResources/" +
-		resourceKey + L"/Description}";
-	wchar_t buffer[512]{};
-	return SUCCEEDED(SHLoadIndirectString(indirect.c_str(), buffer, 512, nullptr)) ? buffer : L"";
-}
-
+// 索引管理器的标题用。包限定的 ms-resource 解析会在本进程加载 StateRepository，所以只在用户打开管理器时调用
 inline std::wstring LoadSettingsAppName() {
 	SystemSettingsComScope com;
 	if (!com.available()) return L"";
-	wchar_t indirect[512]{};
-	DWORD size = sizeof(indirect);
-	if (RegGetValueW(HKEY_CLASSES_ROOT, L"ms-settings\\Application", L"ApplicationName",
-		RRF_RT_REG_SZ, nullptr, indirect, &size) != ERROR_SUCCESS) return L"";
-	wchar_t name[512]{};
-	return SUCCEEDED(SHLoadIndirectString(indirect, name, 512, nullptr)) ? name : L"";
+	return SystemSettings::LoadSettingsAppName();
 }
 
-// 检查是否属于需要排除的文件夹（字体、程序与功能）
-inline bool IsFolderBlacklisted(const std::wstring& parsingName, PCIDLIST_ABSOLUTE folderId) {
-	std::wstring lower = MyToLower(parsingName);
-	// 排除设备、程序、字体、开始菜单
-	if (
-		// lower.find(L"ddf6456e-1c73-4311-a50d-92109f40a61b") != std::wstring::npos ||
-		// lower.find(L"93412589-74d4-4e4e-ad0e-e0cb621440fd") != std::wstring::npos ||
-		lower.find(L"7b81be6a-ce2b-4676-a29e-eb907a5126c5") != std::wstring::npos ||
-		lower.find(L"programdata\\microsoft\\windows\\start menu") != std::wstring::npos ||
-		lower.find(L"a8a91a66-3a7d-4424-8d24-04e180695c7a") != std::wstring::npos
-		) {
-		return true;
-	}
-	// 控制面板中的字体项可能以本地化名称出现在解析路径中，使用不受语言影响的规范名称。
-	if (folderId) {
-		Microsoft::WRL::ComPtr<IShellItem2> shellItem;
-		if (SUCCEEDED(SHCreateItemFromIDList(folderId, IID_PPV_ARGS(&shellItem)))) {
-			PWSTR canonicalName = nullptr;
-			if (SUCCEEDED(shellItem->GetString(PKEY_ApplicationName, &canonicalName))) {
-				const bool isFonts = canonicalName && _wcsicmp(canonicalName, L"Microsoft.Fonts") == 0;
-				CoTaskMemFree(canonicalName);
-				if (isFonts) return true;
-			}
-		}
-	}
-	return false;
+inline int GetSystemSettingsAppIconIndex() {
+	SHFILEINFOW info{};
+	return SHGetFileInfoW(SystemSettings::SettingsAppExePath().c_str(), 0, &info, sizeof(info), SHGFI_SYSICONINDEX)
+		? info.iIcon : -1;
 }
 
-// 控制面板项目常带 SFGAO_FOLDER；先索引项目本身，再枚举其子项目。
-static void EnumerateControlPanelFolderRecursive(
-	IShellFolder* folder,
-	PCIDLIST_ABSOLUTE parentId,
-	int fallbackIconIndex,
-	std::vector<SystemSettingsItem>& items)
-	{
-	if (!folder || !parentId) return;
-
-	Microsoft::WRL::ComPtr<IEnumIDList> enumerator;
-	const DWORD flags = SHCONTF_FOLDERS | SHCONTF_NONFOLDERS | SHCONTF_INCLUDEHIDDEN;
-	if (FAILED(folder->EnumObjects(nullptr, flags, &enumerator)) || !enumerator) return;
-
-	PITEMID_CHILD child = nullptr;
-	while (enumerator->Next(1, &child, nullptr) == S_OK) {
-		PIDLIST_ABSOLUTE absoluteId = ILCombine(parentId, child);
-		if (absoluteId) {
-			PWSTR target = nullptr;
-			if (SUCCEEDED(SHGetNameFromIDList(absoluteId, SIGDN_DESKTOPABSOLUTEPARSING, &target)) && target) {
-				SFGAOF attributes = SFGAO_FOLDER;
-				LPCITEMIDLIST childList = child;
-				const bool isFolder = SUCCEEDED(folder->GetAttributesOf(1, &childList, &attributes)) &&
-					(attributes & SFGAO_FOLDER);
-
-				STRRET displayName{};
-				wchar_t name[MAX_PATH]{};
-				if (SUCCEEDED(folder->GetDisplayNameOf(child, SHGDN_NORMAL, &displayName)) &&
-					SUCCEEDED(StrRetToBufW(&displayName, child, name, MAX_PATH)) && name[0]) {
-					SHFILEINFOW iconInfo{};
-					const int iconIndex = SHGetFileInfoW(reinterpret_cast<LPCWSTR>(absoluteId), 0,
-						&iconInfo, sizeof(iconInfo), SHGFI_PIDL | SHGFI_SYSICONINDEX)
-						? iconInfo.iIcon : fallbackIconIndex;
-					items.push_back({name, target, iconIndex});
-				}
-
-				// 父项目保留在索引中；黑名单只阻止枚举其子项。
-				if (isFolder && !IsFolderBlacklisted(target, absoluteId)) {
-					Microsoft::WRL::ComPtr<IShellFolder> subFolder;
-					if (SUCCEEDED(folder->BindToObject(child, nullptr, IID_PPV_ARGS(&subFolder)))) {
-						EnumerateControlPanelFolderRecursive(subFolder.Get(), absoluteId, fallbackIconIndex, items);
-					}
-				}
-			}
-			CoTaskMemFree(target);
-			ILFree(absoluteId);
-		}
-		CoTaskMemFree(child);
-	}
-}
-
-// 主入口函数
-inline std::vector<SystemSettingsItem> EnumerateControlPanelItems() {
-    std::vector<SystemSettingsItem> items;
-    SystemSettingsComScope com;
-    if (!com.available()) return items;
-
-    const int fallbackIconIndex = GetControlPanelIconIndex();
-
-    Microsoft::WRL::ComPtr<IShellFolder> desktop;
-    if (FAILED(SHGetDesktopFolder(&desktop))) return items;
-
-    PIDLIST_ABSOLUTE rootId = nullptr;
-    if (FAILED(SHGetKnownFolderIDList(FOLDERID_ControlPanelFolder, 0, nullptr, &rootId))) {
-        return items;
-    }
-
-    Microsoft::WRL::ComPtr<IShellFolder> rootFolder;
-    if (SUCCEEDED(desktop->BindToObject(rootId, nullptr, IID_PPV_ARGS(&rootFolder)))) {
-        EnumerateControlPanelFolderRecursive(rootFolder.Get(), rootId, fallbackIconIndex, items);
-    }
-
-    CoTaskMemFree(rootId);
-    return items;
-}
-
-inline std::vector<SystemSettingsItem> EnumerateWindowsSettingsItems() {
-	// Windows 7 没有 "设置" 应用，也不识别 ms-settings: 协议，直接跳过该索引源
-	if (!IsWindows8OrGreater()) return {};
-	struct Page { const wchar_t* uri; const wchar_t* resource; };
-	static constexpr Page pages[] = {
-		{L"display", L"SettingsPagePCSystemDisplay"},
-		{L"sound", L"SettingsPageAudio"},
-		{L"notifications", L"SettingsPageAppsNotifications"},
-		{L"powersleep", L"SettingsPageScreenPowerAndSleep"},
-		{L"storagesense", L"SettingsPageStorageSenseStorageOverview"},
-		{L"clipboard", L"SettingsPageClipboard"},
-		{L"multitasking", L"SettingsPageMultiTasking"},
-		{L"about", L"SettingsPagePCSystemInfo"},
-		{L"bluetooth", L"SettingsPagePCSystemBluetooth"},
-		{L"printers", L"SettingsPageDevicesPrinters"},
-		{L"mousetouchpad", L"SettingsPagePCSystemDeviceSettings"},
-		{L"typing", L"SettingsPageTimeRegionSpelling"},
-		{L"appsfeatures", L"SettingsPageAppsSizes"},
-		{L"defaultapps", L"SettingsPageAppsDefaults"},
-		{L"startupapps", L"SettingsPageStartup"},
-		{L"network-status", L"SettingsPageNetworkStatus"},
-		{L"network-wifi", L"SettingsPageNetworkWiFi"},
-		{L"network-ethernet", L"SettingsPageNetworkEthernet"},
-		{L"network-vpn", L"SettingsPageNetworkVPN"},
-		{L"network-proxy", L"SettingsPageNetworkProxy"},
-		{L"personalization-background", L"SettingsPageBackground"},
-		{L"colors", L"SettingsPageColors-2"},
-		{L"lockscreen", L"SettingsPageLockScreen"},
-		{L"themes", L"SettingsPageThemes"},
-		{L"personalization-start", L"SettingsPageStart"},
-		{L"taskbar", L"SettingsPageTaskbar"},
-		{L"yourinfo", L"SettingsPageAccountsPicture-2"},
-		{L"signinoptions", L"SettingsPageSignInOptions"},
-		{L"otherusers", L"SettingsPageOtherUsers"},
-		{L"regionlanguage", L"SettingsPageTimeRegionLanguage"},
-		{L"dateandtime", L"SettingsPageTimeRegionDateTime"},
-		{L"regionformatting", L"SettingsPageTimeRegionRegion"},
-		{L"gaming-gamebar", L"SettingsPageGameBar"},
-		{L"gaming-gamemode", L"SettingsPageGameMode"},
-		{L"easeofaccess-display", L"SettingsPageEaseOfAccessDisplay"},
-		{L"privacy", L"SettingsPagePrivacyGeneral"},
-		{L"privacy-location", L"SettingsPagePrivacyLocation"},
-		{L"privacy-webcam", L"SettingsPagePrivacyWebcam"},
-		{L"privacy-microphone", L"SettingsPagePrivacyMicrophone"},
-		{L"windowsupdate", L"SettingsPageRestoreMusUpdate"},
-		{L"backup", L"SettingsPageRestoreOneBackup"},
-		{L"recovery", L"SettingsPageRestoreRestore"},
-		{L"activation", L"SettingsPageActivate"},
-		{L"windowsdefender", L"SettingsPageWindowsDefender"}
-	};
-	SystemSettingsComScope com;
+// 进程内枚举（回退路径）。会把控制面板 applet / MRT / StateRepository 等 DLL 加载进本进程
+inline std::vector<SystemSettingsItem> EnumerateSystemSettingsInProcess(const std::wstring& type) {
 	std::vector<SystemSettingsItem> items;
+	SystemSettingsComScope com;
 	if (!com.available()) return items;
-	const int iconIndex = GetSystemSettingsAppIconIndex();
-	std::wstring appName = LoadSettingsAppName();
-	if (appName.empty()) appName = L"ms-settings:";
-	items.push_back({std::move(appName), L"ms-settings:", iconIndex});
-	for (const auto& page : pages) {
-		std::wstring name = LoadSettingsMuiString(page.resource);
-		if (name.empty()) name = page.uri;
-		items.push_back({std::move(name), std::wstring(L"ms-settings:") + page.uri, iconIndex});
+	std::vector<SystemSettings::Item> raw;
+	int settingsIconIndex = -1;
+	if (type == L"control_panel") {
+		SystemSettings::EnumerateControlPanel(raw);
+	} else {
+		SystemSettings::EnumerateWindowsSettings(raw);
+		settingsIconIndex = GetSystemSettingsAppIconIndex();
+	}
+	items.reserve(raw.size());
+	for (auto& entry : raw) {
+		SystemSettingsItem item;
+		item.name = std::move(entry.name);
+		item.target = std::move(entry.target);
+		item.iconIndex = type == L"control_panel" ? entry.iconIndex : settingsIconIndex;
+		items.push_back(std::move(item));
 	}
 	return items;
 }
 
-inline std::vector<SystemSettingsItem> GetSystemSettingsItems(const TraverseOptions& options) {
-	auto items = options.type == L"control_panel" ? EnumerateControlPanelItems() : EnumerateWindowsSettingsItems();
+// 默认通过 CandyUwpHelper.exe 枚举，枚举用到的几十个 Shell DLL 只在助手进程里加载；
+// 助手不存在或失败时回退到进程内枚举
+inline std::vector<SystemSettingsItem> EnumerateSystemSettingsViaHelper(const std::wstring& type) {
+	const bool controlPanel = type == L"control_panel";
+	const wchar_t* mode = controlPanel ? UwpHelper::kModeControlPanel : UwpHelper::kModeWindowsSettings;
+	std::vector<UwpHelper::Item> raw;
+	const std::wstring helperExe = FindUwpHelperExe();
+	if (helperExe.empty() || !RunUwpHelper(helperExe, mode, raw, 30000)) {
+		Logw(L"FolderPlugin", helperExe.empty() ? L"CandyUwpHelper.exe not found, enumerating " : L"helper failed, enumerating ",
+			type, L" in-process");
+		return EnumerateSystemSettingsInProcess(type);
+	}
+	const std::wstring settingsExe = controlPanel ? L"" : SystemSettings::SettingsAppExePath();
+	// 助手只在 key 第一次出现时带像素。这里给每个同 key 的条目各建一份小位图（几十个 48px 图标，
+	// 几百 KB），这样排除、去重或标题冲突去掉任意一项都不会让其余项丢图标；主程序按 icon_key 仍只复制一份
+	std::unordered_map<std::wstring, const UwpApps::DibPixels*> pixelsByKey;
+	for (const auto& entry : raw) {
+		if (!entry.iconKey.empty() && !entry.icon.empty()) pixelsByKey.try_emplace(entry.iconKey, &entry.icon);
+	}
+	std::vector<SystemSettingsItem> items;
+	items.reserve(raw.size());
+	for (auto& entry : raw) {
+		SystemSettingsItem item;
+		item.name = std::move(entry.name);
+		item.target = std::move(entry.target);
+		item.iconPath = settingsExe;
+		item.iconKey = entry.iconKey;
+		if (const auto pixels = pixelsByKey.find(entry.iconKey); pixels != pixelsByKey.end()) {
+			item.iconBitmap = UwpApps::CreateDibFromPixels(*pixels->second);
+		} else if (!entry.icon.empty()) {
+			item.iconBitmap = UwpApps::CreateDibFromPixels(entry.icon);
+		}
+		items.push_back(std::move(item));
+	}
+	return items;
+}
+
+// inProcess=true 时强制进程内枚举并返回系统图像列表索引（索引管理器的列表用 iImage 画图标）
+inline std::vector<SystemSettingsItem> GetSystemSettingsItems(const TraverseOptions& options, const bool inProcess = false) {
+	// Windows 7 没有 "设置" 应用，也不识别 ms-settings: 协议，直接跳过该索引源
+	if (options.type != L"control_panel" && !IsWindows8OrGreater()) return {};
+	auto items = inProcess ? EnumerateSystemSettingsInProcess(options.type) : EnumerateSystemSettingsViaHelper(options.type);
 	std::vector<SystemSettingsItem> result;
+	result.reserve(items.size());
 	for (auto& item : items) {
-		if (shouldExclude(options, item.name)) continue;
-		if (const auto renamed = options.renameMap.find(item.name); renamed != options.renameMap.end())
-			item.name = renamed->second;
-		if (shouldExclude(options, item.name)) continue;
+		bool excluded = shouldExclude(options, item.name);
+		if (!excluded) {
+			if (const auto renamed = options.renameMap.find(item.name); renamed != options.renameMap.end())
+				item.name = renamed->second;
+			excluded = shouldExclude(options, item.name);
+		}
+		if (excluded) {
+			if (item.iconBitmap) DeleteObject(item.iconBitmap);
+			continue;
+		}
 		result.push_back(std::move(item));
 	}
 	return result;

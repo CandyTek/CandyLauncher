@@ -1,6 +1,7 @@
 ﻿#include "PinyinHelper.hpp"
 
-const std::unordered_map<std::string, std::wstring> XiaoHePinyinArr = {
+const std::unordered_map<std::string, std::wstring>& XiaoHePinyinArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"aa"}, {"ai", L"ai"}, {"an", L"an"}, {"ang", L"ah"}, {"ao", L"ao"}, {"ba", L"ba"}, {"bai", L"bd"}, {"ban", L"bj"},
 	{"bang", L"bh"}, {"bao", L"bc"}, {"bei", L"bw"}, {"ben", L"bf"}, {"beng", L"bg"}, {"bi", L"bi"}, {"bian", L"bm"}, {"biao", L"bn"},
 	{"bie", L"bp"}, {"bin", L"bb"}, {"bing", L"bk"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"cd"}, {"can", L"cj"},
@@ -53,9 +54,12 @@ const std::unordered_map<std::string, std::wstring> XiaoHePinyinArr = {
 	{"zong", L"zs"}, {"zou", L"zz"}, {"zu", L"zu"}, {"zuan", L"zr"}, {"zui", L"zv"}, {"zun", L"zy"}, {"zuo", L"zo"}, {"ei", L"ei"},
 	{"cen", L"cf"}, {"dei", L"dw"}, {"n", L"nn"}, {"lve", L"lt"}, {"nve", L"nt"}, {"pou", L"pz"}, {"zhei", L"vw"}, {"dia", L"dx"},
 	{"nou", L"nz"},{"shei",L"uw"}
-};
+	};
+	return table;
+}
 
-const std::unordered_map<std::string, std::wstring> GuoBiaoPyArr = {
+const std::unordered_map<std::string, std::wstring>& GuoBiaoPyArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"aa"}, {"ai", L"ak"}, {"an", L"af"}, {"ang", L"ag"}, {"ao", L"ac"}, {"ba", L"ba"}, {"bai", L"bk"}, {"ban", L"bf"},
 	{"bang", L"bg"}, {"bao", L"bc"}, {"bei", L"bb"}, {"ben", L"br"}, {"beng", L"bh"}, {"bi", L"bi"}, {"bian", L"bd"}, {"biao", L"bm"},
 	{"bie", L"bt"}, {"bin", L"bl"}, {"bing", L"bj"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"ck"}, {"can", L"cf"},
@@ -108,8 +112,11 @@ const std::unordered_map<std::string, std::wstring> GuoBiaoPyArr = {
 	{"zong", L"zs"}, {"zou", L"zp"}, {"zu", L"zu"}, {"zuan", L"zw"}, {"zui", L"zv"}, {"zun", L"zz"}, {"zuo", L"zo"}, {"ei", L"ab"},
 	{"cen", L"cr"}, {"dei", L"db"}, {"n", L"n"}, {"lve", L"lx"}, {"nve", L"nx"}, {"pou", L"pp"}, {"zhei", L"vb"}, {"dia", L"dq"},
 	{"nou", L"np"},{"shei",L"ub"}
-};
-const std::unordered_map<std::string, std::wstring> ZiGuangPyArr = {
+	};
+	return table;
+}
+const std::unordered_map<std::string, std::wstring>& ZiGuangPyArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"oa"}, {"ai", L"op"}, {"an", L"or"}, {"ang", L"os"}, {"ao", L"oq"}, {"ba", L"ba"}, {"bai", L"bp"}, {"ban", L"br"},
 	{"bang", L"bs"}, {"bao", L"bq"}, {"bei", L"bk"}, {"ben", L"bw"}, {"beng", L"bt"}, {"bi", L"bi"}, {"bian", L"bf"}, {"biao", L"bb"},
 	{"bie", L"bd"}, {"bin", L"by"}, {"bing", L"bz"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"cp"}, {"can", L"cr"},
@@ -162,9 +169,12 @@ const std::unordered_map<std::string, std::wstring> ZiGuangPyArr = {
 	{"zong", L"zh"}, {"zou", L"zz"}, {"zu", L"zu"}, {"zuan", L"zl"}, {"zui", L"zn"}, {"zun", L"zm"}, {"zuo", L"zo"}, {"ei", L"ok"},
 	{"cen", L"cw"}, {"dei", L"dk"}, {"n", L"n"}, {"lve", L"ln"}, {"nve", L"nn"}, {"pou", L"pz"}, {"zhei", L"uk"}, {"dia", L"dx"},
 	{"nou", L"nz"},{"shei",L"ik"}
-};
+	};
+	return table;
+}
 
-const std::unordered_map<std::string, std::wstring> PlusPlusPyArr = {
+const std::unordered_map<std::string, std::wstring>& PlusPlusPyArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"aa"}, {"ai", L"as"}, {"an", L"af"}, {"ang", L"ag"}, {"ao", L"ad"}, {"ba", L"ba"}, {"bai", L"bs"}, {"ban", L"bf"},
 	{"bang", L"bg"}, {"bao", L"bd"}, {"bei", L"bw"}, {"ben", L"br"}, {"beng", L"bt"}, {"bi", L"bi"}, {"bian", L"bj"}, {"biao", L"bk"},
 	{"bie", L"bm"}, {"bin", L"bl"}, {"bing", L"bq"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"cs"}, {"can", L"cf"},
@@ -217,9 +227,12 @@ const std::unordered_map<std::string, std::wstring> PlusPlusPyArr = {
 	{"zong", L"zy"}, {"zou", L"zp"}, {"zu", L"zu"}, {"zuan", L"zc"}, {"zui", L"zv"}, {"zun", L"zz"}, {"zuo", L"zo"}, {"ei", L"ew"},
 	{"cen", L"cr"}, {"dei", L"dw"}, {"n", L"n"}, {"lve", L"lx"}, {"nve", L"nx"}, {"pou", L"pp"}, {"zhei", L"vw"}, {"dia", L"db"},
 	{"nou", L"np"},{"shei",L"iw"}
-};
+	};
+	return table;
+}
 
-const std::unordered_map<std::string, std::wstring> AbcPyArr = {
+const std::unordered_map<std::string, std::wstring>& AbcPyArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"oa"}, {"ai", L"ol"}, {"an", L"oj"}, {"ang", L"oh"}, {"ao", L"ok"}, {"ba", L"ba"}, {"bai", L"bl"}, {"ban", L"bj"},
 	{"bang", L"bh"}, {"bao", L"bk"}, {"bei", L"bq"}, {"ben", L"bf"}, {"beng", L"bg"}, {"bi", L"bi"}, {"bian", L"bw"}, {"biao", L"bz"},
 	{"bie", L"bx"}, {"bin", L"bc"}, {"bing", L"by"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"cl"}, {"can", L"cj"},
@@ -272,9 +285,12 @@ const std::unordered_map<std::string, std::wstring> AbcPyArr = {
 	{"zong", L"zs"}, {"zou", L"zb"}, {"zu", L"zu"}, {"zuan", L"zp"}, {"zui", L"zm"}, {"zun", L"zn"}, {"zuo", L"zo"}, {"ei", L"oq"},
 	{"cen", L"cf"}, {"dei", L"dq"}, {"n", L"n"}, {"lve", L"lm"}, {"nve", L"nm"}, {"pou", L"pb"}, {"zhei", L"aq"}, {"dia", L"dd"},
 	{"nou", L"nb"},{"shei",L"vq"}
-};
+	};
+	return table;
+}
 
-const std::unordered_map<std::string, std::wstring> SougouPyArr = {
+const std::unordered_map<std::string, std::wstring>& SougouPyArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"oa"}, {"ai", L"ol"}, {"an", L"oj"}, {"ang", L"oh"}, {"ao", L"ok"}, {"ba", L"ba"}, {"bai", L"bl"}, {"ban", L"bj"},
 	{"bang", L"bh"}, {"bao", L"bk"}, {"bei", L"bz"}, {"ben", L"bf"}, {"beng", L"bg"}, {"bi", L"bi"}, {"bian", L"bm"}, {"biao", L"bc"},
 	{"bie", L"bx"}, {"bin", L"bn"}, {"bing", L"bz"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"cl"}, {"can", L"cj"},
@@ -327,9 +343,12 @@ const std::unordered_map<std::string, std::wstring> SougouPyArr = {
 	{"zong", L"zs"}, {"zou", L"zb"}, {"zu", L"zu"}, {"zuan", L"zr"}, {"zui", L"zv"}, {"zun", L"zp"}, {"zuo", L"zo"}, {"ei", L"oz"},
 	{"cen", L"cf"}, {"dei", L"dz"}, {"n", L"n"}, {"lve", L"lt"}, {"nve", L"nt"}, {"pou", L"pb"}, {"zhei", L"vz"}, {"dia", L"dw"},
 	{"nou", L"nb"},{"shei",L"uz"}
-};
+	};
+	return table;
+}
 
-const std::unordered_map<std::string, std::wstring> ZiRanMaPyArr = {
+const std::unordered_map<std::string, std::wstring>& ZiRanMaPyArr() {
+	static const std::unordered_map<std::string, std::wstring> table = {
 	{"a", L"aa"}, {"ai", L"ai"}, {"an", L"an"}, {"ang", L"ah"}, {"ao", L"ao"}, {"ba", L"ba"}, {"bai", L"bl"}, {"ban", L"bj"},
 	{"bang", L"bh"}, {"bao", L"bk"}, {"bei", L"bz"}, {"ben", L"bf"}, {"beng", L"bg"}, {"bi", L"bi"}, {"bian", L"bm"}, {"biao", L"bc"},
 	{"bie", L"bx"}, {"bin", L"bn"}, {"bing", L"by"}, {"bo", L"bo"}, {"bu", L"bu"}, {"ca", L"ca"}, {"cai", L"cl"}, {"can", L"cj"},
@@ -382,6 +401,8 @@ const std::unordered_map<std::string, std::wstring> ZiRanMaPyArr = {
 	{"zong", L"zs"}, {"zou", L"zb"}, {"zu", L"zu"}, {"zuan", L"zr"}, {"zui", L"zv"}, {"zun", L"zp"}, {"zuo", L"zo"}, {"ei", L"ei"},
 	{"cen", L"cf"}, {"dei", L"dz"}, {"n", L"n"}, {"lve", L"lt"}, {"nve", L"nt"}, {"pou", L"pb"}, {"zhei", L"vz"}, {"dia", L"dw"},
 	{"nou", L"nb"},{"shei",L"uz"}
-};
+	};
+	return table;
+}
 
 const std::unordered_map<std::string, std::wstring>* pCurrPinyin = nullptr;

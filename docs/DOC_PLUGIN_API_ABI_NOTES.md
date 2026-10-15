@@ -99,7 +99,7 @@ SDK：`TransientSet::PostResults(host, queryId, items, isFinal, restart, replace
 
 ### 稳定标识与共享图标
 
-- `stable_key`：刷新后不变的条目标识（路径、URL、id）。主程序保存在代理上，供后续的使用频率排序 / 固定条目等功能使用。
+- `stable_key`：刷新后不变的条目标识（路径、URL、id）。主程序不保存它的副本，只在发布时把它哈希进 `BaseAction::usageKey`（使用频率排序 / 固定条目的键）。键本身应尽量短：浏览器历史这类插件请传地址的哈希而不是整个地址。
 - `icon_key`：相同 key 的条目共享一份主程序侧位图，只有第一个条目需要给 `icon_bitmap`。
   不用 key 时每个条目仍各复制一份（GDI 句柄上限约 1 万，大集合务必用 key 或 `icon_path`）。
 
@@ -176,7 +176,7 @@ SDK：`TransientSet::PostResults(host, queryId, items, isFinal, restart, replace
 | `GetPluginName()` 等元数据、`DefaultSettingJson()` | `CANDY_PLUGIN_EXPORT` 参数（静态字符串） |
 | `Initialize(IPluginHost*)` / `OnPluginIdChange` | `Initialize()`，用 `GetHost()` 访问主程序；不再需要 pluginId |
 | `class XAction : public BaseAction` | `class XAction : public candy::ActionBase`（字段 `title/subtitle/matchText/iconPath/iconIndex/iconBitmap`） |
-| `GetTextMatchActions()` 返回列表 | `RefreshActions()` 里 `ActionSet<XAction>::Publish(GetHost(), items)` |
+| `GetTextMatchActions()` 返回列表 | `RefreshActions()` 里 `ActionSet<XAction>::Publish(GetHost(), items)`；每次刷新都重建条目、回调只用自己字段（url/path/id）的插件可传第三个参数 `true`，主程序拷走字符串后插件侧立即释放 title/subtitle/matchText/iconPath/stableKey（BrowserHistory 2000 条省约 2.5 MB） |
 | `InterceptInputShowResultsDirectly` + `GetSuccessfullyMatchingTextActions` | `OnInterceptInput(input, sink)` + `sink.AddMatches(set.Id(), query)` |
 | `ShowResultsDerectly(list)` | 发布一个不带 `CL_SET_GLOBAL_SEARCH` 的集合，再 `GetHost().ShowActionSet(id)` |
 | `dynamic_pointer_cast<XAction>(action)` | `actionSet.Find(userData)` |

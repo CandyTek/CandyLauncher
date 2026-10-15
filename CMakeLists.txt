@@ -241,6 +241,21 @@ set_target_properties(SkinEditor PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<TARGET_F
 target_link_libraries(SkinEditor PRIVATE gdiplus comctl32 user32 gdi32 shell32 ole32 oleaut32 uuid comdlg32 advapi32 shlwapi dwmapi)
 add_dependencies(CandyLauncher SkinEditor)
 
+# 独立的 Shell 枚举进程 CandyUwpHelper.exe，与 CandyLauncher.exe 输出到同一目录。
+# Folder 插件通过它枚举 shell:AppsFolder（含图标）、控制面板（含图标）和 "设置" 页面名称
+# （util/UwpHelperClient.hpp），WinRT / StateRepository / MRT 和控制面板 applet 等几十个 DLL
+# 只在这个短命进程里加载，不占主程序内存
+add_executable(CandyUwpHelper WIN32
+		uwp_helper/UwpHelperMain.cpp
+		util/SystemSettingsEnumerator.hpp
+		util/UwpAppsEnumerator.hpp
+		util/UwpHelperProtocol.hpp
+)
+target_compile_definitions(CandyUwpHelper PRIVATE UNICODE _UNICODE)
+set_target_properties(CandyUwpHelper PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:CandyLauncher>")
+target_link_libraries(CandyUwpHelper PRIVATE ole32 shell32 shlwapi uuid gdi32 user32)
+add_dependencies(CandyLauncher CandyUwpHelper)
+
 if (CMAKE_SIZEOF_VOID_P EQUAL 8) # 64-bit
 	set(EVERYTHING_LIB ${CMAKE_SOURCE_DIR}/3rdparty/EverythingSDK/lib/Everything64.lib)
 else () # 32-bit
@@ -546,3 +561,36 @@ endforeach()
 #			$<$<CONFIG:Release>:/OPT:ICF>
 #	)
 #endif ()
+
+# ---- Heap profiling build (memory attribution), never on by default ----
+# cmake -DCL_HEAP_PROFILE=ON ... compiles util/HeapProfiler.cpp into the host, every plugin DLL and cpp-pinyin.dll:
+# per module operator new / delete tracking with call stacks, dumped on the named event "CandyLauncherHeapDump".
+option(CL_HEAP_PROFILE "Build with the in-process heap profiler (util/HeapProfiler.cpp)" OFF)
+if (CL_HEAP_PROFILE AND MSVC)
+	cmake_policy(SET CMP0079 NEW)
+	function(cl_collect_targets out dir)
+		get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+		get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+		foreach (_sub IN LISTS _subdirs)
+			cl_collect_targets(_sub_targets "${_sub}")
+			list(APPEND _targets ${_sub_targets})
+		endforeach ()
+		set(${out} ${_targets} PARENT_SCOPE)
+	endfunction()
+	cl_collect_targets(_cl_all_targets "${CMAKE_SOURCE_DIR}")
+	set_source_files_properties("${CMAKE_SOURCE_DIR}/util/HeapProfiler.cpp" PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+	foreach (_tgt IN LISTS _cl_all_targets)
+		get_target_property(_type ${_tgt} TYPE)
+		get_target_property(_srcdir ${_tgt} SOURCE_DIR)
+		if (NOT _type MATCHES "^(EXECUTABLE|SHARED_LIBRARY)$")
+			continue()
+		endif ()
+		if (NOT (_tgt STREQUAL "CandyLauncher" OR _srcdir MATCHES "/plugins/" OR _tgt MATCHES "pinyin"))
+			continue()
+		endif ()
+		message(STATUS "Heap profiler attached to ${_tgt}")
+		target_sources(${_tgt} PRIVATE "${CMAKE_SOURCE_DIR}/util/HeapProfiler.cpp")
+		target_compile_definitions(${_tgt} PRIVATE CL_HEAP_PROFILE=1)
+		target_link_libraries(${_tgt} PRIVATE dbghelp psapi)
+	endforeach ()
+endif ()

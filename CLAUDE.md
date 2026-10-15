@@ -79,7 +79,7 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 - **[EverNote](plugins/EverNote/EverNotePlugin.cpp)**: Indexes the local Evernote database
 - **[ExamplePlugin](plugins/Example/ExamplePlugin.cpp)**: A simple plugin dll specification use case; `plugins/ExampleC` and `plugins/ExampleRust` are standalone C/Rust ABI examples
 - **[FeatureLaunch](plugins/FeatureLaunch/FeatureLaunchPlugin.cpp)**: Navigate some settings and functions of the main program
-- **[Folder](plugins/Folder/FolderPlugin.cpp)**: Read `config_folder_plugin.json` configuration file and scan the files in the specified directory,and environment variable %PATH% path, and read the UWP app list. IndexManagerWindow.hpp / IndexManagerLogic.hpp are the index management and viewers for the Folder plugin
+- **[Folder](plugins/Folder/FolderPlugin.cpp)**: Read `config_folder_plugin.json` configuration file and scan the files in the specified directory,and environment variable %PATH% path, and read the UWP app list. IndexManagerWindow.hpp / IndexManagerLogic.hpp are the index management and viewers for the Folder plugin. UWP apps, control panel items and Windows Settings pages are enumerated by the short-lived `CandyUwpHelper.exe` (`uwp_helper/UwpHelperMain.cpp`, modes `uwp` / `control_panel` / `windows_settings`, protocol in `util/UwpHelperProtocol.hpp`, launcher in `util/UwpHelperClient.hpp`, shared enumerators in `util/UwpAppsEnumerator.hpp` and `util/SystemSettingsEnumerator.hpp`) so the WinRT/StateRepository/MRT runtimes and the control panel applet DLLs never stay loaded in the host; `util/UWPAppsTraverser.hpp` and `plugins/Folder/SystemSettingsIndex.hpp` fall back to in-process enumeration if the helper is missing
 - **[JetbrainsWorkspaces](plugins/JetbrainsWorkspaces/JbPlugin.cpp)**: Index all ide software history open projects of jetbrains
 - **[NodeJsPlugin](plugins/NodeJsPlugin/NodeJsPlugin.cpp)**: Runs Wox / Flow Launcher style JavaScript plugins through Node.js (`node-host.js` bridge, scripts under `plugins/NodeJsPlugin/scripts`). Docs: [DOC_NODEJSPLUGIN.md](plugins/NodeJsPlugin/DOC_NODEJSPLUGIN.md)
 - **[OneNote](plugins/OneNote/OneNotePlugin.cpp)**: Indexes local OneNote notebooks (built only when the OneNote type library is available)
@@ -140,6 +140,10 @@ CandyLauncher is a lightweight Windows application launcher written in C++17 wit
 ### App Update System
 
 read [DOC_APP_UPDATE.md](docs/DOC_APP_UPDATE.md)
+
+### Memory footprint
+
+Numbers, per-owner attribution and the re-measure procedure: [DOC_MEMORY.md](docs/DOC_MEMORY.md). `cmake -DCL_HEAP_PROFILE=ON` builds the in-process heap profiler (`util/HeapProfiler.cpp`, dump via the named event `CandyLauncherHeapDump`); never on in normal builds.
 
 ### note
 

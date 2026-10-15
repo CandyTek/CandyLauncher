@@ -21,10 +21,10 @@ namespace TextMatchDetail {
 
 inline fuzzy::Fields FieldsOf(const BaseAction& action) {
 	fuzzy::Fields f;
-	f.title = &action.matchTitle;
-	f.pinyin = &action.matchPinyin;
-	f.initials = &action.matchInitials;
-	f.text = &action.matchText;
+	f.title = &action.matchTitle();
+	f.pinyin = &action.matchPinyin();
+	f.initials = &action.matchInitials();
+	f.text = &action.matchText();
 	return f;
 }
 
@@ -34,7 +34,7 @@ inline std::optional<ScoredAction> ScoreOne(const fuzzy::Query& query, const std
 	double score = fuzzy::Score(query, FieldsOf(*action));
 	if (score <= 0) return std::nullopt;
 	if (usage) score += UsageHistory::BonusFor(*usage, action->usageKey, now);
-	const size_t titleLength = action->matchTitle.empty() ? action->matchText.size() : action->matchTitle.size();
+	const size_t titleLength = action->matchTitle().empty() ? action->matchText().size() : action->matchTitle().size();
 	return ScoredAction{action, score, action->pluginPriority, static_cast<uint32_t>(titleLength),
 						static_cast<uint32_t>(index)};
 }
@@ -114,7 +114,7 @@ static void Exactmatch_Optimized(const std::wstring& keyword, const std::vector<
 	const std::wstring lowerKeyword = MyToLower(keyword);
 	if (lowerKeyword.find_first_of(L" \t\r\n") == std::wstring::npos) {
 		for (const auto& action : allActions) {
-			if (action->matchText.find(lowerKeyword) != std::wstring::npos) {
+			if (action->matchText().find(lowerKeyword) != std::wstring::npos) {
 				filteredActions.push_back(action);
 				if (pref_max_search_results > 0 &&
 					filteredActions.size() >= static_cast<size_t>(pref_max_search_results)) {
@@ -138,7 +138,7 @@ static void Exactmatch_Optimized(const std::wstring& keyword, const std::vector<
 	}
 
 	for (const auto& action : allActions) {
-		const std::wstring& runCommand = action->matchText;
+		const std::wstring& runCommand = action->matchText();
 
 		bool isMatch = true;
 		for (const auto& w : words) {

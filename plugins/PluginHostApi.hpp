@@ -135,22 +135,25 @@ inline std::vector<std::shared_ptr<BaseAction>> BuildProxies(CL_PluginContext* h
 			proxy->userData = desc.user_data;
 			proxy->title = W(desc.title);
 			proxy->subtitle = W(desc.subtitle);
-			proxy->stableKey = W(desc.stable_key);
 			if (!processMatchText) {
-				proxy->matchText = desc.match_text ? std::wstring(desc.match_text) : proxy->title;
-				proxy->matchTitle = MyToLower(proxy->title);
+				// 不参与匹配的条目（查询结果 / 拦截结果）：不走拼音，只给一个小写标题
+				proxy->setMatchText(desc.match_text ? std::wstring(desc.match_text) : proxy->title);
+				auto fields = std::make_shared<ProcessedMatchText>();
+				fields->title = MyToLower(proxy->title);
+				proxy->setMatchFields(std::move(fields));
 			} else if (desc.match_text && (desc.flags & CL_ACTION_MATCH_TEXT_VERBATIM)) {
 				// 插件自己拼好了 matchText（通常已经过 process_match_text，标题的拼音在缓存里）；
 				// 结构化字段仍按标题取，这样标题命中不会被路径等附加内容稀释
-				proxy->matchText = desc.match_text;
+				proxy->setMatchText(desc.match_text);
 				g_matchTextCache.FillFields(*proxy, proxy->title);
 			} else if (!desc.match_text || proxy->title == desc.match_text) {
 				g_matchTextCache.FillAll(*proxy, proxy->title);
 			} else {
-				proxy->matchText = g_matchTextCache.Get(desc.match_text)->text;
+				// matchText 与结构化字段来自不同的来源串，两份都直接共享缓存
+				proxy->setMatchTextFrom(g_matchTextCache.Get(desc.match_text));
 				g_matchTextCache.FillFields(*proxy, proxy->title);
 			}
-			proxy->usageKey = ComputeUsageKey(h->pkgName, proxy->stableKey, proxy->title, proxy->subtitle);
+			proxy->usageKey = ComputeUsageKey(h->pkgName, desc.stable_key, proxy->title, proxy->subtitle);
 			proxy->iconIndex = desc.icon_index;
 			if (desc.icon_index < 0 && desc.icon_path && *desc.icon_path) {
 				proxy->lazyIcon = lazyIcons.at(desc.icon_path);

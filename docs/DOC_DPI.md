@@ -1,82 +1,48 @@
-﻿# 高 DPI 适配
+﻿# High-DPI Adaptation
 
-## 总体方案
+## General Approach
 
-- 进程本身保持 **DPI 不感知**（`common/app.manifest` 不声明 `dpiAware`）。Windows 7 / 8.1 上，以及尚未适配的插件窗口
-  （截图工具的覆盖层等）仍由系统整体拉伸，行为和以前完全一样。
-- **次级窗口用简单方案自行适配**（不考虑 Win7）：设置窗口、皮肤编辑器、重命名对话框，以及 Folder 插件的索引管理器 /
-  已排除项 / 快捷方式修复 / 自动化动作组编辑器、WebSearch 的搜索引擎管理器、SmallToolBox 的二维码窗口，都在各自的创建函数里进入
-  `Dpi::ThreadContextScope(Dpi::PerMonitorV2Context())`，初始尺寸按 `Dpi::PrimaryMonitorDpi()` / `Dpi::MonitorDpiForWindow(parent)`
-  换算；`WM_CREATE` 里用 `Dpi::WindowDpi(hwnd)` 得到窗口 DPI，布局常量（都是 96 DPI 下的值）经 `Dpi::Scale` 换算，字体用
-  `Dpi::CreateScaledFont` 创建；`WM_DPICHANGED` 里先 `Dpi::ApplySuggestedRect` 移到建议矩形，然后要么重建字体并用
-  `Dpi::RescaleChildWindows` 等比缩放子控件和 ListView 列宽（布局靠 `WM_SIZE` 的窗口自动重排），要么像设置窗口那样销毁全部
-  子控件按新 DPI 重建（`CreateSettingsWindowChildren`）。自绘控件（`view/CustomButtonHelper.hpp`、`SwitchViewPainter.hpp`、
-  `CustomComboBox.hpp`、`CustomEdit.hpp`、`HotkeyEditView.hpp`）绘制时按 `Dpi::WindowDpi(hWnd)` 缩放线宽、边距和图标，
-  它们共用的字体由 `InitializeCustomButtonResources(dpi)` 按设置窗口的 DPI 重建。
-  皮肤编辑器的 WebBrowser 控件在 `DOCHOSTUIFLAG_DPI_AWARE` 宿主里不会自己缩放页面，页面加载完成后按窗口 DPI 设置
-  `OLECMDID_OPTICAL_ZOOM`（`SkinEditorHost::ApplyZoom`）。
-- 试过的死路：进程级 GDI 缩放（`SetProcessDpiAwarenessContext(UNAWARE_GDISCALED)`；manifest 的 `gdiScaling` 甚至不会改变线程
-  上下文）只让直接画在窗口 DC 上的 GDI 文字变清晰，双缓冲到内存位图的自绘控件仍然模糊，而 IE WebBrowser 控件会被放大两次
-  （自身按 DPI 缩放后再被系统拉伸）且点击位置错位。
-- **主窗口**（搜索框 + 列表）在 Windows 10 1703+ 上以 `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` 创建
-  （`CandyLauncher.cpp` 的 `MainWindowInitInstance`，通过 `Dpi::ThreadContextScope` 只对创建主窗口和子控件的那段代码生效），
-  之后自己按所在显示器的 DPI 缩放皮肤。
-- 所有 Win10 的 DPI API 通过 `GetProcAddress` 动态加载（`util/DpiUtil.hpp`），exe 不直接导入，Win7 仍能启动；
-  系统不支持时所有作用域都是空操作，主窗口保持不感知。
+- The process itself remains **DPI-unaware** (i.e., `dpiAware` is not declared in `common/app.manifest`). On Windows 7/8.1, as well as for plugin windows that have not yet been adapted (such as overlays for screenshot tools), the system continues to handle scaling globally, maintaining the same behavior as before.
+- **Secondary windows are adapted individually using a simplified approach** (excluding Windows 7 support). This applies to windows such as the Settings dialog, Skin Editor, Rename dialog, the Index Manager/Excluded Items/Shortcut Repair/Automation Action Group Editor (in the Folder plugin), the Search Engine Manager (in WebSearch), and the QR Code window (in SmallToolBox). For these, the code enters `Dpi::ThreadContextScope(Dpi::PerMonitorV2Context())` within their respective creation functions. Initial dimensions are calculated based on `Dpi::PrimaryMonitorDpi()` or `Dpi::MonitorDpiForWindow(parent)`. During `WM_CREATE`, the window's DPI is retrieved via `Dpi::WindowDpi(hwnd)`; layout constants (defined for 96 DPI) are scaled using `Dpi::Scale`, and fonts are created via `Dpi::CreateScaledFont`. Upon receiving `WM_DPICHANGED`, the window is moved to the suggested rectangle using `Dpi::ApplySuggestedRect`. Subsequently, the application either recreates fonts and uses `Dpi::RescaleChildWindows` to proportionally scale child controls and `ListView` column widths (while layouts dependent on `WM_SIZE` automatically rearrange themselves), or—as is the case with the Settings window—destroys all child controls and recreates them according to the new DPI (via `CreateSettingsWindowChildren`). For custom-drawn controls (defined in `view/CustomButtonHelper.hpp`, `SwitchViewPainter.hpp`, `CustomComboBox.hpp`, `CustomEdit.hpp`, and `HotkeyEditView.hpp`), line widths, margins, and icons are scaled during rendering based on `Dpi::WindowDpi(hWnd)`. The fonts shared by these controls are recreated according to the window's DPI via `InitializeCustomButtonResources(dpi)`. The WebBrowser control in the Skin Editor does not automatically scale its content when hosted within a `DOCHOSTUIFLAG_DPI_AWARE` environment. Instead, the page is scaled after loading, based on the window's DPI setting, using `OLECMDID_OPTICAL_ZOOM` (implemented in `SkinEditorHost::ApplyZoom`).
+- Approaches that proved unsuccessful: Process-level GDI scaling (e.g., `SetProcessDpiAwarenessContext(UNAWARE_GDISCALED)`—or the `gdiScaling` manifest flag, which fails to even alter the thread context) only improves the clarity of GDI text drawn directly onto a window's device context (DC). Custom-drawn controls that use double-buffering to an in-memory bitmap remain blurry. Furthermore, the IE WebBrowser control ends up being scaled twice—once by its own internal DPI-scaling logic and again by the system—which also causes mouse-click coordinates to become misaligned.
+- The **main window** (containing the search box and list) is created using `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` on Windows 10 (version 1703 or later). This is handled in `MainWindowInitInstance` (within `CandyLauncher.cpp`) using `Dpi::ThreadContextScope`, which limits the scope of this setting to the code responsible for creating the main window and its child controls. Subsequently, the skin is scaled according to the DPI of the specific monitor on which it is displayed.
+- All Windows 10 DPI-related APIs are loaded dynamically via `GetProcAddress` (defined in `util/DpiUtil.hpp`). Since the executable does not import these APIs directly, the application remains compatible with Windows 7. If the system does not support these APIs, the scope-based operations become no-ops, and the main window remains DPI-unaware.
 
-## 渲染：只在烘焙时缩放，每帧仍是 BitBlt
+## Rendering: Scaling is applied only during the "baking" (pre-processing) phase; per-frame rendering continues to use `BitBlt`.
 
-皮肤 json 里的所有尺寸、位置、字号都是 **96 DPI 下的值**。`refreshSkin`（`manager/SkinHelper.hpp`）按
-`g_mainWindowDpi` 用 `MainDpiScale` / `MainDpiScaleF`（`common/GlobalState.hpp`）换算后再创建控件尺寸、字体、
-预乘 DIB 背景图层，所以：
+All dimensions, positions, and font sizes specified in the skin's JSON file are **values ​​based on 96 DPI**. `refreshSkin` (in `manager/SkinHelper.hpp`) calculates control dimensions, fonts, and pre-multiplied DIB background layers based on `g_mainWindowDpi` (using `MainDpiScale` / `MainDpiScaleF` from `common/GlobalState.hpp`). Consequently:
 
-- `WM_PAINT` 路径没有任何改动，依旧是一次 `BitBlt` / `AlphaBlend`（见 `manager/BackgroundLayerPainter.hpp`）。
-- 九宫格图片 `RenderNinePatchToSize(..., scale)` 的固定段（圆角、边框）也按比例放大并做高质量重采样，`scale == 1` 时输出与之前完全一致。
-- 列表图标尺寸 `LISTITEM_ICON_SIZE = 48 * dpi / 96`。系统图标由 `ListViewSystemIconWarmer` 的工作线程用
-  `SHIL_JUMBO`（256px）缩小生成预乘 DIB 并按图标索引缓存（`util/IconScaleUtil.hpp`）；没有 256px 版本的图标退回
-  48px 放大。插件给的 `icon_bitmap` 在 `SharedIconBitmap::ScaledFor` 里按需缩放一次并缓存。96 DPI 下这些路径都不参与，
-  仍直接 `ImageList_Draw` / `AlphaBlend`。
+- The `WM_PAINT` code path remains unchanged, still performing a single `BitBlt` / `AlphaBlend` operation (see `manager/BackgroundLayerPainter.hpp`).
+- For nine-patch images, the fixed segments (such as rounded corners and borders) are scaled proportionally using high-quality resampling via `RenderNinePatchToSize(..., scale)`. When `scale == 1`, the output is identical to the previous version.
+- List item icon dimensions are determined by `LISTITEM_ICON_SIZE = 48 * dpi / 96`. System icons are generated by a worker thread in `ListViewSystemIconWarmer` by taking a `SHIL_JUMBO` (256px) icon, downscaling it into a pre-multiplied DIB, and caching it by icon index (`util/IconScaleUtil.hpp`). If a 256px version is unavailable, the system falls back to a 48px version, which is then upscaled. Icons provided by plugins (`icon_bitmap`) are scaled on-demand via `SharedIconBitmap::ScaledFor` and subsequently cached. At 96 DPI, these scaling paths are bypassed, and the system proceeds directly to `ImageList_Draw` / `AlphaBlend`.
 
-## DPI 何时变化
+## When Does DPI Change?
 
-`applyMainWindowDpi(dpi)`（`manager/SkinHelper.hpp`）：DPI 变了就重新 `refreshSkin`（不显示窗口）。触发点：
+`applyMainWindowDpi(dpi)` (in `manager/SkinHelper.hpp`) triggers a `refreshSkin` call whenever the DPI changes (without displaying the window). This occurs in the following scenarios:
 
-1. **弹出前**：`util/MainTools.hpp` 的各个 `showMainWindowIn*` 在算位置之前调用 `g_prepareMainWindowForMonitor(hMonitor)`，
-   先按目标显示器 DPI 重载皮肤，这样 `MAIN_WINDOW_WIDTH/HEIGHT` 已经是最终尺寸，窗口位置一次算对。
-2. **`WM_DPICHANGED`**（拖到另一台显示器、系统缩放设置改变）：DPI 与当前不同才重载皮肤并移到系统建议的位置；
-   弹出前已经处理过的情况下 DPI 相同，直接忽略。
+1. **Before Window Display**: Various `showMainWindowIn*` functions in `util/MainTools.hpp` invoke `g_prepareMainWindowForMonitor(hMonitor)` prior to calculating the window's position. This ensures the skin is reloaded according to the target monitor's DPI, so that `MAIN_WINDOW_WIDTH` and `MAIN_WINDOW_HEIGHT` reflect the final dimensions, allowing the window position to be calculated correctly on the first attempt. 2. **`WM_DPICHANGED`** (triggered when moving the window to another monitor or changing system scaling settings): The skin is reloaded and the window is moved to the system-recommended position only if the DPI differs from the current value.
+   If the DPI is the same—which may happen if the change has already been handled—the event is simply ignored.
 
-## 混合模式下的坐标空间（最容易踩坑的地方）
+## Coordinate Spaces in Mixed-DPI Modes (A Common Pitfall)
 
-线程的 DPI 上下文决定 `GetWindowRect` / `SetWindowPos` / `GetCursorPos` 等的坐标空间。系统在调用某个窗口的窗口过程时会
-临时切到该窗口的上下文，所以主窗口消息里拿到的是物理像素；但从 `wWinMain`、钩子回调、设置窗口里操作主窗口时线程是不感知的，
-得到的是虚拟化坐标。规则：
+The thread's DPI context determines the coordinate space for functions such as `GetWindowRect`, `SetWindowPos`, and `GetCursorPos`. When the system invokes a window procedure, it temporarily switches to that window's context; consequently, coordinates obtained within the main window's message processing are in physical pixels. However, when interacting with the main window from `wWinMain`, hook callbacks, or settings windows, the thread lacks this context awareness, resulting in virtualized (scaled) coordinates. The rules are as follows:
 
-- 操作主窗口（定位、测量、`refreshSkin`、保存位置）：`Dpi::ThreadContextScope scope(Dpi::ContextOfWindow(g_mainHwnd))`。
-  已加在 `refreshSkin`、`MyMoveWindow`、`ShowMainWindowSimple`、`HideWindow`、`SaveWindowRectToRegistry`。
-- 从主窗口消息里调用插件：`Dpi::ThreadContextScope unaware(Dpi::UnawareContext())`，已加在 `PluginManager` 的
-  `DispatchActionExecute` / `DispatchSendHotKey` / `DispatchItem*` / `DispatchSettingItemExecute`；
-  已自行适配的插件窗口在自己的创建函数里再进入 `PerMonitorV2Context` 作用域，不感知的只有尚未适配的插件窗口。
-- 传给插件的屏幕坐标要在不感知上下文里取：`NM_RCLICK` 在该作用域里重新 `GetCursorPos`；列表项中心、拖拽起点用
-  `Dpi::ChildClientPointToThreadScreen` 换算（实测系统会按调用方上下文换算 `GetWindowRect`，物理 (3000,500) 750x750 在不感知进程里是 (2853,450) 500x500）。
-- `GetScrollBarInfo` 的 `dxyLineButton` 在 Per-Monitor 子窗口里不随 DPI 缩放（150% 下仍报 17，实际 26），
-  而且弹出前按目标显示器 DPI 重载皮肤时窗口还在旧显示器上，现场测量得到的也是旧值；
-  所以列宽按 `Dpi::SystemMetricForDpi(SM_CXVSCROLL, g_mainWindowDpi)` 计算（96/120/144/192 DPI 下为 17/21/26/34），否则列表会多出横向滚动条。
-- `Dpi::MonitorDpi` 的返回值取决于调用线程的上下文，不感知线程永远得到 96，要在主窗口上下文里调用。
+- For operations involving the main window (positioning, measuring, `refreshSkin`, saving window position), use `Dpi::ThreadContextScope scope(Dpi::ContextOfWindow(g_mainHwnd))`.
+  This has been implemented in `refreshSkin`, `MyMoveWindow`, `ShowMainWindowSimple`, `HideWindow`, and `SaveWindowRectToRegistry`.
+- When invoking plugins from within the main window's message processing, use `Dpi::ThreadContextScope unaware(Dpi::UnawareContext())`. This is applied in `PluginManager` within `DispatchActionExecute`, `DispatchSendHotKey`, `DispatchItem*`, and `DispatchSettingItemExecute`.
+  Plugins that have been adapted for high-DPI support should enter the `PerMonitorV2Context` scope within their own creation functions; only unadapted plugin windows remain "DPI-unaware." - Screen coordinates passed to plugins must be retrieved in a context-unaware state: for `NM_RCLICK`, call `GetCursorPos` again within that scope. For the center of a list item or the starting point of a drag operation, use `Dpi::ChildClientPointToThreadScreen` for conversion. (Empirical testing shows that the system performs `GetWindowRect` conversions based on the caller's context; for instance, a physical coordinate of (3000, 500) with a size of 750x750 appears as (2853, 450) with a size of 500x500 in a context-unaware process.)
+- The `dxyLineButton` value from `GetScrollBarInfo` does not scale with DPI in Per-Monitor aware child windows (it returns 17 even at 150% scaling, whereas the actual value should be 26). Furthermore, when the skin is reloaded based on the target monitor's DPI, the window may still be positioned on the previous monitor, leading to incorrect values ​​being captured. Therefore, column widths should be calculated using `Dpi::SystemMetricForDpi(SM_CXVSCROLL, g_mainWindowDpi)` (yielding 17, 21, 26, or 34 for 96, 120, 144, or 192 DPI, respectively); otherwise, an unwanted horizontal scrollbar may appear in the list.
+- The return value of `Dpi::MonitorDpi` depends on the context of the calling thread; a context-unaware thread will always receive 96. Consequently, this function must be called within the context of the main window.
 
-## 验证方法
+## Verification Method
 
-本机 DISPLAY3（x >= 2560）是 150%。把主窗口 `SetWindowPos` 到 (3000,500) 再移回 (100,100)，日志应出现
-`Main window DPI 144 -> 96` / `96 -> 144`，窗口尺寸 750x750 / 500x500（skin_default），列表无横向滚动条，
-用 `PrintWindow(PW_RENDERFULLCONTENT)` 截图确认文字、图标、九宫格边框都已放大且清晰。
+On the local machine, DISPLAY3 (where x ≥ 2560) is set to 150% scaling. Move the main window to (3000, 500) using `SetWindowPos`, then move it back to (100, 100). The logs should reflect a change in the main window's DPI (e.g., `Main window DPI 144 -> 96` / `96 -> 144`), with window dimensions shifting between 750x750 and 500x500 (using `skin_default`). The list should not display a horizontal scrollbar. Finally, use `PrintWindow(PW_RENDERFULLCONTENT)` to capture a screenshot and verify that the text, icons, and nine-patch borders are correctly scaled and rendered clearly. ## Components Awaiting Adaptation
 
-## 尚未自行适配的部分
+ScreenTools’ screenshot overlay, crash dialog, and the Shell32 icon viewer (used for debugging) are still being scaled by the system. To migrate a window, follow the simple approach outlined above:
+Enter the `PerMonitorV2Context` scope at the point of window creation; calculate layout constants and font sizes based on `Dpi::WindowDpi(hwnd)`; and handle the `WM_DPICHANGED` message.
+Since the main application invokes plugins while the thread is in an "unaware" context (within the `Dispatch*` methods of `PluginManager`), plugin windows must explicitly enter the Per-Monitor scope within their own creation functions.
 
-ScreenTools 的截图覆盖层、崩溃对话框、调试用的 Shell32 图标查看器仍由系统拉伸。要迁移某个窗口时按上面的简单方案：
-创建处进入 `PerMonitorV2Context` 作用域，布局常量、字体按 `Dpi::WindowDpi(hwnd)` 换算，处理 `WM_DPICHANGED`。
-主程序调用插件时线程处于不感知上下文（`PluginManager` 的各 `Dispatch*`），所以插件窗口必须在自己的创建函数里进入 Per-Monitor 作用域。
+## Verifying Secondary Windows
 
-## 验证次级窗口
-
-把窗口移到 150% 的 DISPLAY3（物理 x >= 2560）上：`GetDpiForWindow` 应变为 144，窗口按系统建议矩形放大 1.5 倍（设置窗口 640x680 -> 960x1020），
-用 Per-Monitor 线程 BitBlt 屏幕区域截图，文字、开关、列表应清晰且布局按比例放大；皮肤编辑器页面应整体放大 1.5 倍而不是 2.25 倍。
+Move a window to a display (e.g., DISPLAY3) set to 150% scaling (where the physical x-coordinate ≥ 2560): `GetDpiForWindow` should return 144, and the window should be scaled up by 1.5x based on the system-suggested rectangle (e.g., a 640x680 window becomes 960x1020).
+When capturing a screen area using `BitBlt` from a Per-Monitor-aware thread, text, toggle switches, and lists should appear sharp, with their layouts scaled proportionally. Specifically, the skin editor interface should be scaled by 1.5x in total, rather than 2.25x.

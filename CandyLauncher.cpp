@@ -33,6 +33,7 @@
 #include "manager/ProcessManager.hpp"
 #include "util/UpdateManager.hpp"
 #include "util/CrashHandler.hpp"
+#include "util/HeapTrim.hpp"
 #include "util/DpiUtil.hpp"
 #include "view/CustomComboBox.hpp"
 #include "window/Shell32IconViewer.hpp"
@@ -758,6 +759,9 @@ LRESULT CALLBACK MainWindowWndProc(HWND hWnd, const UINT message, const WPARAM w
 			} else if (wParam == TIMER_PLUGIN_DIR_CHANGED) {
 				KillTimer(hWnd, TIMER_PLUGIN_DIR_CHANGED);
 				if (g_pluginManager) g_pluginManager->ReconcilePluginDir();
+			} else if (wParam == TIMER_HEAP_TRIM) {
+				KillTimer(hWnd, TIMER_HEAP_TRIM);
+				TrimProcessHeaps();
 			} else if (wParam == TIMER_RELOAD_SKIN_FILE) {
 				KillTimer(hWnd, TIMER_RELOAD_SKIN_FILE);
 				if (refreshSkin(g_currectSkinFilePath, true, false)) {

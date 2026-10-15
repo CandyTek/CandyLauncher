@@ -373,14 +373,7 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	SetWindowPos(g_listViewHwnd, nullptr, listX, listY, g_listViewWidth, g_listViewHeight, SWP_NOZORDER|SWP_NOACTIVATE);
 	SetWindowPos(g_editHwnd, nullptr, editX, editY, editWidth, editHeight, SWP_NOZORDER|SWP_NOACTIVATE);
 
-	// Each control gets a cache created against its own DC. CachedBitmap is
-	// device-specific and cannot safely be shared between these windows.
-	g_BgCachedBitmap = createBackgroundCachedBitmap(g_BgImage, g_mainHwnd,
-													 MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	g_BgScaledBitmap = createScaledBackgroundBitmap(g_BgImage, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
-	delete g_BgImage;
-	g_BgImage = nullptr;
-	updateSkinWindowRegion();
 	// 主窗口背景图层：有背景图用缩放好的图，否则用背景色；window_bg_color 为空表示不绘制背景，保持原有路径
 	if (g_BgScaledBitmap) {
 		createPremultipliedDibLayer(g_mainBgLayer, g_BgScaledBitmap);
@@ -388,11 +381,15 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 		createSolidColorDibLayer(g_mainBgLayer, ApplySkinWindowOpacity(HexToGdiplusColor(bgColorStr)),
 								MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
 	}
+	// GDI+ CachedBitmap 只是图层创建失败时的兜底（AppController 先画图层再考虑它），每个都是一份整窗 /
+	// 整控件大小的私有内存，图层在时不再创建。CachedBitmap 绑定各自控件的 DC，不能跨窗口共用
+	if (!g_mainBgLayer) {
+		g_BgCachedBitmap = createBackgroundCachedBitmap(g_BgImage, g_mainHwnd, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT);
+	}
+	delete g_BgImage;
+	g_BgImage = nullptr;
+	updateSkinWindowRegion();
 
-	g_editBgCachedBitmap = createBackgroundCachedBitmap(g_editBgImage, g_editHwnd,
-													  editWidth, editHeight);
-	g_listViewBgCachedBitmap = createBackgroundCachedBitmap(g_listViewBgImage, g_listViewHwnd,
-														g_listViewWidth, g_listViewHeight);
 	// 编辑框的背景图层在这条消息里合成（需要主窗口背景和控件位置都已就绪，所以放在上面之后）
 	SendMessage(g_editHwnd, WM_NOTIFY_HEDIT_REFRESH_SKIN, 0, TRUE);
 
@@ -405,6 +402,23 @@ static bool refreshSkin(std::wstring& skinPath, const bool isShowWindow = true, 
 	Logi(L"SkinHelper", L"Skin loaded at dpi=", g_mainWindowDpi, L", window ", MAIN_WINDOW_WIDTH, L"x", MAIN_WINDOW_HEIGHT,
 		L", list ", g_listViewWidth, L"x", g_listViewHeight, L", vscroll=", thumbWidth);
 	SendMessage(g_listViewHwnd, WM_LISTVIEW_REFRESH_RESOURCE, 0, 0);
+	// 子控件图层创建失败时才保留 GDI+ 兜底位图；三层都在时，整窗缩放图和控件背景原图只在烘焙期间有用
+	//（子图层只在上面两条消息里合成），立即释放：500x500 的皮肤省下整窗 1 MB x 2 加列表背景的几份私有内存
+	if (!g_editBgLayer) {
+		g_editBgCachedBitmap = createBackgroundCachedBitmap(g_editBgImage, g_editHwnd, editWidth, editHeight);
+	}
+	if (!g_listViewBgLayer) {
+		g_listViewBgCachedBitmap = createBackgroundCachedBitmap(g_listViewBgImage, g_listViewHwnd, g_listViewWidth,
+																g_listViewHeight);
+	}
+	if (g_mainBgLayer && g_editBgLayer && g_listViewBgLayer) {
+		delete g_BgScaledBitmap;
+		g_BgScaledBitmap = nullptr;
+		delete g_editBgImage;
+		g_editBgImage = nullptr;
+		delete g_listViewBgImage;
+		g_listViewBgImage = nullptr;
+	}
 	UpdateListViewScrollbarStyle();
 	// InvalidateRect(g_listViewHwnd, nullptr, TRUE);
 	// UpdateWindow(g_mainHwnd);

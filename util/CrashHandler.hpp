@@ -134,7 +134,61 @@ inline void (*g_cleanupCallback)() = nullptr;
 // 是否在崩溃时生成 crash_dump.dmp
 inline bool g_miniDumpEnabled = true;
 // 启动时预留容量，崩溃路径中追加不会触发重新分配
-inline std::wstring g_report;
+// 崩溃报告缓冲。Install 时只预留地址空间（VirtualAlloc MEM_RESERVE，不计入提交内存；以前用 std::wstring::reserve
+// 预留 5 MB 堆内存，整个运行期都白占着），崩溃时 Commit 一次性提交后再写入，崩溃路径上仍然不碰堆。
+// 只提供 Append* 用到的那部分 std::wstring 接口，写入永不超过容量（Append* 先检查），末尾始终保留 NUL 供 c_str 使用。
+class ReportBuffer {
+public:
+	void Reserve(const size_t chars) {
+		if (m_base) return;
+		m_reservedChars = chars + 1;
+		m_base = static_cast<wchar_t*>(VirtualAlloc(nullptr, m_reservedChars * sizeof(wchar_t), MEM_RESERVE, PAGE_READWRITE));
+	}
+
+	// 崩溃路径调用：提交全部预留页。失败时容量保持 0，所有写入成为空操作（报告为空，dump 仍会写）
+	void Commit() {
+		if (!m_base || m_capacity) return;
+		if (VirtualAlloc(m_base, m_reservedChars * sizeof(wchar_t), MEM_COMMIT, PAGE_READWRITE)) {
+			m_capacity = m_reservedChars - 1;
+			m_base[0] = 0;
+		}
+	}
+
+	size_t size() const { return m_size; }
+	size_t capacity() const { return m_capacity; }
+	bool empty() const { return m_size == 0; }
+	const wchar_t* data() const { return m_base; }
+	const wchar_t* c_str() const { return m_capacity ? m_base : L""; }
+	wchar_t& operator[](const size_t i) { return m_base[i]; }
+	const wchar_t& operator[](const size_t i) const { return m_base[i]; }
+
+	void clear() {
+		m_size = 0;
+		if (m_capacity) m_base[0] = 0;
+	}
+
+	// 只在容量内改变长度（AppendUtf8 先 resize 再直接写入）
+	void resize(const size_t n) {
+		if (n > m_capacity) return;
+		m_size = n;
+		m_base[m_size] = 0;
+	}
+
+	void append(const wchar_t* s, const size_t n) {
+		if (m_size + n > m_capacity) return;
+		memcpy(m_base + m_size, s, n * sizeof(wchar_t));
+		m_size += n;
+		m_base[m_size] = 0;
+	}
+
+private:
+	wchar_t* m_base = nullptr;
+	size_t m_reservedChars = 0;
+	size_t m_capacity = 0;
+	size_t m_size = 0;
+};
+
+inline ReportBuffer g_report;
 inline wchar_t g_exeDir[MAX_PATH] = {};
 
 struct CrashContext {
@@ -157,14 +211,14 @@ inline const wchar_t* Tr(const wchar_t* zh, const wchar_t* en) {
 	return IsChineseUi() ? zh : en;
 }
 
-inline void AppendW(std::wstring& out, const wchar_t* s) {
+inline void AppendW(ReportBuffer& out, const wchar_t* s) {
 	if (!s) return;
 	const size_t n = wcslen(s);
 	if (out.size() + n > out.capacity()) return;
 	out.append(s, n);
 }
 
-inline void AppendUtf8(std::wstring& out, const char* s, const size_t n) {
+inline void AppendUtf8(ReportBuffer& out, const char* s, const size_t n) {
 	if (n == 0) return;
 	const int needed = MultiByteToWideChar(CP_UTF8, 0, s, static_cast<int>(n), nullptr, 0);
 	if (needed <= 0) return;
@@ -174,13 +228,13 @@ inline void AppendUtf8(std::wstring& out, const char* s, const size_t n) {
 	MultiByteToWideChar(CP_UTF8, 0, s, static_cast<int>(n), &out[oldSize], needed);
 }
 
-inline void AppendHex(std::wstring& out, const ULONG_PTR value) {
+inline void AppendHex(ReportBuffer& out, const ULONG_PTR value) {
 	wchar_t buf[32];
 	swprintf_s(buf, L"0x%llX", static_cast<unsigned long long>(value));
 	AppendW(out, buf);
 }
 
-inline void AppendUInt(std::wstring& out, const unsigned long long value) {
+inline void AppendUInt(ReportBuffer& out, const unsigned long long value) {
 	wchar_t buf[32];
 	swprintf_s(buf, L"%llu", value);
 	AppendW(out, buf);
@@ -208,7 +262,7 @@ inline const wchar_t* ExceptionCodeName(const DWORD code) {
 }
 
 // 地址所属模块名及偏移
-inline void AppendModuleOffset(std::wstring& out, const ULONG_PTR address) {
+inline void AppendModuleOffset(ReportBuffer& out, const ULONG_PTR address) {
 	HMODULE module = nullptr;
 	if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
 							reinterpret_cast<LPCWSTR>(address), &module) && module) {
@@ -226,7 +280,7 @@ inline void AppendModuleOffset(std::wstring& out, const ULONG_PTR address) {
 // ---------------------------------------------------------------------------
 // 调用栈（StackWalk64，有 PDB 时显示符号，没有时显示 模块+偏移）
 // ---------------------------------------------------------------------------
-inline void AppendStackTrace(std::wstring& out, const CONTEXT& context, HANDLE thread) {
+inline void AppendStackTrace(ReportBuffer& out, const CONTEXT& context, HANDLE thread) {
 	const HANDLE process = GetCurrentProcess();
 	SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME | SYMOPT_LOAD_LINES);
 	const bool symInit = SymInitializeW(process, nullptr, TRUE) != FALSE;
@@ -571,6 +625,8 @@ inline DWORD WINAPI CrashWorkerThread(LPVOID param) {
 
 	SafeCallCleanup();
 	const bool dumpWritten = g_miniDumpEnabled && WriteMiniDump(dumpPath, *ctx);
+	// 报告缓冲在这里才真正提交内存（Install 只预留了地址空间）
+	g_report.Commit();
 	BuildReport(*ctx, crashedThread, logPath, dumpWritten ? dumpPath : nullptr);
 	WriteReportFile(logPath);
 	if (crashedThread) CloseHandle(crashedThread);
@@ -755,7 +811,7 @@ inline void ReinstallExceptionFilter() {
 
 // 在 wWinMain 最开始调用一次
 inline void Install() {
-	g_report.reserve(MAX_REPORT_CHARS);
+	g_report.Reserve(MAX_REPORT_CHARS);
 
 	GetModuleFileNameW(nullptr, g_exeDir, MAX_PATH);
 	if (wchar_t* slash = wcsrchr(g_exeDir, L'\\')) *slash = 0;

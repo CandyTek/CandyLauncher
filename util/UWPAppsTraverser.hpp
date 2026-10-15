@@ -13,6 +13,8 @@
 #include <atomic>
 #include <thread>
 #include <vector>
+#include "UwpAppsEnumerator.hpp"
+#include "UwpHelperClient.hpp"
 #pragma comment(lib, "Psapi.lib")
 
 
@@ -96,101 +98,66 @@ static void TraverseUWPApps(
 }
 
 
-// 在独立 STA 线程中按解析名提取 UWP 图标；Shell 图标提取较慢，串行执行是 UWP 索引的主要耗时。
-static void LoadUwpAppIcons(const std::vector<std::wstring>& parsingNames, std::vector<HBITMAP>& bitmaps) {
-	bitmaps.assign(parsingNames.size(), nullptr);
-	if (parsingNames.empty()) return;
-	// 实测 8 线程最快；更多线程会在 Shell 内部锁上竞争而变慢。
-	const size_t threadCount = std::min<size_t>(8, parsingNames.size());
-	std::atomic<size_t> next{0};
-	auto worker = [&]() {
-		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-		for (size_t i = next++; i < parsingNames.size(); i = next++) {
-			IShellItemImageFactory* imageFactory = nullptr;
-			const std::wstring itemPath = L"shell:AppsFolder\\" + parsingNames[i];
-			if (FAILED(SHCreateItemFromParsingName(itemPath.c_str(), nullptr, IID_PPV_ARGS(&imageFactory)))) continue;
-			// SIIGBF_RESIZETOFIT 即使没有确切的尺寸，也可以确保我们获得图像；SIIGBF_ICONONLY 防止获得缩略图预览。
-			imageFactory->GetImage({48, 48}, SIIGBF_RESIZETOFIT | SIIGBF_ICONONLY, &bitmaps[i]);
-			imageFactory->Release();
-		}
-		if (SUCCEEDED(comResult)) CoUninitialize();
-	};
-	std::vector<std::thread> threads;
-	threads.reserve(threadCount - 1);
-	for (size_t i = 1; i < threadCount; ++i) threads.emplace_back(worker);
-	worker();
-	for (auto& thread : threads) thread.join();
-}
+// ---------- 以下为实际生效的 UWP 索引 ----------
+//
+// 枚举 shell:AppsFolder 会把 windows.storage / Windows.StateRepository / CoreUIComponents 等 WinRT 运行库
+// 加载进进程并常驻约 10 MB，所以默认交给短命的 CandyUwpHelper.exe（uwp_helper/UwpHelperMain.cpp）去做，
+// 结果连同 48px 图标像素经匿名管道传回（util/UwpHelperClient.hpp / UwpHelperProtocol.hpp）。助手不存在、
+// 超时或输出不合法时回退到进程内枚举（UwpApps::Enumerate / LoadIcons，util/UwpAppsEnumerator.hpp），行为与旧版一致。
 
-/// <summary>
-/// Enumerates UWP applications from the AppsFolder and adds them to the actions list.
-/// This is the C++ equivalent of the C# SpecificallyForGetCurrentUwpName2() and the subsequent loop.
-/// </summary>
-/// <param name="actions">The list of actions to add UWP apps to.</param>
+// 回调签名：(逻辑名(已 rename), "shell:AppsFolder\\<解析名>", 解析名, HBITMAP 图标或 nullptr)；回调方拥有位图。
+// 排除与重命名规则在这里按显示名应用，与旧版一致
 template <typename Callback>
 static void LoadUwpApps(Callback&& callback, const TraverseOptions& options) {
-	const HRESULT comResult = CoInitialize(NULL);
-	if (FAILED(comResult)) {
+	const ULONGLONG uwpStart = GetTickCount64();
+
+	std::vector<UwpHelper::Item> apps;
+	const std::wstring helperExe = FindUwpHelperExe();
+	if (!helperExe.empty() && RunUwpHelper(helperExe, UwpHelper::kModeUwp, apps, 30000)) {
+		size_t kept = 0, withIcon = 0;
+		for (UwpHelper::Item& app : apps) {
+			std::wstring uwpAppName = app.name;
+			if (shouldExclude(options, uwpAppName)) continue;
+			if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end()) {
+				uwpAppName = it->second;
+			}
+			++kept;
+			if (!app.icon.empty()) ++withIcon;
+			callback(uwpAppName, L"shell:AppsFolder\\" + app.target, app.target,
+					UwpApps::CreateDibFromPixels(app.icon));
+		}
+		Logi(L"UWP", L"helper total=", GetTickCount64() - uwpStart, L"ms apps=", apps.size(), L" kept=", kept,
+			L" icons=", withIcon);
 		return;
 	}
-	const ULONGLONG uwpStart = GetTickCount64();
+	if (helperExe.empty()) {
+		Logw(L"UWP", L"CandyUwpHelper.exe not found next to the app, enumerating in-process");
+	} else {
+		Logw(L"UWP", L"helper failed, enumerating in-process");
+	}
+
+	// ---- 进程内回退 ----
+	const HRESULT comResult = CoInitialize(nullptr);
+	if (FAILED(comResult)) return;
 	size_t enumCount = 0;
 	std::vector<std::wstring> names;
 	std::vector<std::wstring> parsingNames;
-
-	IShellItem* pAppsFolderItem = nullptr;
-	if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_AppsFolder, KF_FLAG_DEFAULT, NULL, IID_PPV_ARGS(&pAppsFolderItem)))) {
-		IShellFolder* pAppsFolder = nullptr;
-		if (SUCCEEDED(pAppsFolderItem->BindToHandler(nullptr, BHID_SFObject, IID_PPV_ARGS(&pAppsFolder)))) {
-			IEnumIDList* pEnumIDList = nullptr;
-			if (pAppsFolder->EnumObjects(NULL, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS, &pEnumIDList) == S_OK) {
-				PITEMID_CHILD pidlItem = nullptr;
-				while (pEnumIDList->Next(1, &pidlItem, nullptr) == S_OK) {
-					++enumCount;
-					// 直接从文件夹读取名称，避免为每个非 UWP 条目创建 ShellItem。
-					STRRET parsingRet{}, displayRet{};
-					LPWSTR pwszParsingName = nullptr;
-					LPWSTR pwszDisplayName = nullptr;
-					if (SUCCEEDED(pAppsFolder->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &parsingRet)) &&
-						SUCCEEDED(StrRetToStrW(&parsingRet, pidlItem, &pwszParsingName)) &&
-						// UWP应用程序通常具有“！”以他们的解析名称。
-						wcschr(pwszParsingName, L'!') != nullptr &&
-						SUCCEEDED(pAppsFolder->GetDisplayNameOf(pidlItem, SHGDN_NORMAL, &displayRet)) &&
-						SUCCEEDED(StrRetToStrW(&displayRet, pidlItem, &pwszDisplayName))) {
-						// 进行UWP列表项的筛选，排除，重命名
-						std::wstring uwpAppName = pwszDisplayName;
-						if (!shouldExclude(options, uwpAppName)) {
-							if (const auto it = options.renameMap.find(uwpAppName); it != options.renameMap.end()) {
-								uwpAppName = it->second;
-							}
-							names.push_back(std::move(uwpAppName));
-							parsingNames.emplace_back(pwszParsingName);
-						}
-					}
-					CoTaskMemFree(pwszDisplayName);
-					CoTaskMemFree(pwszParsingName);
-					CoTaskMemFree(pidlItem);
-				}
-				pEnumIDList->Release();
-			}
-			pAppsFolder->Release();
+	for (UwpApps::Entry& entry : UwpApps::Enumerate(&enumCount)) {
+		if (shouldExclude(options, entry.displayName)) continue;
+		if (const auto it = options.renameMap.find(entry.displayName); it != options.renameMap.end()) {
+			entry.displayName = it->second;
 		}
-		pAppsFolderItem->Release();
+		names.push_back(std::move(entry.displayName));
+		parsingNames.push_back(std::move(entry.parsingName));
 	}
 	const ULONGLONG enumDone = GetTickCount64();
 
 	std::vector<HBITMAP> bitmaps;
-	LoadUwpAppIcons(parsingNames, bitmaps);
+	UwpApps::LoadIcons(parsingNames, bitmaps);
 	for (size_t i = 0; i < names.size(); ++i) {
-		// 构造命令字符串以启动UWP应用程序
-		callback(
-			names[i], // 逻辑名（被 rename 过）
-			L"shell:AppsFolder\\" + parsingNames[i],
-			parsingNames[i],
-			bitmaps[i]
-		);
+		callback(names[i], L"shell:AppsFolder\\" + parsingNames[i], parsingNames[i], bitmaps[i]);
 	}
-	Logi(L"UWP", L"total=", GetTickCount64() - uwpStart, L"ms enum=", enumCount, L"/", enumDone - uwpStart,
+	Logi(L"UWP", L"in-process total=", GetTickCount64() - uwpStart, L"ms enum=", enumCount, L"/", enumDone - uwpStart,
 		L"ms icons=", names.size(), L"/", GetTickCount64() - enumDone, L"ms");
 	CoUninitialize();
 }

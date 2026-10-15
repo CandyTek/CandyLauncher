@@ -31,6 +31,8 @@ constexpr UINT TRAY_ICON_ID = 1001;
 #define TIMER_DETERMINE_FILE_DRAG_AND_DROP 113
 #define TIMER_RELOAD_SKIN_FILE 114
 #define TIMER_PLUGIN_DIR_CHANGED 115
+// 插件列表重建完成几秒后把堆里缓存的空闲页还给系统（util/HeapTrim.hpp）
+#define TIMER_HEAP_TRIM 116
 
 
 #define HOTKEY_ID_TOGGLE_MAIN_PANEL (100)

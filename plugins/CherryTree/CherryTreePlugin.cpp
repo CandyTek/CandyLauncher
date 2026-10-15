@@ -68,7 +68,8 @@ public:
 		std::vector<std::shared_ptr<CherryTreeAction>> items;
 		LoadNotes(items);
 		notes.SetFlags(GetHost(), NoteSetFlags());
-		notes.Publish(GetHost(), std::move(items));
+		// 每次刷新都重建条目，执行 / 复制只用 text：主程序拷走标题、匹配串（可能包含整篇笔记）后插件侧立即释放
+		notes.Publish(GetHost(), std::move(items), true);
 	}
 
 	void OnUserSettingsLoaded() override {

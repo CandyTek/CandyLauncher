@@ -167,7 +167,8 @@ static void CollectIndexFileListFromConfig(TraverseOptions config, std::vector<F
 			outputItems.push_back(fileInfo);
 		}, config, EXE_FOLDER_PATH2);
 	} else if (config.type == L"control_panel" || config.type == L"windows_settings") {
-		for (const auto& item : GetSystemSettingsItems(config)) {
+		// 列表用系统图像列表的 iImage 画图标，这里需要进程内枚举得到的索引（只在用户打开管理器时发生）
+		for (const auto& item : GetSystemSettingsItems(config, true)) {
 			FileInfo fileInfo;
 			fileInfo.file_path = item.target;
 			fileInfo.label = item.name;

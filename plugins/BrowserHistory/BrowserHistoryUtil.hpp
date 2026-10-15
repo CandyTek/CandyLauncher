@@ -91,6 +91,28 @@ struct RawHistoryRow {
 	int64_t lastVisitTime = 0;
 };
 
+// 副标题和匹配文本里只保留地址的前这么多个字符。Edge 历史里带 token 的地址平均 1000 多字符、最长几万字符，
+// 列表最多显示约 100 个字符，长地址对搜索也没有价值；完整地址只在 action->url 里保留一份用于打开和复制。
+// 实测 2000 条历史把地址存 7 份要 41 MB，截断并改用哈希键后只剩几 MB。
+constexpr size_t kMaxIndexedUrlChars = 256;
+
+static std::wstring TruncateUrlForIndex(const std::wstring& url) {
+	if (url.size() <= kMaxIndexedUrlChars) return url;
+	return url.substr(0, kMaxIndexedUrlChars) + L"\u2026";
+}
+
+// 使用历史的稳定键：完整地址的 FNV-1a 64 位哈希（16 个十六进制字符），而不是再存一份地址
+static std::wstring UrlStableKey(const std::wstring& url) {
+	uint64_t h = 1469598103934665603ULL;
+	for (const wchar_t ch : url) {
+		h ^= static_cast<uint64_t>(ch);
+		h *= 1099511628211ULL;
+	}
+	wchar_t buffer[17];
+	swprintf_s(buffer, 17, L"%016llx", static_cast<unsigned long long>(h));
+	return buffer;
+}
+
 // 从 Chromium 类浏览器（Chrome/Edge）的 History SQLite 数据库读取历史记录
 // 先在单线程内取出原始行（SQLite 游标不能并行），再并行转换字符串与生成匹配文本。
 // matchUrl 是本次刷新开始时抓取的设置快照：并行构造期间设置回调可能改写设置，不能边读全局变量边构造
@@ -128,7 +150,9 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromiumHistoryFrom
 		// CROSS JOIN 固定以子查询为外层循环，结果保持 last_visit_time 降序
 		const std::string sql = "SELECT u.url, u.title, u.last_visit_time FROM ("
 			"SELECT id FROM urls "
+			// data:/blob:/javascript: 地址动辄几十 KB 且无法再次打开，直接在库里过滤掉
 			"WHERE hidden = 0 AND url NOT LIKE 'chrome://%' AND url NOT LIKE 'edge://%' "
+			"AND url NOT LIKE 'data:%' AND url NOT LIKE 'blob:%' AND url NOT LIKE 'javascript:%' "
 			"ORDER BY last_visit_time DESC" + (maxResults > 0 ? " LIMIT " + std::to_string(maxResults) : "") +
 			") s CROSS JOIN urls u ON u.id = s.id;";
 
@@ -159,33 +183,36 @@ static std::vector<std::shared_ptr<BrowserHistoryAction>> GetChromiumHistoryFrom
 		result.resize(rows.size());
 		ParallelForRange(rows.size(), 64, [&](const size_t begin, const size_t end) {
 			for (size_t i = begin; i < end; ++i) {
-				const auto& row = rows[i];
+				auto& row = rows[i];
 				auto action = std::make_shared<BrowserHistoryAction>();
-				// 非法 UTF-8 序列会被替换为 U+FFFD
-				Utf8ToWideFast(row.url, action->url);
-				if (action->url.empty()) continue;
+				// 非法 UTF-8 序列会被替换为 U+FFFD；宽字符版只在这里临时用一下（截断、哈希），不保存
+				std::wstring wideUrl;
+				Utf8ToWideFast(row.url, wideUrl);
+				if (wideUrl.empty()) continue;
 				Utf8ToWideFast(row.title, action->title);
+				// 显示和匹配都用截断后的地址，完整地址只以 UTF-8 留在 url 里
+				const std::wstring indexedUrl = TruncateUrlForIndex(wideUrl);
 				// 如果标题为空，使用 URL
 				if (action->title.empty()) {
-					action->title = action->url;
+					action->title = indexedUrl;
 				}
 				// 副标题：访问时间 + URL
-				if (row.lastVisitTime > 0) {
-					action->visitTime = ConvertWebkitTimestamp(row.lastVisitTime);
-				}
-				if (action->visitTime.empty()) {
-					action->subtitle = action->url;
+				const std::wstring visitTime = row.lastVisitTime > 0 ? ConvertWebkitTimestamp(row.lastVisitTime) : std::wstring();
+				if (visitTime.empty()) {
+					action->subtitle = indexedUrl;
 				} else {
-					action->subtitle = action->visitTime + L"  " + action->url;
+					action->subtitle = visitTime + L"  " + indexedUrl;
 				}
 				// 同一浏览器的所有条目共享图标，由主程序延迟解析
 				action->iconPath = browserIconPath;
-				action->stableKey = action->url;
+				// 键仍按宽字符地址哈希，和旧版本的使用历史保持一致
+				action->stableKey = UrlStableKey(wideUrl);
+				action->url = std::move(row.url);
 				// 在插件内并行处理匹配文本，主程序原样使用
 				action->matchTextVerbatim = true;
 				try {
 					if (matchUrl) {
-						action->matchText = m_host->ProcessMatchText(action->title) + action->url;
+						action->matchText = m_host->ProcessMatchText(action->title) + indexedUrl;
 					} else {
 						action->matchText = m_host->ProcessMatchText(action->title);
 					}

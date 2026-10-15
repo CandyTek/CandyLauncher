@@ -59,8 +59,8 @@ class PluginActionProxy final : public BaseAction {
 public:
 	std::wstring title;
 	std::wstring subtitle;
-	// 2.2: identity that survives republishing; empty when the plugin gave none.
-	std::wstring stableKey;
+	// 2.2 的 stable_key 不再保存副本：它只用于计算 BaseAction::usageKey，发布时直接哈希
+	//（浏览器历史等插件曾把整个地址当键，每项多存一份长字符串）
 	int iconIndex = -1;
 	std::shared_ptr<LazySysImageIndex> lazyIcon;
 	std::shared_ptr<SharedIconBitmap> iconBitmap;

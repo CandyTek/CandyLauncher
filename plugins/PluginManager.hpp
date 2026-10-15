@@ -15,6 +15,7 @@
 #include "PluginActionProxy.hpp"
 #include "PluginI18n.hpp"
 #include "BaseLaunchAction.hpp"
+#include "common/Constants.hpp"
 #include "common/I18n.hpp"
 #include "Everything.h"
 #include "../util/BaseTools.hpp"
@@ -264,6 +265,8 @@ public:
 			const fs::path resultPath(fullPath.data());
 			if (belongsToFolder(resultPath)) addFile(resultPath);
 		}
+		// SDK 会一直持有上次查询的结果列表（每条一份完整路径），用完立即释放
+		Everything_Reset();
 		Logi(L"Everything", L"Folder query ms=", queryDone - queryStart,
 			L" results=", numResults, L" callbacks ms=", GetTickCount64() - queryDone);
 	}
@@ -294,6 +297,7 @@ public:
 				candidates.push_back(candidate);
 			}
 		}
+		Everything_Reset();
 		return candidates;
 	}
 
@@ -878,6 +882,8 @@ public:
 				}
 			}
 			m_combinedVersion = version;
+			// 发布换掉了整批旧条目，几秒后（连续发布只触发一次）把堆缓存的空闲页还给系统，见 util/HeapTrim.hpp
+			if (g_mainHwnd) SetTimer(g_mainHwnd, TIMER_HEAP_TRIM, 3000, nullptr);
 		}
 		target.insert(target.end(), m_combinedActions.begin(), m_combinedActions.end());
 	}

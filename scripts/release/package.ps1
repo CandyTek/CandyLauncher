@@ -122,6 +122,7 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 # Executables and shared libraries
 Copy-Required $exePath $stage
 Copy-Optional (Join-Path $buildPath "SkinEditor.exe") $stage
+Copy-Required (Join-Path $buildPath "CandyUwpHelper.exe") $stage   # UWP / control panel / settings enumeration helper used by the Folder plugin
 Copy-Required (Join-Path $buildPath $everythingDll) $stage
 Copy-Required (Join-Path $buildPath "cpp-pinyin.dll") $stage
 Copy-Required (Join-Path $buildPath "sqlite3.dll") $stage

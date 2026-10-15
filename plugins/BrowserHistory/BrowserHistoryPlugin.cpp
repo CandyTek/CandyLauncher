@@ -27,7 +27,8 @@ private:
 		const bool matchUrl = matchTextUrl.load();
 		auto items = GetAllBrowserHistory(matchUrl);
 		Logi(L"BrowserHistory", L"Loaded ", items.size(), L" history items");
-		history.Publish(GetHost(), std::move(items));
+		// 每次刷新都从数据库重建条目，执行 / 复制只用 url：主程序拷走标题等字符串后插件侧立即释放
+		history.Publish(GetHost(), std::move(items), true);
 	}
 
 	void JoinRefreshThread() {
@@ -89,8 +90,10 @@ public:
 		if (!action1 || action1->url.empty()) return false;
 
 		try {
-			// 打开浏览器访问该 URL
-			ShellExecuteW(NULL, L"open", (action1->url).c_str(), NULL, NULL, SW_SHOWNORMAL);
+			// 打开浏览器访问该 URL（url 以 UTF-8 保存，这里才转宽字符）
+			std::wstring url;
+			Utf8ToWideFast(action1->url, url);
+			ShellExecuteW(NULL, L"open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 		} catch (...) {
 			return false;
 		}
@@ -101,7 +104,7 @@ public:
 	bool GetItemCopyText(const uint64_t userData, std::wstring& text) override {
 		const auto action1 = history.Find(userData);
 		if (!action1 || action1->url.empty()) return false;
-		text = action1->url;
+		Utf8ToWideFast(action1->url, text);
 		return true;
 	}
 };
