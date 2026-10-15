@@ -20,6 +20,7 @@
 #include <tlhelp32.h>
 
 #include "BaseTools.hpp"
+#include "../common/UiLanguage.hpp"
 #include "ShortcutUtil.hpp"
 #include "../common/GlobalState.hpp"
 #include "../plugins/BaseAction.hpp"
@@ -916,9 +917,9 @@ static bool RelaunchAsAdmin() {
 	if (!ShellExecuteExW(&sei)) {
 		DWORD dwErr = GetLastError();
 		if (dwErr == ERROR_CANCELLED) {
-			MessageBoxW(NULL, L"用户取消了权限提升。", L"提示", MB_ICONINFORMATION | MB_TOPMOST);
+			MessageBoxW(NULL, TrZhEn(L"用户取消了权限提升。", L"Elevation was cancelled by the user."), TrZhEn(L"提示", L"Notice"), MB_ICONINFORMATION | MB_TOPMOST);
 		} else {
-			MessageBoxW(NULL, L"无法以管理员身份重新启动程序。", L"错误", MB_ICONERROR | MB_TOPMOST);
+			MessageBoxW(NULL, TrZhEn(L"无法以管理员身份重新启动程序。", L"Failed to restart the program as administrator."), TrZhEn(L"错误", L"Error"), MB_ICONERROR | MB_TOPMOST);
 		}
 		return false;
 	}

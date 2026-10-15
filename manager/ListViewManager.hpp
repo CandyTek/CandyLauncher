@@ -598,7 +598,8 @@ static void RebuildListViewBackgroundLayer(const HWND hWnd) {
 
 static void refreshAppLaunchAction() {
 	baseAppLaunchActions.clear();
-	auto base_launch_action1 = std::make_shared<BaseLaunchAction>(L"刷新列表", L"刷新索引列表", L"",
+	auto base_launch_action1 = std::make_shared<BaseLaunchAction>(LoadI18nString(IDS_I18N_ACTION_REFRESH_LIST_TITLE, L"Refresh List").c_str(),
+																						LoadI18nString(IDS_I18N_ACTION_REFRESH_LIST_DESC, L"Rebuild the index list").c_str(), L"",
 																appLaunchActionCallBacks["refreshList"]);
 	// 直接按当前列表图标尺寸加载资源图标，高 DPI 下不需要再拉伸
 	base_launch_action1->iconBitmap = g_pluginManager->LoadResIconAsBitmap(IDI_REFRESH, LISTITEM_ICON_SIZE, LISTITEM_ICON_SIZE);

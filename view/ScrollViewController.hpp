@@ -200,21 +200,7 @@ static LRESULT CALLBACK ScrollContainerProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				if (HIWORD(wParam) == BN_CLICKED) {
 					// 處理來自複選框的特定點擊事件
 					if (setting->type == "bool") {
-						HWND hCheckbox = reinterpret_cast<HWND>(lParam); // 獲取複選框的句柄
-						bool checkState = GetSwitchState(hCheckbox);
-						if (setting->key == "pref_auto_start") {
-							if (checkState) {
-								MessageBoxW(nullptr, L"您啟用了「特殊功能」！", L"提示", MB_OK);
-							} else {
-								MessageBoxW(nullptr, L"您關閉了「特殊功能」。", L"提示", MB_OK);
-							}
-						} else if (setting->key == "pref_show_tray_icon") {
-							if (checkState == BST_CHECKED) {
-								OutputDebugStringW(L"顯示高級選項\n");
-							} else {
-								OutputDebugStringW(L"隱藏高級選項\n");
-							}
-						}
+						// 开关状态由 SwitchView 自己维护，保存时统一读取，这里无需处理
 					} else if (setting->type == "button") {
 						handleButtonAction(hwnd, setting->key);
 					} else if (setting->type == "expandswitch") {

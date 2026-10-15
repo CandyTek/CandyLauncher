@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "StringUtil.hpp"
+#include "../common/UiLanguage.hpp"
 
 constexpr bool USE_WIDE_LOG = false; 
 
@@ -108,9 +109,9 @@ static void ShowErrorMsgBox(const std::wstring& msg) {
 	const DWORD err = GetLastError();
     
 	// 直接动态拼接，安全且无需关心字符长度
-	std::wstring fullMsg = msg + L"，错误代码：" + std::to_wstring(err);
+	std::wstring fullMsg = msg + TrZhEn(L"，错误代码：", L", error code: ") + std::to_wstring(err);
 
-	MessageBoxW(nullptr, fullMsg.c_str(), L"错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
+	MessageBoxW(nullptr, fullMsg.c_str(), TrZhEn(L"错误", L"Error"), MB_OK | MB_ICONERROR | MB_TOPMOST);
 }
 
 static void ShowErrorMsgBox(const std::string& msg) {
@@ -118,10 +119,10 @@ static void ShowErrorMsgBox(const std::string& msg) {
 	wchar_t buf[256];
 
 	std::wstring wmsg = StringToWString(msg);
-	wmsg += L"，错误代码：%lu";
+	wmsg += TrZhEn(L"，错误代码：%lu", L", error code: %lu");
 
 	wsprintfW(buf, wmsg.c_str(), err);
-	MessageBoxW(nullptr, buf, L"错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
+	MessageBoxW(nullptr, buf, TrZhEn(L"错误", L"Error"), MB_OK | MB_ICONERROR | MB_TOPMOST);
 }
 
 [[deprecated("Use Logi() instead")]]

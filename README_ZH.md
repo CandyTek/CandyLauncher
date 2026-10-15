@@ -26,7 +26,7 @@ CandyLauncher 以便携版 zip 发布，无需安装。在 [Releases](https://gi
 
 ### 运行依赖
 
-- Windows 10 及以上（64 位）
+- Windows 7 及以上（64 位）
 - [Microsoft Visual C++ 2015-2022 运行库 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)。如果启动时提示缺少 `MSVCP140.dll` 或 `VCRUNTIME140.dll`，请安装此运行库。
 - 可选：[Everything](https://www.voidtools.com/)，为 Folder 插件提供即时文件搜索
 - 可选：[Node.js](https://nodejs.org/)，用于 Node.js 插件桥接（运行 Wox / Flow Launcher 的 JavaScript 插件）

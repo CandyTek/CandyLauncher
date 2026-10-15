@@ -134,13 +134,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	const std::wstring executablePath = GetOwnExecutablePath();
 	if (executablePath.empty()) {
-		MessageBoxW(nullptr, L"无法获取程序路径。", L"CandyLauncher", MB_OK | MB_ICONERROR);
+		MessageBoxW(nullptr, TrZhEn(L"无法获取程序路径。", L"Failed to get the executable path."), L"CandyLauncher", MB_OK | MB_ICONERROR);
 		return -1;
 	}
 	g_WM_SHOW_EXISTING_INSTANCE = RegisterWindowMessageW(L"CandyLauncher.ShowExistingInstance");
 	g_instanceMutex = CreateMutexW(nullptr, FALSE, GetInstanceMutexName(executablePath).c_str());
 	if (!g_instanceMutex) {
-		MessageBoxW(nullptr, L"无法创建单实例互斥量。", L"CandyLauncher", MB_OK | MB_ICONERROR);
+		MessageBoxW(nullptr, TrZhEn(L"无法创建单实例互斥量。", L"Failed to create the single-instance mutex."), L"CandyLauncher", MB_OK | MB_ICONERROR);
 		return -1;
 	}
 	if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -152,7 +152,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	// 启动快捷方式可能没有指定“起始位置”，先固定工作目录再加载配置和插件。
 	if (!SetCurrentDirectoryW(EXE_FOLDER_PATH.c_str())) {
-		MessageBoxW(nullptr, L"无法将工作目录设置为程序所在目录。", L"CandyLauncher", MB_OK | MB_ICONERROR);
+		MessageBoxW(nullptr, TrZhEn(L"无法将工作目录设置为程序所在目录。", L"Failed to set the working directory to the program folder."), L"CandyLauncher", MB_OK | MB_ICONERROR);
 		return -1;
 	}
 
@@ -285,7 +285,7 @@ static void CreateMainWindow(HINSTANCE hInstance, const int nCmdShow) {
 		nullptr // 附加参数
 	);
 	if (!g_mainHwnd) {
-		ShowErrorMsgBox(L"创建窗口失败，hWnd为空");
+		ShowErrorMsgBox(TrZhEn(L"创建窗口失败，hWnd为空", L"Failed to create the main window (hWnd is null)"));
 		ExitProcess(1);
 		return;
 	}

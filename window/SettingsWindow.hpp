@@ -128,7 +128,11 @@ static void ShowSettingsWindow(HINSTANCE hInstance, HWND hParent, bool isShow = 
 		nullptr // 附加参数
 	);
 
-	// ShowWindow(g_settingsHwnd, SW_SHOW);
+	// 带 WS_VISIBLE 创建时，主窗口会在失活时隐藏自己（WM_ACTIVATE -> HideWindow），激活会回到之前的前台程序，
+	// 设置窗口会被压到它下面“一闪而过”；这里和上面已存在窗口的分支一样显式置前
+	if (isShow && g_settingsHwnd != nullptr) {
+		SetForegroundWindow(g_settingsHwnd);
+	}
 	UpdateWindow(g_settingsHwnd);
 }
 

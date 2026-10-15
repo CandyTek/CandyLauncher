@@ -26,7 +26,7 @@ CandyLauncher ships as a portable zip, no installer. Download `CandyLauncher-vX.
 
 ### Runtime requirements
 
-- Windows 10 or later (64-bit)
+- Windows 7 or later (64-bit)
 - [Microsoft Visual C++ 2015-2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe). If `CandyLauncher.exe` reports that `MSVCP140.dll` or `VCRUNTIME140.dll` is missing, install this package.
 - Optional: [Everything](https://www.voidtools.com/) for instant file search in the Folder plugin
 - Optional: [Node.js](https://nodejs.org/) for the Node.js plugin bridge (Wox / Flow Launcher JavaScript plugins)

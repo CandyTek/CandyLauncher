@@ -215,7 +215,8 @@ endif ()
 add_compile_definitions(NTDDI_VERSION=0x0A000003)
 
 # 内嵌的皮肤编辑器页面改动后需要重新编译资源
-set_source_files_properties(CandyLauncher.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html")
+# VERSIONINFO reads the generated AppVersion.h; without this dependency the .res is not recompiled after a version bump
+set_source_files_properties(CandyLauncher.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html;${CMAKE_BINARY_DIR}/generated/common/AppVersion.h")
 
 # 独立的皮肤编辑器程序 SkinEditor.exe，与 CandyLauncher.exe 输出到同一目录
 add_executable(SkinEditor WIN32
@@ -226,7 +227,7 @@ add_executable(SkinEditor WIN32
 		window/SkinEditorWindow.hpp
 		web/skin_editor.html
 )
-set_source_files_properties(skin_editor/SkinEditor.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html")
+set_source_files_properties(skin_editor/SkinEditor.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/web/skin_editor.html;${CMAKE_BINARY_DIR}/generated/common/AppVersion.h")
 target_precompile_headers(SkinEditor PRIVATE common/pch.h)
 target_compile_definitions(SkinEditor PRIVATE UNICODE _UNICODE
 		$<$<CONFIG:Debug>:DEBUG=1>

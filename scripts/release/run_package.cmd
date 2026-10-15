@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 :: Build the Release configuration and produce dist\CandyLauncher-v<version>-<arch>.zip
 :: Usage: scripts\release\run_package.cmd            (generate if needed, build, test, package)

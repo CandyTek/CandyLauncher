@@ -12,6 +12,7 @@
 #include "util/MainTools.hpp"
 #include "common/Resource.h"
 #include "common/Constants.hpp"
+#include "common/I18n.hpp"
 
 #define WM_TRAYICON (WM_USER + 1)
 
@@ -89,50 +90,50 @@ static void Init(HWND parent, HINSTANCE hInstance) {
 	// 主菜单
 	g_hTrayMenu = CreatePopupMenu();
 
-	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_SHOW_WINDOW, L"打开主窗口(&C)");
+	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_SHOW_WINDOW, LoadI18nString(IDS_I18N_TRAY_SHOW_WINDOW, L"&Show Main Window").c_str());
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_SHOW_WINDOW, MF_BYCOMMAND, gBmpShow, gBmpShow);
 
 	AppendMenuW(g_hTrayMenu, MF_SEPARATOR, 0, nullptr);
 
-	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_HELP, L"帮助文档(&H)");
+	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_HELP, LoadI18nString(IDS_I18N_TRAY_HELP, L"&Help").c_str());
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_HELP, MF_BYCOMMAND, gBmpHelp, gBmpHelp);
 
 	// 子菜单 “更多...”
 	g_hMoreSub = CreatePopupMenu();
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_OPEN_FOLDER, L"在资源管理器打开路径(&I)");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_OPEN_FOLDER, LoadI18nString(IDS_I18N_TRAY_OPEN_FOLDER, L"Open &Install Folder").c_str());
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_OPEN_FOLDER, MF_BYCOMMAND, gBmpFolder, gBmpFolder);
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB, L"打开 Github 主页(&G)");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB, LoadI18nString(IDS_I18N_TRAY_GITHUB, L"Open &GitHub Page").c_str());
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_GITHUB, MF_BYCOMMAND, gBmpGithub, gBmpGithub);
 	
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB_ISSUES, L"反馈(&F)");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_GITHUB_ISSUES, LoadI18nString(IDS_I18N_TRAY_FEEDBACK, L"&Feedback").c_str());
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_ABOUT, L"关于(&A)");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_ABOUT, LoadI18nString(IDS_I18N_TRAY_ABOUT, L"&About").c_str());
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_ABOUT, MF_BYCOMMAND, gBmpAbout, gBmpAbout);
 
 	AppendMenuW(g_hMoreSub, MF_SEPARATOR, 0, nullptr);
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_CHECK_UPDATE, L"检查更新(&C)");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_CHECK_UPDATE, LoadI18nString(IDS_I18N_TRAY_CHECK_UPDATE, L"&Check for Updates").c_str());
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_CHECK_UPDATE, MF_BYCOMMAND, gBmpCheckUpdate, gBmpCheckUpdate);
 
-	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_RESTART, L"重启软件(&R)");
+	AppendMenuW(g_hMoreSub, MF_STRING, TRAY_MENU_ID_RESTART, LoadI18nString(IDS_I18N_TRAY_RESTART, L"&Restart").c_str());
 	SetMenuItemBitmaps(g_hMoreSub, TRAY_MENU_ID_RESTART, MF_BYCOMMAND, gBmpRestart, gBmpRestart);
 
 	// 把子菜单加到主菜单，并给“更多...”本身设位图（需要按位置设置）
 	int posMore = GetMenuItemCount(g_hTrayMenu);
-	AppendMenuW(g_hTrayMenu, MF_STRING | MF_POPUP, (UINT_PTR)g_hMoreSub, L"更多...(&M)");
+	AppendMenuW(g_hTrayMenu, MF_STRING | MF_POPUP, (UINT_PTR)g_hMoreSub, LoadI18nString(IDS_I18N_TRAY_MORE, L"&More...").c_str());
 	SetMenuItemBitmaps(g_hTrayMenu, posMore, MF_BYPOSITION, gBmpMore, gBmpMore);
 	AppendMenuW(g_hTrayMenu, MF_SEPARATOR, 0, nullptr);
 
 	// 设置 & 退出
-	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_SETTINGS, L"设置(&S)");
+	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_SETTINGS, LoadI18nString(IDS_I18N_TRAY_SETTINGS, L"&Settings").c_str());
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_SETTINGS, MF_BYCOMMAND, gBmpSettings, gBmpSettings);
 #if defined(_DEBUG) || !defined(NDEBUG) || defined(REL_WITH_DEB_INFO_DEBUG)
 	AppendMenuW(g_hTrayMenu, MF_STRING, 10999, L"当前为DEBUG版本");
 #endif
 
-	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_EXIT, L"退出(&X)");
+	AppendMenuW(g_hTrayMenu, MF_STRING, TRAY_MENU_ID_EXIT, LoadI18nString(IDS_I18N_TRAY_EXIT, L"E&xit").c_str());
 	SetMenuItemBitmaps(g_hTrayMenu, TRAY_MENU_ID_EXIT, MF_BYCOMMAND, gBmpExit, gBmpExit);
 }
 
@@ -142,7 +143,9 @@ static void TrayMenuShow(HWND hWnd, const MainWindowMenuOptions* options = nullp
 	SetForegroundWindow(hWnd); // 让菜单不会点击后立即消失
 
 	// 第一项根据主窗口当前可见状态切换文字
-	std::wstring showText = (g_mainHwnd && IsWindowVisible(g_mainHwnd)) ? L"关闭主窗口(&C)" : L"打开主窗口(&C)";
+	std::wstring showText = (g_mainHwnd && IsWindowVisible(g_mainHwnd))
+		? LoadI18nString(IDS_I18N_TRAY_HIDE_WINDOW, L"&Hide Main Window")
+		: LoadI18nString(IDS_I18N_TRAY_SHOW_WINDOW, L"&Show Main Window");
 	MENUITEMINFOW mii{};
 	mii.cbSize = sizeof(mii);
 	mii.fMask = MIIM_STRING;
@@ -154,14 +157,14 @@ static void TrayMenuShow(HWND hWnd, const MainWindowMenuOptions* options = nullp
 		UINT pos = 1;
 		if (options->showPinOption) {
 			InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->pinned ? MF_CHECKED : MF_UNCHECKED),
-				TRAY_MENU_ID_PIN_THIS_TIME, L"本次钉住");
+				TRAY_MENU_ID_PIN_THIS_TIME, LoadI18nString(IDS_I18N_TRAY_PIN_THIS_TIME, L"Pin This Time").c_str());
 		}
 		InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->alwaysOnTop ? MF_CHECKED : MF_UNCHECKED),
-			TRAY_MENU_ID_ALWAYS_ON_TOP, L"主窗口置于顶层");
+			TRAY_MENU_ID_ALWAYS_ON_TOP, LoadI18nString(IDS_I18N_TRAY_ALWAYS_ON_TOP, L"Keep Main Window on Top").c_str());
 		InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->lockWindowPosition ? MF_CHECKED : MF_UNCHECKED),
-			TRAY_MENU_ID_LOCK_WINDOW_POSITION, L"锁定窗口位置");
+			TRAY_MENU_ID_LOCK_WINDOW_POSITION, LoadI18nString(IDS_I18N_TRAY_LOCK_WINDOW_POSITION, L"Lock Window Position").c_str());
 		InsertMenuW(g_hTrayMenu, pos++, MF_BYPOSITION | MF_STRING | (options->closeAfterOpenItem ? MF_CHECKED : MF_UNCHECKED),
-			TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM, L"打开项目后关闭窗口");
+			TRAY_MENU_ID_CLOSE_AFTER_OPEN_ITEM, LoadI18nString(IDS_I18N_TRAY_CLOSE_AFTER_OPEN_ITEM, L"Close After Opening an Item").c_str());
 
 		const int entryCount = static_cast<int>(options->closeOnDismissFocusEntries.size());
 		if (entryCount > 0) {

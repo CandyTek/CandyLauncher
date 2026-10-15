@@ -7,6 +7,8 @@
 #include "../util/json.hpp"
 #include "../util/StringUtil.hpp"
 #include "GlobalState.hpp"
+#include "UiLanguage.hpp"
+#include "I18nResource.h"
 
 inline HMODULE g_hLangRes = nullptr;
 inline std::wstring g_uiLanguageCode = L"zh-CN";
@@ -71,6 +73,8 @@ inline bool LoadLanguageResourceDll(const std::wstring& languageCode) {
 	}
 	g_hLangRes = hModule;
 	g_uiLanguageCode = normalized;
+	// 让插件 DLL 和公共头里的 TrZhEn 也能拿到用户选择的界面语言
+	SetEnvironmentVariableW(kUiLanguageEnvVar, normalized.c_str());
 	return true;
 }
 

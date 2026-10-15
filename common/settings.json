@@ -43,8 +43,8 @@
 		},
 		{
 			"key": "pref_check_app_version",
-			"title": "自动检查更新(未完善)",
-			"title_en": "Automatically check for updates (unfinished)",
+			"title": "自动检查更新",
+			"title_en": "Automatically check for updates",
 			"type": "bool",
 			"subPage": "normal",
 			"defValue": true

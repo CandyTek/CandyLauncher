@@ -13,6 +13,7 @@
 #include "../3rdparty/github-releases-autoupdater/src/cautoupdatergithub.h"
 #include "common/AppVersion.h"
 #include "../common/GlobalState.hpp"
+#include "../common/I18n.hpp"
 #include "FileUtil.hpp"
 #include "LogUtil.hpp"
 #include "MyToastUtil.hpp"
@@ -26,6 +27,10 @@ namespace AppUpdate {
 
 constexpr const char* kGithubRepoName = "CandyTek/CandyLauncher";
 constexpr const char* kIgnoredUpdateVersionKey = "pref_ignored_update_version";
+
+inline std::wstring UpdateDialogTitle() {
+	return LoadI18nString(IDS_I18N_UPDATE_TITLE, L"Update");
+}
 constexpr int kUpdateDialogButtonUpdate = 1001;
 constexpr int kUpdateDialogButtonIgnoreVersion = 1002;
 constexpr int kUpdateDialogButtonDisableAutoPrompt = 1003;
@@ -132,14 +137,14 @@ inline std::wstring BuildUpdateSummaryText(const CAutoUpdaterGithub::ChangeLog& 
 	}
 
 	const auto& latest = changelog.front();
-	std::wstring text = L"New version found: v" + utf8_to_wide(latest.versionString);
+	std::wstring text = LoadI18nString(IDS_I18N_UPDATE_NEW_VERSION_PREFIX, L"New version found: v") + utf8_to_wide(latest.versionString);
 	if (!latest.date.empty()) {
-		text += L"\r\nPublished: " + utf8_to_wide(latest.date);
+		text += L"\r\n" + LoadI18nString(IDS_I18N_UPDATE_PUBLISHED_PREFIX, L"Published: ") + utf8_to_wide(latest.date);
 	}
-	text += L"\r\n\r\nCandyLauncher will download and launch the installer.";
+	text += L"\r\n\r\n" + LoadI18nString(IDS_I18N_UPDATE_WILL_DOWNLOAD, L"CandyLauncher will download and install the update package.");
 
 	if (changelog.size() > 1) {
-		text += L"\r\n\r\nDetected versions:";
+		text += L"\r\n\r\n" + LoadI18nString(IDS_I18N_UPDATE_DETECTED_VERSIONS, L"Detected versions:");
 		const size_t count = std::min<size_t>(changelog.size(), 3);
 		for (size_t i = 0; i < count; ++i) {
 			text += L"\r\n- v" + utf8_to_wide(changelog[i].versionString);
@@ -149,17 +154,23 @@ inline std::wstring BuildUpdateSummaryText(const CAutoUpdaterGithub::ChangeLog& 
 		}
 	}
 
-	text += L"\r\n\r\nStart update now?";
+	text += L"\r\n\r\n" + LoadI18nString(IDS_I18N_UPDATE_START_NOW, L"Start update now?");
 	return text;
 }
 
 inline int ShowAutomaticUpdateDialog(const CAutoUpdaterGithub::ChangeLog& changelog) {
 	const std::wstring content = BuildUpdateSummaryText(changelog);
+	const std::wstring title = UpdateDialogTitle();
+	const std::wstring mainInstruction = LoadI18nString(IDS_I18N_UPDATE_MAIN_INSTRUCTION, L"New version available");
+	const std::wstring btnUpdate = LoadI18nString(IDS_I18N_UPDATE_BTN_UPDATE_NOW, L"Update now");
+	const std::wstring btnIgnore = LoadI18nString(IDS_I18N_UPDATE_BTN_IGNORE_VERSION, L"Ignore this version");
+	const std::wstring btnDisable = LoadI18nString(IDS_I18N_UPDATE_BTN_DISABLE_PROMPT, L"Don't remind me again");
+	const std::wstring btnLater = LoadI18nString(IDS_I18N_UPDATE_BTN_LATER, L"Remind me later");
 	const TASKDIALOG_BUTTON buttons[] = {
-		{kUpdateDialogButtonUpdate, LR"(立即更新)"},
-		{kUpdateDialogButtonIgnoreVersion, LR"(忽略当前版本)"},
-		{kUpdateDialogButtonDisableAutoPrompt, LR"(不再提示更新)"},
-		{kUpdateDialogButtonLater, LR"(稍后提醒)"}
+		{kUpdateDialogButtonUpdate, btnUpdate.c_str()},
+		{kUpdateDialogButtonIgnoreVersion, btnIgnore.c_str()},
+		{kUpdateDialogButtonDisableAutoPrompt, btnDisable.c_str()},
+		{kUpdateDialogButtonLater, btnLater.c_str()}
 	};
 
 	TASKDIALOGCONFIG config{};
@@ -167,9 +178,9 @@ inline int ShowAutomaticUpdateDialog(const CAutoUpdaterGithub::ChangeLog& change
 	config.hwndParent = g_mainHwnd;
 	config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
 	config.dwCommonButtons = 0;
-	config.pszWindowTitle = L"Update";
+	config.pszWindowTitle = title.c_str();
 	config.pszMainIcon = TD_INFORMATION_ICON;
-	config.pszMainInstruction = L"\u53d1\u73b0\u65b0\u7248\u672c";
+	config.pszMainInstruction = mainInstruction.c_str();
 	config.pszContent = content.c_str();
 	config.cButtons = static_cast<UINT>(std::size(buttons));
 	config.pButtons = buttons;
@@ -184,7 +195,7 @@ inline int ShowAutomaticUpdateDialog(const CAutoUpdaterGithub::ChangeLog& change
 	const int fallbackResult = MessageBoxW(
 		g_mainHwnd,
 		content.c_str(),
-		L"Update",
+		title.c_str(),
 		MB_YESNO | MB_ICONQUESTION | MB_TOPMOST);
 	return fallbackResult == IDYES ? kUpdateDialogButtonUpdate : kUpdateDialogButtonLater;
 }
@@ -230,24 +241,24 @@ private:
 
 inline void StartDownloadUpdate(const CAutoUpdaterGithub::VersionEntry& entry, const bool manual) {
 	if (entry.versionUpdateUrl.empty()) {
-		MessageBoxW(g_mainHwnd, L"No supported update package was found in the GitHub release.", L"Update", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+		MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_NO_PACKAGE, L"No supported update package was found in the GitHub release.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONWARNING | MB_TOPMOST);
 		return;
 	}
 	// 下载后由 updater 库校验 SHA-256（来自 GitHub API 的 digest 字段），缺失则拒绝安装
 	if (entry.versionUpdateSha256.empty()) {
-		MessageBoxW(g_mainHwnd, L"The GitHub release asset has no SHA-256 digest, so the update cannot be verified and will not be installed.", L"Update", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+		MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_NO_DIGEST, L"The GitHub release asset has no SHA-256 digest, so the update cannot be verified and will not be installed.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONWARNING | MB_TOPMOST);
 		return;
 	}
 
 	bool expected = false;
 	if (!g_isDownloadingUpdate.compare_exchange_strong(expected, true)) {
 		if (manual) {
-			MessageBoxW(g_mainHwnd, L"An update installer is already downloading.", L"Update", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+			MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_ALREADY_DOWNLOADING, L"An update package is already downloading.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 		}
 		return;
 	}
 
-	MyShowSimpleToast(L"CandyLauncher", L"Downloading update package");
+	MyShowSimpleToast(L"CandyLauncher", LoadI18nString(IDS_I18N_UPDATE_DOWNLOADING_TOAST, L"Downloading update package"));
 	Logi(L"Update", L"Downloading v", utf8_to_wide(entry.versionString), L" expected sha256=", utf8_to_wide(entry.versionUpdateSha256), L" size=", entry.versionUpdateSize);
 	std::thread([entry, manual]() {
 		UpdateStatusListener listener(manual);
@@ -263,7 +274,7 @@ inline void StartDownloadUpdate(const CAutoUpdaterGithub::VersionEntry& entry, c
 inline void StartCheckForUpdates(const bool manual) {
 	if (g_isDownloadingUpdate.load()) {
 		if (manual) {
-			MessageBoxW(g_mainHwnd, L"An update installer is already downloading.", L"Update", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+			MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_ALREADY_DOWNLOADING, L"An update package is already downloading.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 		}
 		return;
 	}
@@ -271,7 +282,7 @@ inline void StartCheckForUpdates(const bool manual) {
 	bool expected = false;
 	if (!g_isCheckingForUpdate.compare_exchange_strong(expected, true)) {
 		if (manual) {
-			MessageBoxW(g_mainHwnd, L"Update check is already running.", L"Update", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+			MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_CHECK_RUNNING, L"Update check is already running.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 		}
 		return;
 	}
@@ -308,7 +319,7 @@ inline LRESULT HandleUpdateAvailableMessage(LPARAM lParam) {
 
 	if (payload->changelog.empty()) {
 		if (payload->manual) {
-			MessageBoxW(g_mainHwnd, L"You are already using the latest version.", L"Update", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+			MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_LATEST, L"You are already using the latest version.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 		}
 		return 0;
 	}
@@ -320,7 +331,7 @@ inline LRESULT HandleUpdateAvailableMessage(LPARAM lParam) {
 	}
 
 	if (latest.versionUpdateUrl.empty()) {
-		MessageBoxW(g_mainHwnd, L"A newer version was found, but the release does not contain a supported update package.", L"Update", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+		MessageBoxW(g_mainHwnd, LoadI18nString(IDS_I18N_UPDATE_NEWER_NO_PACKAGE, L"A newer version was found, but the release does not contain a supported update package.").c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONWARNING | MB_TOPMOST);
 		return 0;
 	}
 
@@ -328,7 +339,7 @@ inline LRESULT HandleUpdateAvailableMessage(LPARAM lParam) {
 		? MessageBoxW(
 			g_mainHwnd,
 			BuildUpdateSummaryText(payload->changelog).c_str(),
-			L"Update",
+			UpdateDialogTitle().c_str(),
 			MB_YESNO | MB_ICONQUESTION | MB_TOPMOST)
 		: ShowAutomaticUpdateDialog(payload->changelog);
 
@@ -352,11 +363,11 @@ inline LRESULT HandleUpdateErrorMessage(LPARAM lParam) {
 	if (payload->manual) {
 		MessageBoxW(
 			g_mainHwnd,
-			(L"Update check failed:\r\n" + utf8_to_wide(payload->errorMessage)).c_str(),
-			L"Update",
+			(LoadI18nString(IDS_I18N_UPDATE_CHECK_FAILED_PREFIX, L"Update check failed:") + L"\r\n" + utf8_to_wide(payload->errorMessage)).c_str(),
+			UpdateDialogTitle().c_str(),
 			MB_OK | MB_ICONERROR | MB_TOPMOST);
 	} else {
-		MyShowSimpleToast(L"CandyLauncher", L"Automatic update check failed");
+		MyShowSimpleToast(L"CandyLauncher", LoadI18nString(IDS_I18N_UPDATE_AUTO_CHECK_FAILED, L"Automatic update check failed"));
 	}
 	return 0;
 }
@@ -365,13 +376,13 @@ inline LRESULT HandleUpdateDownloadFinishedMessage(LPARAM lParam) {
 	std::unique_ptr<UpdateFinishedPayload> payload(reinterpret_cast<UpdateFinishedPayload*>(lParam));
 	if (!payload) return 0;
 
-	std::wstring msg = L"Update package started";
+	std::wstring msg = LoadI18nString(IDS_I18N_UPDATE_PACKAGE_STARTED, L"Update package started");
 	if (!payload->versionString.empty()) {
 		msg += L": v" + utf8_to_wide(payload->versionString);
 	}
 	MyShowSimpleToast(L"CandyLauncher", msg);
 	if (payload->manual) {
-		MessageBoxW(g_mainHwnd, msg.c_str(), L"Update", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+		MessageBoxW(g_mainHwnd, msg.c_str(), UpdateDialogTitle().c_str(), MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 	}
 	if (g_mainHwnd != nullptr) {
 		DestroyWindow(g_mainHwnd);

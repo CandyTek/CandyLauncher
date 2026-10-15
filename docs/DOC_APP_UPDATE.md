@@ -57,6 +57,8 @@ This repository is now integrated with GitHub Release update capabilities, with 
     2. Build, package `CandyLauncher.zip` (`scripts\release\run_package.cmd`; only the skins listed in `scripts\release\package_skins.txt` are shipped)
     3. Create the GitHub release with tag `vx.y.z` (SemVer, `v` prefix); the updater strips the `v` before comparing
 - Release comparison uses natural version comparison, so mixed styles can block update prompts
+    - The comparator sees `1.0.0-rc1` as *newer* than `1.0.0`, and the host does not filter GitHub's pre-release flag. A test or RC build must therefore use a *lower* numeric version (for example `0.9.0`) instead of a suffix; never publish a `-rc` tag
+    - End-to-end verification (2026-10-15): a `0.9.0` build found `v1.0.0`, verified the digest, ran `candylauncher_apply_update.ps1` (robocopy over the app folder, `user_settings.json` kept) and restarted as 1.0.0
     - Example that broke before: local `1.0.20260414` vs tag `1.1` => local treated as newer
     - Legacy tags (`0.0.1`, `0.1`, `1.1`, ...) predate the `v` scheme; the first SemVer release is `v1.0.0`. Because `1.1` sorts above `1.0.0`, delete or mark the old `1.1` release as a pre-release before publishing, otherwise a 1.0.0 build will offer the legacy package as an update
 

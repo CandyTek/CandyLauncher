@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <string>
+#include "../common/UiLanguage.hpp"
 #pragma comment(lib, "comctl32.lib")
 
 // 只需在程序初始化处调用一次（若你已在别处 InitCommonControlsEx，可忽略）
@@ -74,7 +75,7 @@ inline void ShowWarnTooltip(HWND owner,
 	}
 
 	// 标题 + 警告图标
-	SendMessageW(s_tip, TTM_SETTITLEW, TTI_WARNING, (LPARAM)L"提示");
+	SendMessageW(s_tip, TTM_SETTITLEW, TTI_WARNING, (LPARAM)TrZhEn(L"提示", L"Notice"));
 
 	// 立刻出现、立刻允许再次出现、较长的自动隐藏时间
 	SendMessageW(s_tip, TTM_SETDELAYTIME, TTDT_INITIAL, 0);

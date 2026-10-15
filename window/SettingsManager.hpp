@@ -394,9 +394,7 @@ static void LoadSettingList() {
 				SettingItem priorityItem;
 				priorityItem.key = wide_to_utf8(pluginCatalog.pkgName) + ".priority";
 				priorityItem.type = "long";
-				priorityItem.title = wide_to_utf8(g_uiLanguageCode == L"zh-CN"
-													? L"排序优先级 (越大越靠前, 默认0)"
-													: L"Sort Priority (higher = first, default 0)");
+				priorityItem.title = wide_to_utf8(LoadI18nString(IDS_I18N_PLUGIN_SORT_PRIORITY_TITLE, L"Sort Priority (higher = first, default 0)"));
 				priorityItem.subPageIndex = setting.subPageIndex;
 				priorityItem.pluginId = setting.pluginId;
 				priorityItem.intValue = 0;

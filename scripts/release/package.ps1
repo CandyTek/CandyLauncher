@@ -187,8 +187,14 @@ $pluginsDst = Join-Path $stage "plugins"
 New-Item -ItemType Directory -Force -Path $pluginsDst | Out-Null
 # Only DLLs with a "<stem>.plugin.json" manifest are shipped. A DLL without one is a stale
 # output of a removed or deprecated target (e.g. ScreenToolsPlugin2.dll) and is skipped.
+# Plugins that are built by default but must not ship (SDK samples, test harnesses).
+$excludedPlugins = @("ExamplePlugin")
 $pluginDlls = @()
 foreach ($dll in Get-ChildItem -LiteralPath $pluginsSrc -File -Filter "*.dll") {
+	if ($excludedPlugins -contains $dll.BaseName) {
+		Write-Host "[package] skip excluded plugin: $($dll.Name)" -ForegroundColor DarkYellow
+		continue
+	}
 	$manifest = Join-Path $pluginsSrc ($dll.BaseName + ".plugin.json")
 	if (-not (Test-Path -LiteralPath $manifest)) {
 		Write-Host "[package] skip plugin without manifest (stale build output?): $($dll.Name)" -ForegroundColor DarkYellow

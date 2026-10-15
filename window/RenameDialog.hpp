@@ -6,6 +6,7 @@
 #include <Shlwapi.h>
 #include "../util/DpiUtil.hpp"
 #include "../util/FontUtil.hpp"
+#include "../common/UiLanguage.hpp"
 
 struct RenameDlgData {
 	std::wstring *pResult = nullptr;
@@ -31,18 +32,18 @@ static LRESULT CALLBACK RenameDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			data->font = CreateRenameDialogFont(data->dpi);
 			const auto S = [data](const int v) { return Dpi::Scale(v, data->dpi); };
 
-			CreateWindowExW(0, L"STATIC", L"新名称:",
+			CreateWindowExW(0, L"STATIC", TrZhEn(L"新名称:", L"New name:"),
 							WS_CHILD | WS_VISIBLE, S(10), S(10), S(80), S(20), hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 
 			data->hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
 										  WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
 										  S(10), S(35), S(270), S(25), hwnd, (HMENU) 100, GetModuleHandle(nullptr), nullptr);
 
-			CreateWindowExW(0, L"BUTTON", L"确定",
+			CreateWindowExW(0, L"BUTTON", TrZhEn(L"确定", L"OK"),
 							WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
 							S(150), S(70), S(60), S(25), hwnd, (HMENU) IDOK, GetModuleHandle(nullptr), nullptr);
 
-			CreateWindowExW(0, L"BUTTON", L"取消",
+			CreateWindowExW(0, L"BUTTON", TrZhEn(L"取消", L"Cancel"),
 							WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 							S(220), S(70), S(60), S(25), hwnd, (HMENU) IDCANCEL, GetModuleHandle(nullptr), nullptr);
 
@@ -117,7 +118,7 @@ static void RegisterRenameDialogClass() {
 }
 
 static bool ShowRenameDialog(HWND parent, const std::wstring &originalName, std::wstring &newName,
-							 const wchar_t *caption = L"重命名文件") {
+							 const wchar_t *caption = TrZhEn(L"重命名文件", L"Rename File")) {
 	// 以 Per-Monitor V2 创建并自行适配 DPI（简单方案，见 util/DpiUtil.hpp）：按父窗口所在显示器的 DPI 换算尺寸
 	Dpi::ThreadContextScope perMonitor(Dpi::PerMonitorV2Context());
 	RegisterRenameDialogClass();
